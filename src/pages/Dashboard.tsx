@@ -54,7 +54,7 @@ const initialStats = {
 };
 
 // Color palette for pie chart
-const COLORS = ['#8B5CF6', '#6366F1', '#EC4899', '#F97316', '#14B8A6'];
+const COLORS = ['#1056F5', '#071C73', '#016C9E', '#C6E8F2', '#F29702', '#E04330', '#49C1E3'];
 
 interface ReflectionEntry {
   date: string;
