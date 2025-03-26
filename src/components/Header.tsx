@@ -14,6 +14,7 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
+import GoogleIcon from '@mui/icons-material/Google';
 
 const Header: React.FC = () => {
   const { isAuthenticated, logout } = useAuth();
@@ -132,6 +133,21 @@ const Header: React.FC = () => {
                   }}
                 >
                   Tasks
+                </Button>
+                <Button
+                  component={Link}
+                  to="/google-integration"
+                  startIcon={<GoogleIcon />}
+                  sx={{
+                    fontFamily: 'Poppins',
+                    textTransform: 'none',
+                    color: '#333',
+                    fontSize: '1rem',
+                    mx: 1,
+                    fontWeight: isActive('/google-integration') ? 'bold' : 'normal'
+                  }}
+                >
+                  Google
                 </Button>
               </Box>
             )}

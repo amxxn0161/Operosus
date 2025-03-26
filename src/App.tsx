@@ -7,6 +7,7 @@ import '@fontsource/poppins/500.css';
 import '@fontsource/poppins/700.css';
 
 import { AuthProvider } from './contexts/AuthContext';
+import { GoogleServicesProvider } from './contexts/GoogleServicesContext';
 import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -15,6 +16,7 @@ import EntryDetail from './pages/EntryDetail';
 import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
+import GoogleIntegration from './pages/GoogleIntegration';
 
 // Create a custom theme
 const theme = createTheme({
@@ -83,38 +85,45 @@ const App: React.FC = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
-          <div className="App">
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/journal" element={<Journal />} />
-                <Route path="/tasks" element={
-                  <ProtectedRoute>
-                    <Tasks />
-                  </ProtectedRoute>
-                } />
-                <Route path="/worksheet" element={
-                  <ProtectedRoute>
-                    <Worksheet />
-                  </ProtectedRoute>
-                } />
-                <Route path="/entry/:entryId" element={
-                  <ProtectedRoute>
-                    <EntryDetail />
-                  </ProtectedRoute>
-                } />
-                <Route path="/entries" element={
-                  <ProtectedRoute>
-                    <AllEntries />
-                  </ProtectedRoute>
-                } />
-                <Route path="/login" element={<Login />} />
-              </Routes>
-            </Layout>
-          </div>
-        </Router>
+        <GoogleServicesProvider>
+          <Router>
+            <div className="App">
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/journal" element={<Journal />} />
+                  <Route path="/tasks" element={
+                    <ProtectedRoute>
+                      <Tasks />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/worksheet" element={
+                    <ProtectedRoute>
+                      <Worksheet />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/entry/:entryId" element={
+                    <ProtectedRoute>
+                      <EntryDetail />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/entries" element={
+                    <ProtectedRoute>
+                      <AllEntries />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/google-integration" element={
+                    <ProtectedRoute>
+                      <GoogleIntegration />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/login" element={<Login />} />
+                </Routes>
+              </Layout>
+            </div>
+          </Router>
+        </GoogleServicesProvider>
       </AuthProvider>
     </ThemeProvider>
   );
