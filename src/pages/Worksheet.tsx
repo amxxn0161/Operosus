@@ -687,8 +687,8 @@ const Worksheet: React.FC = () => {
             <Tab label="Core Values" />
             <Tab label="Alignment" />
             <Tab label="Goals" />
-            <Tab label="Actions" />
-            <Tab label="Reflections" />
+            <Tab label={<Box component="span">Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
+            <Tab label={<Box component="span">Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
           </Tabs>
         </Box>
 
@@ -865,7 +865,7 @@ const Worksheet: React.FC = () => {
 
         <TabPanel value={currentTab} index={4}>
           <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Actions
+            Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
           </Typography>
           
           <Box sx={{ mb: 4 }}>
@@ -961,7 +961,7 @@ const Worksheet: React.FC = () => {
 
         <TabPanel value={currentTab} index={5}>
           <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Reflections
+            Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
           </Typography>
           
           <Box sx={{ mb: 4 }}>
