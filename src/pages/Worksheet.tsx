@@ -105,6 +105,13 @@ const Worksheet: React.FC = () => {
   const [isEditingSessionName, setIsEditingSessionName] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    actions: string | null;
+    reflections: string | null;
+  }>({
+    actions: null,
+    reflections: null
+  });
   
   // Derived state - current session data
   const currentSession = sessions.find(s => s.id === currentSessionId) || sessions[0];
@@ -241,12 +248,35 @@ const Worksheet: React.FC = () => {
   };
 
   const handleNext = () => {
-    if (currentTab < 5) {
-      setCurrentTab(currentTab + 1);
-    } else {
-      // If on the last tab, save and redirect to dashboard
+    // Clear any previous validation errors
+    setValidationErrors({ actions: null, reflections: null });
+    
+    if (currentTab === 4) { // Actions tab
+      // Check if at least one action has description filled out
+      const isActionsValid = actions.some(action => action.description.trim() !== '');
+      
+      if (!isActionsValid) {
+        setValidationErrors(prev => ({ ...prev, actions: 'Please add at least one action item' }));
+        return; // Prevent moving to next tab
+      }
+    }
+    
+    if (currentTab === 5) { // Reflections tab
+      // Check if reflections field is filled out
+      if (!reflections || reflections.trim() === '') {
+        setValidationErrors(prev => ({ ...prev, reflections: 'Please add your reflections' }));
+        return; // Prevent finishing the worksheet
+      }
+      
+      // If on the last tab and validation passes, save and redirect to dashboard
       handleSaveWorksheet();
       navigate('/dashboard');
+      return;
+    }
+    
+    // For other tabs, proceed without validation
+    if (currentTab < 5) {
+      setCurrentTab(currentTab + 1);
     }
   };
 
@@ -839,27 +869,36 @@ const Worksheet: React.FC = () => {
           </Typography>
           
           <Box sx={{ mb: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                Action Items
-              </Typography>
-              <Button 
-                startIcon={<AddIcon />} 
-                onClick={addAction}
+            <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+              Define Key Actions
+            </Typography>
+            <Button 
+              startIcon={<AddIcon />} 
+              onClick={addAction}
+              sx={{ 
+                fontFamily: 'Poppins', 
+                textTransform: 'none',
+                mb: 3,
+                color: '#1056F5'
+              }}
+            >
+              Add Action
+            </Button>
+            
+            {/* Display validation error for Actions */}
+            {validationErrors.actions && (
+              <Typography 
+                variant="body2" 
                 sx={{ 
                   fontFamily: 'Poppins', 
-                  textTransform: 'none', 
-                  color: '#1056F5',
-                  backgroundColor: 'white',
-                  border: '1px solid #1056F5',
-                  '&:hover': {
-                    backgroundColor: '#f0f7ff',
-                  },
+                  color: 'error.main', 
+                  mb: 2,
+                  fontWeight: 'medium' 
                 }}
               >
-                Add Action
-              </Button>
-            </Box>
+                {validationErrors.actions}
+              </Typography>
+            )}
 
             {actions.map((action, index) => (
               <Box key={action.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -937,10 +976,19 @@ const Worksheet: React.FC = () => {
               value={reflections}
               onChange={(e) => updateReflections(e.target.value)}
               sx={{ mb: 1 }}
+              error={!!validationErrors.reflections}
             />
-            <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-              Minimum 50 characters, maximum 1000 characters
-            </Typography>
+            
+            {/* Display validation error for Reflections */}
+            {validationErrors.reflections ? (
+              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'error.main' }}>
+                {validationErrors.reflections}
+              </Typography>
+            ) : (
+              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
+                Minimum 50 characters, maximum 1000 characters
+              </Typography>
+            )}
           </Box>
         </TabPanel>
 
