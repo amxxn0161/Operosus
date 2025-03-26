@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import SuccessDialog from '../components/SuccessDialog';
 
 // Define distraction options
 const distractionOptions = [
@@ -41,6 +42,9 @@ const Journal: React.FC = () => {
   const [supportNeeded, setSupportNeeded] = useState<string>('');
   const [improvementPlans, setImprovementPlans] = useState<string>('');
   const [selectedDistractions, setSelectedDistractions] = useState<{[key: string]: boolean}>({});
+  
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -61,6 +65,11 @@ const Journal: React.FC = () => {
       ...prev,
       [distraction]: !prev[distraction]
     }));
+  };
+
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    navigate('/dashboard');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -101,9 +110,9 @@ const Journal: React.FC = () => {
       // Save back to localStorage
       localStorage.setItem('reflectionEntries', JSON.stringify(existingEntries));
       
-      // Show success and redirect to dashboard
-      alert('Your daily reflection has been saved!');
-      navigate('/dashboard');
+      // Show success dialog instead of alert
+      setDialogOpen(true);
+      // Don't navigate immediately, let the dialog handle it
     } catch (error) {
       console.error('Error saving journal entry:', error);
       alert('There was an error saving your reflection. Please try again.');
@@ -320,6 +329,16 @@ const Journal: React.FC = () => {
           </Box>
         </Box>
       </Paper>
+
+      {/* Add the Success Dialog */}
+      <SuccessDialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        message="Reflection Saved!"
+        score={productivityScore}
+        autoClose={true}
+        autoCloseTime={4000}
+      />
     </Container>
   );
 };

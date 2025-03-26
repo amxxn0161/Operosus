@@ -60,6 +60,7 @@ interface ReflectionEntry {
   date: string;
   productivityScore: number;
   meetingScore: number;
+  hadNoMeetings?: boolean;
   focusTime: string;
   breaksTaken: string;
   supportNeeded?: string;
@@ -584,6 +585,7 @@ const Dashboard: React.FC = () => {
                 Recent Entries
               </Typography>
               <Button 
+                onClick={() => navigate('/entries')}
                 sx={{ 
                   fontFamily: 'Poppins', 
                   textTransform: 'none',
@@ -612,46 +614,55 @@ const Dashboard: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {entries.map((entry, index) => (
+                    {entries.slice(0, 6).map((entry, index) => (
                       <TableRow key={index}>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                           {entry.date}
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                           <Box sx={{ 
-                            backgroundColor: '#FEFFD6', 
+                            backgroundColor: '#1056F5', 
                             display: 'inline-block',
                             px: 2,
                             py: 0.5,
                             borderRadius: 16,
-                            fontWeight: 'medium'
+                            fontWeight: 'medium',
+                            color: 'white'
                           }}>
                             {Math.round(entry.productivityScore * 10)}%
                           </Box>
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                           <Box sx={{ 
-                            backgroundColor: '#FEFFD6', 
+                            backgroundColor: '#1056F5', 
                             display: 'inline-block',
                             px: 2,
                             py: 0.5,
                             borderRadius: 16,
-                            fontWeight: 'medium'
+                            fontWeight: 'medium',
+                            color: 'white'
                           }}>
                             {entry.productivityScore}
                           </Box>
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
-                          <Box sx={{ 
-                            backgroundColor: '#FEFFD6', 
-                            display: 'inline-block',
-                            px: 2,
-                            py: 0.5,
-                            borderRadius: 16,
-                            fontWeight: 'medium'
-                          }}>
-                            {entry.meetingScore}
-                          </Box>
+                          {entry.hadNoMeetings ? (
+                            <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
+                              -
+                            </Box>
+                          ) : (
+                            <Box sx={{ 
+                              backgroundColor: '#1056F5', 
+                              display: 'inline-block',
+                              px: 2,
+                              py: 0.5,
+                              borderRadius: 16,
+                              fontWeight: 'medium',
+                              color: 'white'
+                            }}>
+                              {entry.meetingScore}
+                            </Box>
+                          )}
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                           {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
@@ -943,8 +954,38 @@ const Dashboard: React.FC = () => {
                 {entries.map((entry, index) => (
                   <TableRow key={index}>
                     <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>{entry.date}</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>{entry.productivityScore}</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>{entry.meetingScore}</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <Box sx={{ 
+                        backgroundColor: '#1056F5', 
+                        display: 'inline-block',
+                        px: 2,
+                        py: 0.5,
+                        borderRadius: 16,
+                        fontWeight: 'medium',
+                        color: 'white'
+                      }}>
+                        {entry.productivityScore}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      {entry.hadNoMeetings ? (
+                        <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
+                          -
+                        </Box>
+                      ) : (
+                        <Box sx={{ 
+                          backgroundColor: '#1056F5', 
+                          display: 'inline-block',
+                          px: 2,
+                          py: 0.5,
+                          borderRadius: 16,
+                          fontWeight: 'medium',
+                          color: 'white'
+                        }}>
+                          {entry.meetingScore}
+                        </Box>
+                      )}
+                    </TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                       {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
                         <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>

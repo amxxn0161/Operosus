@@ -7,14 +7,20 @@ import {
   Button, 
   Chip,
   Divider,
-  Grid
+  Grid,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
 } from '@mui/material';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 // Define the ReflectionEntry type
 interface ReflectionEntry {
@@ -33,8 +39,10 @@ interface ReflectionEntry {
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { entryId } = useParams<{ entryId: string }>();
   const [entry, setEntry] = useState<ReflectionEntry | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -81,9 +89,47 @@ const EntryDetail: React.FC = () => {
     return `${score * 10}%`;
   };
   
-  // Handle back button click
+  // Handle back button click - check if we came from entries page
   const handleBack = () => {
-    navigate('/dashboard');
+    // If navigated from entries page, go back to entries page, otherwise go to dashboard
+    const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
+    navigate(fromEntriesPage ? '/entries' : '/dashboard');
+  };
+  
+  // Handle delete entry
+  const handleDeleteClick = () => {
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDeleteOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!entryId) return;
+    
+    try {
+      // Get entries from localStorage
+      const savedEntries = localStorage.getItem('reflectionEntries');
+      if (savedEntries) {
+        const parsedEntries: ReflectionEntry[] = JSON.parse(savedEntries);
+        
+        // Remove the entry at the specified index
+        parsedEntries.splice(parseInt(entryId), 1);
+        
+        // Save the updated entries back to localStorage
+        localStorage.setItem('reflectionEntries', JSON.stringify(parsedEntries));
+        
+        // Close the dialog and navigate back
+        setConfirmDeleteOpen(false);
+        
+        // Navigate back to the appropriate page
+        const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
+        navigate(fromEntriesPage ? '/entries' : '/dashboard');
+      }
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+    }
   };
   
   // If entry is still loading or not found
@@ -97,22 +143,37 @@ const EntryDetail: React.FC = () => {
 
   return (
     <Container maxWidth="md" sx={{ py: 4, bgcolor: '#f5f5f5' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Button 
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBack}
+            sx={{ 
+              mr: 2,
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              color: '#1056F5'
+            }}
+          >
+            Back
+          </Button>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
+            Daily Reflection
+          </Typography>
+        </Box>
+        
         <Button 
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBack}
+          startIcon={<DeleteIcon />}
+          onClick={handleDeleteClick}
+          variant="outlined"
+          color="error"
           sx={{ 
-            mr: 2,
             fontFamily: 'Poppins', 
             textTransform: 'none',
-            color: '#1056F5'
           }}
         >
-          Back to Dashboard
+          Delete Entry
         </Button>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
-          Daily Reflection
-        </Typography>
       </Box>
       
       <Paper sx={{ p: 4, borderRadius: 2 }}>
@@ -250,6 +311,37 @@ const EntryDetail: React.FC = () => {
           </Paper>
         </Box>
       </Paper>
+      
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={handleCancelDelete}
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+          Delete Reflection Entry
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontFamily: 'Poppins' }}>
+            Are you sure you want to delete this reflection entry? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleCancelDelete} 
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            color="error"
+            variant="contained"
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

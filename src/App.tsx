@@ -14,6 +14,7 @@ import Journal from './pages/Journal';
 import EntryDetail from './pages/EntryDetail';
 import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
+import AllEntries from './pages/AllEntries';
 
 // Create a custom theme
 const theme = createTheme({
@@ -102,6 +103,11 @@ const App: React.FC = () => {
                 <Route path="/entry/:entryId" element={
                   <ProtectedRoute>
                     <EntryDetail />
+                  </ProtectedRoute>
+                } />
+                <Route path="/entries" element={
+                  <ProtectedRoute>
+                    <AllEntries />
                   </ProtectedRoute>
                 } />
                 <Route path="/login" element={<Login />} />
