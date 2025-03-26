@@ -6,7 +6,8 @@ import {
   Button,
   Box,
   Typography,
-  Divider
+  Divider,
+  CircularProgress
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
@@ -117,26 +118,70 @@ const SuccessDialog: React.FC<SuccessDialogProps> = ({
                 alignItems: 'center',
               }}
             >
-              {/* Simple display of percentage without circular progress */}
-              <Typography
-                variant="h2"
-                component="div"
-                sx={{ 
-                  fontWeight: 'bold',
-                  fontFamily: 'Poppins',
-                  color: getScoreColor(),
-                  lineHeight: 1,
-                  mb: 1
-                }}
-              >
-                {percentage}%
-              </Typography>
+              {/* Replace with circular progress indicator */}
+              <Box sx={{ position: 'relative', display: 'inline-flex', mb: 2 }}>
+                {/* Background circle */}
+                <CircularProgress
+                  variant="determinate"
+                  value={100}
+                  size={100}
+                  thickness={4}
+                  sx={{ 
+                    color: 'rgba(0, 0, 0, 0.1)',
+                    position: 'absolute',
+                    circle: {
+                      strokeLinecap: 'round',
+                    }
+                  }}
+                />
+                {/* Foreground progress circle */}
+                <CircularProgress
+                  variant="determinate"
+                  value={percentage}
+                  size={100}
+                  thickness={4}
+                  sx={{ 
+                    color: getScoreColor(),
+                    circle: {
+                      strokeLinecap: 'round',
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    right: 0,
+                    position: 'absolute',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography
+                    variant="h4"
+                    component="div"
+                    sx={{ 
+                      fontWeight: 'bold',
+                      fontFamily: 'Poppins',
+                      color: getScoreColor(),
+                      lineHeight: 1,
+                      textAlign: 'center',
+                      fontSize: '2rem',
+                    }}
+                  >
+                    {percentage}%
+                  </Typography>
+                </Box>
+              </Box>
               <Typography
                 variant="body2"
                 sx={{ 
                   color: '#000000',
                   fontFamily: 'Poppins',
-                  fontSize: '0.875rem'
+                  fontSize: '0.875rem',
+                  fontWeight: 'bold'
                 }}
               >
                 Productivity
@@ -183,6 +228,7 @@ const SuccessDialog: React.FC<SuccessDialogProps> = ({
             borderRadius: '8px',
             py: 0.75,
             backgroundColor: '#1056F5',
+            fontWeight: 'bold',
             '&:hover': {
               backgroundColor: '#0D47D9',
             },
