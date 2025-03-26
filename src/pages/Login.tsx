@@ -65,10 +65,10 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth={false} sx={{ p: 0, height: '100vh' }}>
-      <Grid container sx={{ height: '100%' }}>
+    <Box sx={{ width: '100vw', height: '100vh', m: 0, p: 0, overflow: 'hidden' }}>
+      <Grid container sx={{ height: '100%', width: '100%', m: 0, p: 0 }}>
         {/* Left side - Login content */}
-        <Grid item xs={12} md={6} lg={8} component={Paper} elevation={0} square>
+        <Grid item xs={12} md={6} lg={8} component={Paper} elevation={0} square sx={{ p: 0, m: 0 }}>
           <Box
             sx={{
               height: '100%',
@@ -284,6 +284,7 @@ const Login: React.FC = () => {
             justifyContent: 'center',
             color: 'white',
             p: 6,
+            m: 0
           }}
         >
           <Typography
@@ -394,7 +395,7 @@ const Login: React.FC = () => {
           </Box>
         </Grid>
       </Grid>
-    </Container>
+    </Box>
   );
 };
 
