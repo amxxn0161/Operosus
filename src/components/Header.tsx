@@ -217,7 +217,8 @@ const Header: React.FC = () => {
                     </Box>
                   </MenuItem>
                   <Divider />
-                  <MenuItem onClick={handleProfileClick}>Your Profile</MenuItem>
+                  {/* Profile option hidden temporarily */}
+                  {/* <MenuItem onClick={handleProfileClick}>Your Profile</MenuItem> */}
                   <MenuItem onClick={handleLogout}>Sign out</MenuItem>
                 </Menu>
               </Box>
