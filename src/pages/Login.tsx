@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { startWebAuth } from '../services/authService';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useJournal } from '../contexts/JournalContext';
 import { 
   Box, 
   Button, 
@@ -47,14 +48,18 @@ const TabPanel = (props: TabPanelProps) => {
 const Login: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const { isAuthenticated } = useAuth();
+  const { refreshEntries } = useJournal();
   const navigate = useNavigate();
 
   // Redirect to dashboard if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      // Fetch journal entries when authenticated
+      refreshEntries().then(() => {
+        navigate('/dashboard');
+      });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, refreshEntries]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -62,6 +67,8 @@ const Login: React.FC = () => {
 
   const handleLogin = () => {
     startWebAuth();
+    // Journal entries will be fetched automatically by the useEffect
+    // when isAuthenticated changes
   };
 
   return (

@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useJournal } from '../contexts/JournalContext';
 import SuccessDialog from '../components/SuccessDialog';
 
 // Define distraction options
@@ -31,6 +32,7 @@ const distractionOptions = [
 
 const Journal: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { saveEntry, entries } = useJournal();
   const navigate = useNavigate();
   
   // Form state
@@ -45,6 +47,7 @@ const Journal: React.FC = () => {
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -72,8 +75,9 @@ const Journal: React.FC = () => {
     navigate('/dashboard');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
     
     // Get current date and time
     const now = new Date();
@@ -89,33 +93,30 @@ const Journal: React.FC = () => {
       date: formattedDate,
       productivityScore,
       meetingScore: hadNoMeetings ? null : meetingScore,
-      hadNoMeetings,
+      hadNoMeetings: hadNoMeetings ? 1 : 0, // Convert boolean to 0/1 for API
       breaksTaken: tookBreak,
       focusTime: completedFocusTime,
       supportNeeded,
       improvementPlans,
       distractions, // Add distractions to the entry
-      timestamp: now.toISOString() // This ensures we have a proper timestamp for the graph
+      timestamp: `${formattedDate} ${now.toTimeString().split(' ')[0]}` // Format as expected by API
     };
     
-    // In a real app, we would send this to an API
-    // For now, we'll just store it in localStorage
     try {
-      // Get existing entries or initialize empty array
-      const existingEntries = JSON.parse(localStorage.getItem('reflectionEntries') || '[]');
+      // Save entry to API using the saveEntry function from JournalContext
+      const savedEntry = await saveEntry(journalEntry);
       
-      // Add new entry to the beginning of the array
-      existingEntries.unshift(journalEntry);
-      
-      // Save back to localStorage
-      localStorage.setItem('reflectionEntries', JSON.stringify(existingEntries));
-      
-      // Show success dialog instead of alert
-      setDialogOpen(true);
-      // Don't navigate immediately, let the dialog handle it
+      if (savedEntry) {
+        // Show success dialog
+        setDialogOpen(true);
+      } else {
+        throw new Error('Failed to save journal entry');
+      }
     } catch (error) {
       console.error('Error saving journal entry:', error);
       alert('There was an error saving your reflection. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
