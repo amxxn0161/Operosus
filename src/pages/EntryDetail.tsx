@@ -272,7 +272,7 @@ const EntryDetail: React.FC = () => {
                   label={distraction}
                   sx={{ 
                     fontFamily: 'Poppins',
-                    bgcolor: '#8B5CF6',
+                    bgcolor: '#1056F5',
                     color: 'white'
                   }}
                 />
