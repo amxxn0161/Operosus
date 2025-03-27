@@ -308,6 +308,7 @@ const Journal: React.FC = () => {
             <Button
               variant="outlined"
               onClick={() => navigate('/dashboard')}
+              disabled={saving}
               sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
             >
               Cancel
@@ -315,6 +316,7 @@ const Journal: React.FC = () => {
             <Button
               type="submit"
               variant="contained"
+              disabled={saving}
               sx={{
                 backgroundColor: '#1056F5',
                 color: 'white',
@@ -325,7 +327,7 @@ const Journal: React.FC = () => {
                 },
               }}
             >
-              Save Reflection
+              {saving ? 'Saving...' : 'Save Reflection'}
             </Button>
           </Box>
         </Box>
