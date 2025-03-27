@@ -17,6 +17,7 @@ import EntryDetail from './pages/EntryDetail';
 import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
+import DiagnosticPage from './pages/DiagnosticPage';
 
 // Create a custom theme
 const theme = createTheme({
@@ -114,6 +115,12 @@ const App: React.FC = () => {
                         <AllEntries />
                       </ProtectedRoute>
                     } />
+                    <Route path="/worksheet" element={
+                      <ProtectedRoute>
+                        <Worksheet />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/diagnostic" element={<DiagnosticPage />} />
                     <Route path="/login" element={<Login />} />
                   </Routes>
                 </Layout>

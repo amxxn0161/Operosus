@@ -101,4 +101,56 @@ export const logout = (): void => {
   localStorage.removeItem('authToken');
   localStorage.removeItem('isAuthenticated');
   window.location.href = '/';
+};
+
+// Function to fetch user profile from the profile API endpoint
+export const fetchProfileData = async (token: string): Promise<any> => {
+  try {
+    console.log('Fetching profile data from API with token (first 10 chars):', token.substring(0, 10));
+    const response = await fetch('https://app2.operosus.com/profile', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`Profile API error: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch profile data: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Profile API response data:', JSON.stringify(data, null, 2));
+
+    // Save user data to localStorage
+    if (data && data.user) {
+      console.log('Saving user data to localStorage:', {
+        name: data.user.name,
+        email: data.user.email,
+        id: data.user.id,
+        avatar: data.user.avatar ? 'exists' : 'not provided',
+        role: data.user.role
+      });
+      
+      localStorage.setItem('userName', data.user.name || '');
+      localStorage.setItem('userEmail', data.user.email || '');
+      if (data.user.id) {
+        localStorage.setItem('userId', data.user.id.toString());
+      }
+      if (data.user.avatar) {
+        localStorage.setItem('userAvatar', data.user.avatar);
+      }
+      if (data.user.role) {
+        localStorage.setItem('userRole', data.user.role);
+      }
+    } else {
+      console.warn('No user data found in the API response:', data);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching profile data:', error);
+    return null;
+  }
 }; 

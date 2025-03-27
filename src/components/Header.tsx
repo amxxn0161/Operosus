@@ -16,9 +16,12 @@ import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 
 const Header: React.FC = () => {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Debug log to see user data
+  console.log('Header rendering with user:', user);
   
   // State for dropdown menu
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -48,6 +51,29 @@ const Header: React.FC = () => {
   const isLoginPage = location.pathname === '/login';
 
   const isActive = (path: string) => location.pathname === path;
+
+  // Get user's initials for avatar
+  const getUserInitials = () => {
+    // Try to get name from user state first
+    let userName = user?.name;
+    
+    // If not available, try localStorage
+    if (!userName) {
+      userName = localStorage.getItem('userName') || '';
+    }
+    
+    // If we have a name, extract initials
+    if (userName) {
+      const nameParts = userName.split(' ');
+      if (nameParts.length >= 2) {
+        return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+      }
+      return userName[0].toUpperCase();
+    }
+    
+    // Fallback
+    return 'U';
+  };
 
   return (
     <AppBar 
@@ -151,7 +177,7 @@ const Header: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  A
+                  {getUserInitials()}
                 </Avatar>
                 <Menu
                   anchorEl={anchorEl}
@@ -163,7 +189,7 @@ const Header: React.FC = () => {
                   PaperProps={{
                     elevation: 3,
                     sx: {
-                      width: '200px',
+                      width: '250px',
                       mt: 1.5,
                       '& .MuiMenuItem-root': {
                         fontFamily: 'Poppins',
@@ -174,7 +200,18 @@ const Header: React.FC = () => {
                   }}
                 >
                   <MenuItem onClick={(e) => e.stopPropagation()} sx={{ color: '#333' }}>
-                    Signed in as <Box component="span" sx={{ fontWeight: 'bold', ml: 0.5 }}>Amaan</Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      width: '100%'
+                    }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                        Signed in as
+                      </Typography>
+                      <Typography sx={{ fontWeight: 'bold', wordBreak: 'break-word' }}>
+                        {user && user.name ? user.name : localStorage.getItem('userName') || 'User'}
+                      </Typography>
+                    </Box>
                   </MenuItem>
                   <Divider />
                   <MenuItem onClick={handleProfileClick}>Your Profile</MenuItem>
