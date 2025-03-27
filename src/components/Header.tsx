@@ -145,6 +145,8 @@ const Header: React.FC = () => {
                 >
                   Daily Journal
                 </Button>
+                {/* Task button removed temporarily */}
+                {/* 
                 <Button
                   color={isActive('/tasks') ? 'primary' : 'inherit'}
                   onClick={() => navigate('/tasks')}
@@ -159,6 +161,7 @@ const Header: React.FC = () => {
                 >
                   Tasks
                 </Button>
+                */}
               </Box>
             )}
           </Box>

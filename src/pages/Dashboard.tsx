@@ -731,7 +731,7 @@ const Dashboard: React.FC = () => {
                     p: 4, 
                     borderRadius: 2,
                     width: '100%',
-                    height: 'fit-content'
+                    height: '100%'  // Changed to 100% height to fill the space
                   }}>
                     <Typography 
                       variant="h6" 
@@ -741,7 +741,7 @@ const Dashboard: React.FC = () => {
                     </Typography>
                     
                     {entries && entries.length > 0 ? (
-                      <Box sx={{ height: 250, width: '100%' }}>
+                      <Box sx={{ height: 350, width: '100%' }}>  {/* Increased height for better visualization */}
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
@@ -749,7 +749,7 @@ const Dashboard: React.FC = () => {
                               cx="50%"
                               cy="45%"
                               labelLine={false}
-                              outerRadius={60}
+                              outerRadius={90}  // Increased outer radius for better visualization
                               fill="#8884d8"
                               dataKey="value"
                             >
@@ -770,9 +770,9 @@ const Dashboard: React.FC = () => {
                                 return value;
                               }}
                               wrapperStyle={{
-                                fontSize: '0.8rem',
-                                lineHeight: '1.4',
-                                paddingTop: '15px'
+                                fontSize: '0.9rem',  // Increased font size
+                                lineHeight: '1.5',   // Increased line height
+                                paddingTop: '20px'   // Increased padding
                               }}
                               layout="horizontal"
                               align="center"
@@ -783,7 +783,7 @@ const Dashboard: React.FC = () => {
                       </Box>
                     ) : (
                       <Box sx={{ 
-                        height: 100, 
+                        height: 350,  // Increased height to match the chart height
                         display: 'flex', 
                         alignItems: 'center', 
                         justifyContent: 'center'
@@ -796,6 +796,7 @@ const Dashboard: React.FC = () => {
                   </Paper>
                 </Grid>
  
+                {/* Task Progress section hidden for now 
                 <Grid item xs={12}>
                   <Paper
                     sx={{
@@ -927,7 +928,7 @@ const Dashboard: React.FC = () => {
                           )}
                         </Box>
                       </>
-                    ) : (
+                    ) :
                       <>
                         <Box sx={{ 
                           display: 'flex', 
@@ -1040,6 +1041,7 @@ const Dashboard: React.FC = () => {
                     )}
                   </Paper>
                 </Grid>
+                */}
               </Grid>
             </Grid>
           </Grid>
