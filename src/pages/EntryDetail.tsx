@@ -14,21 +14,27 @@ import {
   DialogContentText,
   DialogTitle,
   CircularProgress,
-  Alert
+  Alert,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
 import { JournalEntry } from '../services/journalService';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
 
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const { entries, loading, error, deleteEntry } = useJournal();
+  const { entries, loading, error, deleteEntry, saveEntry } = useJournal();
   const navigate = useNavigate();
   const location = useLocation();
   const { entryId } = useParams<{ entryId: string }>();
@@ -36,6 +42,12 @@ const EntryDetail: React.FC = () => {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  
+  // New state for date editing
+  const [isEditingDate, setIsEditingDate] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [isSavingDate, setIsSavingDate] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -51,6 +63,7 @@ const EntryDetail: React.FC = () => {
       
       if (foundEntry) {
         setEntry(foundEntry);
+        setSelectedDate(new Date(foundEntry.date)); // Initialize selected date with entry date
       } else {
         // Entry not found, redirect to dashboard
         navigate('/dashboard');
@@ -115,6 +128,55 @@ const EntryDetail: React.FC = () => {
       setDeleteError('An unexpected error occurred. Please try again.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+  
+  // Start editing date
+  const handleEditDate = () => {
+    setIsEditingDate(true);
+  };
+
+  // Cancel date editing
+  const handleCancelEditDate = () => {
+    if (entry) {
+      setSelectedDate(new Date(entry.date)); // Reset to original date
+    }
+    setIsEditingDate(false);
+  };
+
+  // Save the new date
+  const handleSaveDate = async () => {
+    if (!entry || !selectedDate) return;
+    
+    setIsSavingDate(true);
+    setSaveError(null);
+    
+    // Format the date to YYYY-MM-DD
+    const formattedDate = selectedDate.toISOString().split('T')[0];
+    
+    try {
+      // Update entry with new date
+      const updatedEntry = {
+        ...entry,
+        date: formattedDate,
+        // Update timestamp to match new date but keep time
+        timestamp: `${formattedDate} ${entry.timestamp.split(' ')[1]}`
+      };
+      
+      const result = await saveEntry(updatedEntry);
+      
+      if (result) {
+        // Update local entry state
+        setEntry(result);
+        setIsEditingDate(false);
+      } else {
+        setSaveError('Failed to update date. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error updating date:', error);
+      setSaveError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSavingDate(false);
     }
   };
   
@@ -193,12 +255,57 @@ const EntryDetail: React.FC = () => {
       <Paper sx={{ p: 4, borderRadius: 2 }}>
         {/* Header with date and scores */}
         <Box sx={{ mb: 4 }}>
-          <Typography 
-            variant="h5" 
-            sx={{ mb: 3, fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
-          >
-            {formatDate(entry.date)}
-          </Typography>
+          {isEditingDate ? (
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  label="Select Date"
+                  value={selectedDate}
+                  onChange={(newDate: Date | null) => setSelectedDate(newDate)}
+                  disableFuture
+                  slotProps={{ 
+                    textField: { 
+                      fullWidth: true,
+                      sx: { fontFamily: 'Poppins' }
+                    } 
+                  }}
+                />
+              </LocalizationProvider>
+              <IconButton 
+                color="primary" 
+                onClick={handleSaveDate}
+                disabled={isSavingDate}
+              >
+                <SaveIcon />
+              </IconButton>
+              <IconButton 
+                color="default" 
+                onClick={handleCancelEditDate}
+                disabled={isSavingDate}
+              >
+                <CloseIcon />
+              </IconButton>
+              {isSavingDate && <CircularProgress size={24} />}
+            </Box>
+          ) : (
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+              <Typography 
+                variant="h5" 
+                sx={{ fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
+              >
+                {formatDate(entry.date)}
+              </Typography>
+              <Tooltip title="Edit Date">
+                <IconButton 
+                  color="primary" 
+                  onClick={handleEditDate}
+                  sx={{ ml: 1 }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
           
           <Grid container spacing={3}>
             <Grid item xs={12} sm={4}>
@@ -393,6 +500,12 @@ const EntryDetail: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {saveError && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {saveError}
+        </Alert>
+      )}
     </Container>
   );
 };

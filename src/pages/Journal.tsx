@@ -12,6 +12,8 @@ import {
   MenuItem,
   Paper
 } from '@mui/material';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
@@ -36,6 +38,7 @@ const Journal: React.FC = () => {
   const navigate = useNavigate();
   
   // Form state
+  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [productivityScore, setProductivityScore] = useState<number>(5);
   const [hadNoMeetings, setHadNoMeetings] = useState<boolean>(false);
   const [meetingScore, setMeetingScore] = useState<number>(5);
@@ -79,9 +82,9 @@ const Journal: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     
-    // Get current date and time
-    const now = new Date();
-    const formattedDate = now.toISOString().split('T')[0];
+    // Use selected date or default to current date
+    const entryDate = selectedDate || new Date();
+    const formattedDate = entryDate.toISOString().split('T')[0];
     
     // Process selected distractions into an array
     const distractions = Object.keys(selectedDistractions)
@@ -99,7 +102,7 @@ const Journal: React.FC = () => {
       supportNeeded,
       improvementPlans,
       distractions, // Add distractions to the entry
-      timestamp: `${formattedDate} ${now.toTimeString().split(' ')[0]}` // Format as expected by API
+      timestamp: `${formattedDate} ${new Date().toTimeString().split(' ')[0]}` // Format as expected by API
     };
     
     try {
@@ -137,6 +140,45 @@ const Journal: React.FC = () => {
 
       <Paper sx={{ p: 4 }}>
         <Box component="form" onSubmit={handleSubmit}>
+          {/* Date Selection - Moved to top and styled for better visibility */}
+          <Box sx={{ 
+            mb: 4, 
+            p: 2, 
+            border: '1px solid #e0e0e0', 
+            borderRadius: 1, 
+            bgcolor: '#f9f9f9',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins', color: '#1056F5', fontWeight: 'bold' }}>
+              Entry Date
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2, fontFamily: 'Poppins', color: 'text.secondary' }}>
+              Select a date for this journal entry (defaults to today)
+            </Typography>
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+              <DatePicker
+                label="Select Date"
+                value={selectedDate}
+                onChange={(newDate: Date | null) => setSelectedDate(newDate)}
+                disableFuture
+                slotProps={{ 
+                  textField: { 
+                    fullWidth: true,
+                    sx: { 
+                      fontFamily: 'Poppins',
+                      '& .MuiOutlinedInput-root': {
+                        '&:hover fieldset': {
+                          borderColor: '#1056F5',
+                        },
+                      },
+                    }
+                  } 
+                }}
+              />
+            </LocalizationProvider>
+          </Box>
+
           {/* Productivity Score */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins' }}>
