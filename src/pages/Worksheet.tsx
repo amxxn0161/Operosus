@@ -15,14 +15,20 @@ import {
   TextareaAutosize,
   IconButton,
   Snackbar,
-  Alert
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  CircularProgress
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GoalItem from '../components/GoalItem';
-import { fetchUserSessions, saveUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
+import { fetchUserSessions, saveUserSession, deleteUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -100,6 +106,9 @@ const Worksheet: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{
     actions: string | null;
     reflections: string | null;
@@ -664,6 +673,62 @@ const Worksheet: React.FC = () => {
     setSessions(updatedSessions);
   };
 
+  // Session deletion handlers
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+    setDeleteError(null);
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!currentSession || !currentSessionId) return;
+    
+    // Don't allow deleting the last session
+    if (sessions.length <= 1) {
+      setDeleteError("You cannot delete your only coaching session.");
+      return;
+    }
+    
+    // If it's a local session that hasn't been saved to the API yet
+    if (currentSessionId.startsWith('session-')) {
+      // Just remove from local state
+      const updatedSessions = sessions.filter(session => session.id !== currentSessionId);
+      setSessions(updatedSessions);
+      // Set first session as current
+      setCurrentSessionId(updatedSessions[0].id);
+      localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
+      setDeleteDialogOpen(false);
+      return;
+    }
+    
+    try {
+      setIsDeleting(true);
+      const success = await deleteUserSession(Number(currentSessionId));
+      
+      if (success) {
+        // Remove the deleted session from state
+        const updatedSessions = sessions.filter(session => session.id !== currentSessionId);
+        setSessions(updatedSessions);
+        // Set first session as current
+        setCurrentSessionId(updatedSessions[0].id);
+        localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
+        setDeleteDialogOpen(false);
+        setSaveSuccess(true); // Show success message
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setDeleteError("Failed to delete session. Please try again.");
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      setDeleteError("An error occurred while deleting the session.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Container sx={{ py: 4 }}>
       <Typography 
@@ -765,36 +830,49 @@ const Worksheet: React.FC = () => {
                 )}
               </Box>
               {!isEditingSessionName && (
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <>
                   <Button 
-                    variant="outlined"
                     onClick={handleStartEditSessionName}
-                    size="medium"
+                    variant="outlined"
                     sx={{ 
                       fontFamily: 'Poppins', 
-                      textTransform: 'none',
-                      height: '48px',
-                      minWidth: '90px',
+                      textTransform: 'none', 
+                      color: '#1056F5',
+                      borderColor: '#1056F5',
                     }}
                   >
                     Rename
                   </Button>
+                  
                   <Button 
-                    variant="contained"
-                    onClick={handleAddSession}
-                    startIcon={<AddIcon />}
-                    size="medium"
+                    onClick={handleDeleteClick}
+                    variant="outlined"
+                    color="error"
                     sx={{ 
                       fontFamily: 'Poppins', 
-                      textTransform: 'none',
-                      backgroundColor: '#1056F5',
-                      height: '48px',
-                      minWidth: '130px',
+                      textTransform: 'none'
+                    }}
+                    disabled={sessions.length <= 1}
+                  >
+                    Delete
+                  </Button>
+                  
+                  <Button 
+                    onClick={handleAddSession}
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ 
+                      fontFamily: 'Poppins', 
+                      textTransform: 'none', 
+                      bgcolor: '#1056F5',
+                      '&:hover': {
+                        bgcolor: '#0c43d0',
+                      },
                     }}
                   >
                     New Session
                   </Button>
-                </Box>
+                </>
               )}
             </Box>
             <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', mt: 2 }}>
@@ -1317,6 +1395,47 @@ const Worksheet: React.FC = () => {
           Your worksheet has been saved successfully!
         </Alert>
       </Snackbar>
+
+      {/* Delete Session Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={!isDeleting ? handleCancelDelete : undefined}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Coaching Session
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete this coaching session? This action cannot be undone.
+          </DialogContentText>
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleCancelDelete} 
+            disabled={isDeleting}
+            sx={{ fontFamily: 'Poppins' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            color="error" 
+            autoFocus
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
+            sx={{ fontFamily: 'Poppins' }}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Session'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

@@ -21,6 +21,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
+import { useTask } from '../contexts/TaskContext';
 import { JournalEntry } from '../services/journalService';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -67,16 +68,13 @@ interface DistractionData {
 const Dashboard: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
+  const { tasks, loading: tasksLoading, error: tasksError, refreshTasks } = useTask();
   const navigate = useNavigate();
   const [stats, setStats] = useState(initialStats);
   const [hasData, setHasData] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [distractionData, setDistractionData] = useState<DistractionData[]>([]);
-  const [tasks, setTasks] = useState<any[]>(() => {
-    const savedTasks = localStorage.getItem('tasks');
-    return savedTasks ? JSON.parse(savedTasks) : [];
-  });
 
   // Custom tooltip component for the chart
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -141,13 +139,6 @@ const Dashboard: React.FC = () => {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);
-
-  useEffect(() => {
-    const savedTasks = localStorage.getItem('tasks');
-    if (savedTasks) {
-      setTasks(JSON.parse(savedTasks));
-    }
-  }, []);
 
   // Process journal entries when they change
   useEffect(() => {
@@ -297,10 +288,10 @@ const Dashboard: React.FC = () => {
     setIsRefreshing(true);
     
     try {
-      // Use refreshEntries from JournalContext
-      await refreshEntries();
+      // Use refreshEntries from JournalContext and refreshTasks from TaskContext
+      await Promise.all([refreshEntries(), refreshTasks()]);
     } catch (error) {
-      console.error('Error refreshing entries:', error);
+      console.error('Error refreshing data:', error);
     } finally {
       // Hide refreshing state
       setIsRefreshing(false);
@@ -822,13 +813,36 @@ const Dashboard: React.FC = () => {
                         Task Progress
                       </Typography>
                     </Box>
-                    {tasks.length > 0 ? (
+                    {tasksLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : tasksError ? (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        flexDirection: 'column',
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        py: 2 
+                      }}>
+                        <Typography variant="body1" color="error" sx={{ mb: 1 }}>
+                          Error loading tasks
+                        </Typography>
+                        <Button 
+                          onClick={refreshTasks}
+                          variant="outlined"
+                          size="small"
+                        >
+                          Retry
+                        </Button>
+                      </Box>
+                    ) : tasks.length > 0 ? (
                       <>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                           <Box sx={{ position: 'relative', display: 'inline-flex', mr: 3 }}>
                             <CircularProgress
                               variant="determinate"
-                              value={tasks.length > 0 ? (tasks.filter(t => t.completed).length / tasks.length) * 100 : 0}
+                              value={tasks.length > 0 ? (tasks.filter(t => t.completed === 1).length / tasks.length) * 100 : 0}
                               size={110}
                               thickness={4}
                               sx={{ color: 'primary.main' }}
@@ -854,7 +868,7 @@ const Dashboard: React.FC = () => {
                                   color: 'primary.main'
                                 }}
                               >
-                                {tasks.length > 0 ? Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100) : 0}%
+                                {tasks.length > 0 ? Math.round((tasks.filter(t => t.completed === 1).length / tasks.length) * 100) : 0}%
                               </Typography>
                             </Box>
                           </Box>
@@ -863,7 +877,7 @@ const Dashboard: React.FC = () => {
                               Completed Tasks
                             </Typography>
                             <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                              {tasks.filter(t => t.completed).length}/{tasks.length}
+                              {tasks.filter(t => t.completed === 1).length}/{tasks.length}
                             </Typography>
                           </Box>
                         </Box>
@@ -874,7 +888,7 @@ const Dashboard: React.FC = () => {
                                 <ListItemIcon sx={{ minWidth: 40 }}>
                                   <CheckCircleOutlineIcon
                                     sx={{
-                                      color: task.completed ? 'primary.main' : 'text.disabled',
+                                      color: task.completed === 1 ? 'primary.main' : 'text.disabled',
                                       fontSize: 24,
                                     }}
                                   />
@@ -886,8 +900,8 @@ const Dashboard: React.FC = () => {
                                       sx={{ 
                                         fontFamily: 'Poppins',
                                         fontSize: '1rem',
-                                        textDecoration: task.completed ? 'line-through' : 'none',
-                                        color: task.completed ? 'text.secondary' : 'text.primary',
+                                        textDecoration: task.completed === 1 ? 'line-through' : 'none',
+                                        color: task.completed === 1 ? 'text.secondary' : 'text.primary',
                                       }}
                                     >
                                       {task.title}

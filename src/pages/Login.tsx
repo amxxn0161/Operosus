@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { startWebAuth } from '../services/authService';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useJournal } from '../contexts/JournalContext';
 import { 
   Box, 
   Button, 
@@ -12,7 +11,9 @@ import {
   Paper, 
   TextField,
   Tabs,
-  Tab
+  Tab,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 
@@ -47,32 +48,66 @@ const TabPanel = (props: TabPanelProps) => {
 
 const Login: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
-  const { refreshEntries } = useJournal();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check for error in URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const errorParam = params.get('error');
+    if (errorParam === 'timeout') {
+      setError('Authentication request timed out. Please try again.');
+    }
+  }, [location]);
+
+  // Clear error timeout
+  useEffect(() => {
+    return () => {
+      const timeoutId = localStorage.getItem('authTimeoutId');
+      if (timeoutId) {
+        clearTimeout(parseInt(timeoutId));
+        localStorage.removeItem('authTimeoutId');
+      }
+    };
+  }, []);
 
   // Redirect to dashboard if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      // Fetch journal entries when authenticated
-      refreshEntries().then(() => {
-        navigate('/dashboard');
-      });
+      navigate('/dashboard');
     }
-  }, [isAuthenticated, navigate, refreshEntries]);
+  }, [isAuthenticated, navigate]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
   const handleLogin = () => {
+    setError(null); // Clear any previous errors
     startWebAuth();
-    // Journal entries will be fetched automatically by the useEffect
-    // when isAuthenticated changes
+  };
+
+  // Close error notification
+  const handleCloseError = () => {
+    setError(null);
   };
 
   return (
     <Box sx={{ width: '100vw', height: '100vh', m: 0, p: 0, overflow: 'hidden' }}>
+      {/* Error Snackbar */}
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={handleCloseError}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseError} severity="error" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
+
       <Grid container sx={{ height: '100%', width: '100%', m: 0, p: 0 }}>
         {/* Left side - Login content */}
         <Grid item xs={12} md={6} lg={8} component={Paper} elevation={0} square sx={{ p: 0, m: 0 }}>

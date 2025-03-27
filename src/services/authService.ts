@@ -5,6 +5,15 @@
 
 // Function to initiate Google authentication
 export const startWebAuth = (): void => {
+  // Add a safety timeout to navigate back to login page if auth takes too long
+  const timeoutId = setTimeout(() => {
+    console.warn('Authentication timed out, returning to login page');
+    window.location.href = '/login?error=timeout';
+  }, 30000); // 30 second timeout
+  
+  // Store the timeout ID so we can clear it on successful auth
+  localStorage.setItem('authTimeoutId', timeoutId.toString());
+  
   const currentUrl = window.location.href;
   // Open Google auth in the same window/tab
   window.open(
@@ -17,8 +26,21 @@ export const startWebAuth = (): void => {
 export const initWebAuth = (): { token: string; isAuthenticated: boolean } => {
   console.log('Checking authentication state');
   
+  // Clear any auth timeout that might be running
+  const timeoutId = localStorage.getItem('authTimeoutId');
+  if (timeoutId) {
+    clearTimeout(parseInt(timeoutId));
+    localStorage.removeItem('authTimeoutId');
+  }
+  
   const currentUrl = window.location.href;
   console.log('Current URL (after auth return):', currentUrl);
+  
+  // Check for timeout error
+  if (currentUrl.includes('error=timeout')) {
+    console.error('Authentication timed out');
+    return { token: '', isAuthenticated: false };
+  }
   
   let token = '';
   let isAuthenticated = false;

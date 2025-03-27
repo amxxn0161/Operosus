@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -20,65 +20,70 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  CircularProgress,
+  Alert,
+  Snackbar,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { format } from 'date-fns';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-
-interface Task {
-  id: string;
-  title: string;
-  completed: boolean;
-  priority: 'low' | 'medium' | 'high';
-  createdAt: string;
-  completedAt?: string;
-}
+import { Task } from '../services/taskService';
+import { useTaskOperations } from '../hooks/useTaskOperations';
 
 const Tasks: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const savedTasks = localStorage.getItem('tasks');
-    return savedTasks ? JSON.parse(savedTasks) : [];
-  });
+  const { 
+    tasks, 
+    loading, 
+    error, 
+    isSaving, 
+    isDeleting, 
+    addTask, 
+    toggleTaskCompletion, 
+    removeTask,
+    clearOperationError
+  } = useTaskOperations();
+  
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<string>('medium');
   const [openDialog, setOpenDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  const handleAddTask = () => {
+  const handleAddTask = async () => {
     if (newTaskTitle.trim()) {
-      const newTask: Task = {
-        id: Date.now().toString(),
+      const newTask: Partial<Task> = {
         title: newTaskTitle.trim(),
-        completed: false,
+        description: newTaskDescription.trim(),
+        completed: 0,
         priority: newTaskPriority,
-        createdAt: new Date().toISOString(),
       };
-      setTasks([...tasks, newTask]);
-      setNewTaskTitle('');
-      setNewTaskPriority('medium');
-      setOpenDialog(false);
+      
+      const result = await addTask(newTask);
+      
+      if (result) {
+        setNewTaskTitle('');
+        setNewTaskDescription('');
+        setNewTaskPriority('medium');
+        setOpenDialog(false);
+        setSuccessMessage('Task created successfully!');
+      }
     }
   };
 
-  const handleToggleTask = (taskId: string) => {
-    setTasks(tasks.map(task => {
-      if (task.id === taskId) {
-        return {
-          ...task,
-          completed: !task.completed,
-          completedAt: !task.completed ? new Date().toISOString() : undefined,
-        };
-      }
-      return task;
-    }));
+  const handleToggleTask = async (task: Task) => {
+    await toggleTaskCompletion(task);
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(tasks.filter(task => task.id !== taskId));
+  const handleDeleteTask = async (taskId: number) => {
+    const success = await removeTask(taskId);
+    if (success) {
+      setSuccessMessage('Task deleted successfully!');
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSuccessMessage(null);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -101,13 +106,24 @@ const Tasks: React.FC = () => {
           startIcon={<AddIcon />}
           onClick={() => setOpenDialog(true)}
           sx={{ borderRadius: 2 }}
+          disabled={isSaving || isDeleting}
         >
           Add Task
         </Button>
       </Box>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={clearOperationError}>
+          {error}
+        </Alert>
+      )}
+
       <Paper elevation={0} sx={{ p: 3, bgcolor: 'background.default', minHeight: '250px' }}>
-        {tasks.length > 0 ? (
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '250px' }}>
+            <CircularProgress />
+          </Box>
+        ) : tasks.length > 0 ? (
           <List>
             {tasks.map((task) => (
               <ListItem
@@ -120,27 +136,42 @@ const Tasks: React.FC = () => {
                 }}
               >
                 <Checkbox
-                  checked={task.completed}
-                  onChange={() => handleToggleTask(task.id)}
+                  checked={task.completed === 1}
+                  onChange={() => handleToggleTask(task)}
                   sx={{ color: getPriorityColor(task.priority) }}
+                  disabled={isSaving}
                 />
                 <ListItemText
                   primary={
                     <Typography
                       sx={{
-                        textDecoration: task.completed ? 'line-through' : 'none',
-                        color: task.completed ? 'text.secondary' : 'text.primary',
+                        textDecoration: task.completed === 1 ? 'line-through' : 'none',
+                        color: task.completed === 1 ? 'text.secondary' : 'text.primary',
                       }}
                     >
                       {task.title}
                     </Typography>
                   }
                   secondary={
-                    <Typography variant="caption" color="text.secondary">
-                      {task.completed
-                        ? `Completed ${format(new Date(task.completedAt!), 'MMM d, yyyy')}`
-                        : `Created ${format(new Date(task.createdAt), 'MMM d, yyyy')}`}
-                    </Typography>
+                    <>
+                      {task.description && (
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{
+                            textDecoration: task.completed === 1 ? 'line-through' : 'none',
+                            mb: 0.5,
+                          }}
+                        >
+                          {task.description}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        {task.completed === 1 && task.completedAt
+                          ? `Completed ${format(new Date(task.completedAt), 'MMM d, yyyy')}`
+                          : `Created ${format(new Date(task.createdAt || task.created_at), 'MMM d, yyyy')}`}
+                      </Typography>
+                    </>
                   }
                 />
                 <Box
@@ -157,6 +188,7 @@ const Tasks: React.FC = () => {
                     edge="end"
                     aria-label="delete"
                     onClick={() => handleDeleteTask(task.id)}
+                    disabled={isDeleting || isSaving}
                   >
                     <DeleteIcon />
                   </IconButton>
@@ -209,6 +241,7 @@ const Tasks: React.FC = () => {
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => setOpenDialog(true)}
+              disabled={isSaving || isDeleting}
               sx={{ 
                 borderRadius: 2,
                 bgcolor: '#1056F5',
@@ -225,7 +258,10 @@ const Tasks: React.FC = () => {
         )}
       </Paper>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+      <Dialog 
+        open={openDialog} 
+        onClose={() => !isSaving && setOpenDialog(false)}
+      >
         <DialogTitle>Add New Task</DialogTitle>
         <DialogContent>
           <TextField
@@ -236,14 +272,28 @@ const Tasks: React.FC = () => {
             fullWidth
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
+            disabled={isSaving}
+            sx={{ mb: 2 }}
+            required
+          />
+          <TextField
+            margin="dense"
+            label="Description (optional)"
+            type="text"
+            fullWidth
+            multiline
+            rows={2}
+            value={newTaskDescription}
+            onChange={(e) => setNewTaskDescription(e.target.value)}
+            disabled={isSaving}
             sx={{ mb: 2 }}
           />
-          <FormControl fullWidth>
+          <FormControl fullWidth disabled={isSaving}>
             <InputLabel>Priority</InputLabel>
             <Select
               value={newTaskPriority}
               label="Priority"
-              onChange={(e) => setNewTaskPriority(e.target.value as 'low' | 'medium' | 'high')}
+              onChange={(e) => setNewTaskPriority(e.target.value)}
             >
               <MenuItem value="low">Low</MenuItem>
               <MenuItem value="medium">Medium</MenuItem>
@@ -252,10 +302,29 @@ const Tasks: React.FC = () => {
           </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleAddTask} variant="contained">Add</Button>
+          <Button 
+            onClick={() => setOpenDialog(false)} 
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAddTask} 
+            variant="contained"
+            disabled={isSaving || !newTaskTitle.trim()}
+            startIcon={isSaving ? <CircularProgress size={20} /> : null}
+          >
+            {isSaving ? 'Saving...' : 'Add Task'}
+          </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+        message={successMessage}
+      />
     </Container>
   );
 };

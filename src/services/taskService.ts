@@ -1,48 +1,20 @@
 import { checkAuthState } from './authService';
 
-// Define interfaces for API response
-export interface Achievement {
-  id: number;
-  description: string;
-  howAchieved: string;
-}
-
-export interface PersonalValue {
-  id: number;
-  description: string;
-}
-
-export interface Goal {
-  id: number;
-  deadline: string;
-  keyResults: string[];
-  description: string;
-}
-
-export interface Action {
-  id: number;
-  status: string;
-  deadline: string;
-  description: string;
-}
-
-export interface UserSession {
+export interface Task {
   id: number;
   user_id: number;
-  name: string;
-  achievements: Achievement[];
-  personalValues: PersonalValue[];
-  coreValues: string;
-  goals: Goal[];
-  actions: Action[];
-  alignment: string;
-  reflections: string;
+  title: string;
+  description: string;
+  completed: number; // 0 for false, 1 for true
+  priority: string;
+  createdAt: string;
+  completedAt: string | null;
   created_at: string;
   updated_at: string;
 }
 
-// Fetch user sessions from the API
-export const fetchUserSessions = async (): Promise<UserSession[]> => {
+// Fetch user tasks from the API
+export const fetchTasks = async (): Promise<Task[]> => {
   // Get the auth token from localStorage
   const { token } = checkAuthState();
   
@@ -52,29 +24,42 @@ export const fetchUserSessions = async (): Promise<UserSession[]> => {
   }
   
   try {
-    const response = await fetch('https://app2.operosus.com/api/user-sessions', {
+    // Create an AbortController to handle timeouts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch('https://app2.operosus.com/api/tasks', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
-      }
+      },
+      signal: controller.signal
     });
+    
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
     }
     
     const data = await response.json();
-    return data as UserSession[];
+    return data as Task[];
   } catch (error) {
-    console.error('Failed to fetch user sessions:', error);
+    // Special handling for abort errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('Tasks API request timed out');
+    } else {
+      console.error('Failed to fetch tasks:', error);
+    }
     return [];
   }
 };
 
-// Save user session to the API - supports both creating new sessions and updating existing ones
-export const saveUserSession = async (session: Partial<UserSession>): Promise<UserSession | null> => {
+// Save a task to the API
+export const saveTask = async (task: Partial<Task>): Promise<Task | null> => {
   // Get the auth token from localStorage
   const { token } = checkAuthState();
   
@@ -85,24 +70,20 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
   
   try {
     // Determine if this is a create or update operation
-    const isUpdate = session.id !== undefined && !String(session.id).startsWith('session-');
+    const isUpdate = task.id !== undefined;
     
-    let url = 'https://app2.operosus.com/api/user-sessions';
+    let url = 'https://app2.operosus.com/api/tasks';
     let method = 'POST';
-    let sessionData: any;
     
     if (isUpdate) {
       // For updates, we use PUT and include ID in URL
-      url = `https://app2.operosus.com/api/user-sessions/${session.id}`;
+      url = `https://app2.operosus.com/api/tasks/${task.id}`;
       method = 'PUT';
-      sessionData = session; // Keep the ID for PUT requests
-    } else {
-      // For creates, we use POST and remove ID from payload
-      const { id, ...sessionWithoutId } = session;
-      sessionData = sessionWithoutId;
     }
     
-    console.log(`Saving session using ${method} to ${url}`, sessionData);
+    // Create an AbortController to handle timeouts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
     const response = await fetch(url, {
       method,
@@ -111,23 +92,32 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(sessionData)
+      body: JSON.stringify(task),
+      signal: controller.signal
     });
+    
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
     }
     
     const data = await response.json();
-    return data as UserSession;
+    return data as Task;
   } catch (error) {
-    console.error('Failed to save user session:', error);
+    // Special handling for abort errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('Task API save request timed out');
+    } else {
+      console.error('Failed to save task:', error);
+    }
     return null;
   }
 };
 
-// Delete a user session from the API
-export const deleteUserSession = async (sessionId: number): Promise<boolean> => {
+// Delete a task from the API
+export const deleteTask = async (taskId: number): Promise<boolean> => {
   // Get the auth token from localStorage
   const { token } = checkAuthState();
   
@@ -141,7 +131,7 @@ export const deleteUserSession = async (sessionId: number): Promise<boolean> => 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
-    const response = await fetch(`https://app2.operosus.com/api/user-sessions/${sessionId}`, {
+    const response = await fetch(`https://app2.operosus.com/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -162,9 +152,9 @@ export const deleteUserSession = async (sessionId: number): Promise<boolean> => 
   } catch (error) {
     // Special handling for abort errors
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error('Session API delete request timed out');
+      console.error('Task API delete request timed out');
     } else {
-      console.error('Failed to delete user session:', error);
+      console.error('Failed to delete task:', error);
     }
     return false;
   }

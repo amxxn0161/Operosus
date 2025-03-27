@@ -8,6 +8,7 @@ import '@fontsource/poppins/700.css';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
+import { TaskProvider } from './contexts/TaskContext';
 import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -85,38 +86,40 @@ const App: React.FC = () => {
       <CssBaseline />
       <AuthProvider>
         <JournalProvider>
-          <Router>
-            <div className="App">
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/journal" element={<Journal />} />
-                  <Route path="/tasks" element={
-                    <ProtectedRoute>
-                      <Tasks />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/worksheet" element={
-                    <ProtectedRoute>
-                      <Worksheet />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/entry/:entryId" element={
-                    <ProtectedRoute>
-                      <EntryDetail />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/entries" element={
-                    <ProtectedRoute>
-                      <AllEntries />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/login" element={<Login />} />
-                </Routes>
-              </Layout>
-            </div>
-          </Router>
+          <TaskProvider>
+            <Router>
+              <div className="App">
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/journal" element={<Journal />} />
+                    <Route path="/tasks" element={
+                      <ProtectedRoute>
+                        <Tasks />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/worksheet" element={
+                      <ProtectedRoute>
+                        <Worksheet />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/entry/:entryId" element={
+                      <ProtectedRoute>
+                        <EntryDetail />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/entries" element={
+                      <ProtectedRoute>
+                        <AllEntries />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/login" element={<Login />} />
+                  </Routes>
+                </Layout>
+              </div>
+            </Router>
+          </TaskProvider>
         </JournalProvider>
       </AuthProvider>
     </ThemeProvider>

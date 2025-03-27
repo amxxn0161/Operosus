@@ -12,37 +12,30 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle
+  DialogTitle,
+  CircularProgress,
+  Alert
 } from '@mui/material';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useJournal } from '../contexts/JournalContext';
+import { JournalEntry } from '../services/journalService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-// Define the ReflectionEntry type
-interface ReflectionEntry {
-  date: string;
-  productivityScore: number;
-  meetingScore: number | null;
-  hadNoMeetings: boolean;
-  focusTime: string;
-  breaksTaken: string;
-  supportNeeded?: string;
-  improvementPlans?: string;
-  timestamp?: string;
-  distractions?: string[];
-}
-
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { entries, loading, error, deleteEntry } = useJournal();
   const navigate = useNavigate();
   const location = useLocation();
   const { entryId } = useParams<{ entryId: string }>();
-  const [entry, setEntry] = useState<ReflectionEntry | null>(null);
+  const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -51,27 +44,19 @@ const EntryDetail: React.FC = () => {
       return;
     }
     
-    // Load entry data from localStorage
-    const loadEntry = () => {
-      const savedEntries = localStorage.getItem('reflectionEntries');
-      if (savedEntries && entryId) {
-        const parsedEntries: ReflectionEntry[] = JSON.parse(savedEntries);
-        const foundEntry = parsedEntries[parseInt(entryId)];
-        
-        if (foundEntry) {
-          setEntry(foundEntry);
-        } else {
-          // Entry not found, redirect to dashboard
-          navigate('/dashboard');
-        }
+    // Find the entry in the entries from context
+    if (entries.length > 0 && entryId) {
+      const id = parseInt(entryId);
+      const foundEntry = entries.find(e => e.id === id);
+      
+      if (foundEntry) {
+        setEntry(foundEntry);
       } else {
-        // No entries or no entryId, redirect to dashboard
+        // Entry not found, redirect to dashboard
         navigate('/dashboard');
       }
-    };
-    
-    loadEntry();
-  }, [isAuthenticated, navigate, entryId]);
+    }
+  }, [isAuthenticated, navigate, entryId, entries]);
   
   // Format date for display
   const formatDate = (dateString: string): string => {
@@ -105,40 +90,63 @@ const EntryDetail: React.FC = () => {
     setConfirmDeleteOpen(false);
   };
 
-  const handleConfirmDelete = () => {
-    if (!entryId) return;
+  const handleConfirmDelete = async () => {
+    if (!entryId || !entry) return;
+    
+    setIsDeleting(true);
+    setDeleteError(null);
     
     try {
-      // Get entries from localStorage
-      const savedEntries = localStorage.getItem('reflectionEntries');
-      if (savedEntries) {
-        const parsedEntries: ReflectionEntry[] = JSON.parse(savedEntries);
-        
-        // Remove the entry at the specified index
-        parsedEntries.splice(parseInt(entryId), 1);
-        
-        // Save the updated entries back to localStorage
-        localStorage.setItem('reflectionEntries', JSON.stringify(parsedEntries));
-        
+      // Delete entry using context function
+      const success = await deleteEntry(entry.id);
+      
+      if (success) {
         // Close the dialog and navigate back
         setConfirmDeleteOpen(false);
         
         // Navigate back to the appropriate page
         const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
         navigate(fromEntriesPage ? '/entries' : '/dashboard');
+      } else {
+        setDeleteError('Failed to delete the entry. Please try again.');
       }
     } catch (error) {
       console.error('Error deleting entry:', error);
+      setDeleteError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
   
   // If entry is still loading or not found
-  if (!entry) {
+  if (loading) {
     return (
       <Container sx={{ py: 4 }}>
-        <Typography>Loading entry details...</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+          <CircularProgress />
+        </Box>
       </Container>
     );
+  }
+
+  if (!entry && !loading) {
+    return (
+      <Container sx={{ py: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column' }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>Entry not found</Typography>
+          <Button 
+            variant="contained" 
+            onClick={() => navigate('/dashboard')}
+          >
+            Return to Dashboard
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
+
+  if (!entry) {
+    return null;
   }
 
   return (
@@ -175,6 +183,12 @@ const EntryDetail: React.FC = () => {
           Delete Entry
         </Button>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
       
       <Paper sx={{ p: 4, borderRadius: 2 }}>
         {/* Header with date and scores */}
@@ -183,7 +197,7 @@ const EntryDetail: React.FC = () => {
             variant="h5" 
             sx={{ mb: 3, fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
           >
-            {entry.timestamp ? formatDate(entry.timestamp) : formatDate(entry.date)}
+            {formatDate(entry.date)}
           </Typography>
           
           <Grid container spacing={3}>
@@ -214,7 +228,7 @@ const EntryDetail: React.FC = () => {
                   Meeting Score
                 </Typography>
                 <Typography variant="h4" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#1056F5' }}>
-                  {entry.hadNoMeetings ? 'N/A' : (entry.meetingScore ? `${entry.meetingScore * 10}%` : 'N/A')}
+                  {entry.hadNoMeetings ? 'N/A' : (entry.meetingScore !== null ? `${entry.meetingScore * 10}%` : 'N/A')}
                 </Typography>
               </Box>
             </Grid>
@@ -256,89 +270,126 @@ const EntryDetail: React.FC = () => {
           </Grid>
         </Box>
         
-        <Divider sx={{ my: 3 }} />
-        
         {/* Distractions Section */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', fontFamily: 'Poppins' }}>
+          <Typography 
+            variant="h6" 
+            sx={{ mb: 2, fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
+          >
             What got in the way?
           </Typography>
           
-          {entry.distractions && entry.distractions.length > 0 ? (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {entry.distractions.map((distraction, index) => (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {entry.distractions && entry.distractions.length > 0 ? (
+              entry.distractions.map((distraction, index) => (
                 <Chip 
                   key={index}
-                  label={distraction}
+                  label={distraction} 
                   sx={{ 
                     fontFamily: 'Poppins',
-                    bgcolor: '#1056F5',
-                    color: 'white'
+                    bgcolor: '#e0e0e0',
+                    color: '#333',
+                    fontWeight: 'medium',
+                    py: 0.5
                   }}
                 />
-              ))}
-            </Box>
-          ) : (
-            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-              No distractions recorded for this day.
-            </Typography>
-          )}
+              ))
+            ) : (
+              <Typography color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                No distractions recorded.
+              </Typography>
+            )}
+          </Box>
         </Box>
+        
+        <Divider sx={{ my: 3 }} />
         
         {/* Support Needed Section */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', fontFamily: 'Poppins' }}>
+          <Typography 
+            variant="h6" 
+            sx={{ mb: 2, fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
+          >
             Support Needed
           </Typography>
           
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-            <Typography variant="body1" sx={{ fontFamily: 'Poppins' }}>
-              {entry.supportNeeded || "No support needs were recorded for this entry."}
+          <Paper 
+            variant="outlined" 
+            sx={{ 
+              p: 2, 
+              borderRadius: 2, 
+              borderColor: '#e0e0e0',
+              bgcolor: '#fafafa'
+            }}
+          >
+            <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
+              {entry.supportNeeded || 'No support needs were recorded for this entry.'}
             </Typography>
           </Paper>
         </Box>
         
         {/* Improvement Plans Section */}
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', fontFamily: 'Poppins' }}>
+        <Box>
+          <Typography 
+            variant="h6" 
+            sx={{ mb: 2, fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
+          >
             Improvement Plans
           </Typography>
           
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-            <Typography variant="body1" sx={{ fontFamily: 'Poppins' }}>
-              {entry.improvementPlans || "No improvement plans were recorded for this entry."}
+          <Paper 
+            variant="outlined" 
+            sx={{ 
+              p: 2, 
+              borderRadius: 2, 
+              borderColor: '#e0e0e0',
+              bgcolor: '#fafafa'
+            }}
+          >
+            <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
+              {entry.improvementPlans || 'No improvement plans were recorded for this entry.'}
             </Typography>
           </Paper>
         </Box>
       </Paper>
-      
-      {/* Confirmation Dialog */}
+
+      {/* Delete Confirmation Dialog */}
       <Dialog
         open={confirmDeleteOpen}
-        onClose={handleCancelDelete}
+        onClose={!isDeleting ? handleCancelDelete : undefined}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
       >
-        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-          Delete Reflection Entry
+        <DialogTitle id="alert-dialog-title">
+          Delete this reflection entry?
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ fontFamily: 'Poppins' }}>
-            Are you sure you want to delete this reflection entry? This action cannot be undone.
+          <DialogContentText id="alert-dialog-description">
+            This action cannot be undone. Are you sure you want to permanently delete this reflection entry?
           </DialogContentText>
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button 
             onClick={handleCancelDelete} 
-            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+            disabled={isDeleting}
+            sx={{ fontFamily: 'Poppins' }}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleConfirmDelete} 
-            color="error"
-            variant="contained"
-            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+            color="error" 
+            autoFocus
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={20} /> : undefined}
+            sx={{ fontFamily: 'Poppins' }}
           >
-            Delete
+            {isDeleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

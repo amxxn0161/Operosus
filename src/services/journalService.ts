@@ -28,14 +28,22 @@ export const fetchJournalEntries = async (): Promise<JournalEntry[]> => {
   }
   
   try {
+    // Create an AbortController to handle timeouts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const response = await fetch('https://app2.operosus.com/api/productivity', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
-      }
+      },
+      signal: controller.signal
     });
+    
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
@@ -44,7 +52,12 @@ export const fetchJournalEntries = async (): Promise<JournalEntry[]> => {
     const data = await response.json();
     return data as JournalEntry[];
   } catch (error) {
-    console.error('Failed to fetch journal entries:', error);
+    // Special handling for abort errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('Journal API request timed out');
+    } else {
+      console.error('Failed to fetch journal entries:', error);
+    }
     return [];
   }
 };
@@ -72,6 +85,10 @@ export const saveJournalEntry = async (entry: Partial<JournalEntry>): Promise<Jo
       method = 'PUT';
     }
     
+    // Create an AbortController to handle timeouts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const response = await fetch(url, {
       method,
       headers: {
@@ -79,8 +96,12 @@ export const saveJournalEntry = async (entry: Partial<JournalEntry>): Promise<Jo
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(entry)
+      body: JSON.stringify(entry),
+      signal: controller.signal
     });
+    
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
@@ -89,7 +110,56 @@ export const saveJournalEntry = async (entry: Partial<JournalEntry>): Promise<Jo
     const data = await response.json();
     return data as JournalEntry;
   } catch (error) {
-    console.error('Failed to save journal entry:', error);
+    // Special handling for abort errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('Journal API save request timed out');
+    } else {
+      console.error('Failed to save journal entry:', error);
+    }
     return null;
+  }
+};
+
+// Delete a journal entry from the API
+export const deleteJournalEntry = async (entryId: number): Promise<boolean> => {
+  // Get the auth token from localStorage
+  const { token } = checkAuthState();
+  
+  if (!token) {
+    console.error('No auth token available');
+    return false;
+  }
+  
+  try {
+    // Create an AbortController to handle timeouts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(`https://app2.operosus.com/api/productivity/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+    
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+    
+    return true;
+  } catch (error) {
+    // Special handling for abort errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('Journal API delete request timed out');
+    } else {
+      console.error('Failed to delete journal entry:', error);
+    }
+    return false;
   }
 }; 

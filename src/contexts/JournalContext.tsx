@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { fetchJournalEntries, saveJournalEntry, JournalEntry } from '../services/journalService';
+import { 
+  fetchJournalEntries, 
+  saveJournalEntry, 
+  deleteJournalEntry, 
+  JournalEntry 
+} from '../services/journalService';
 import { useAuth } from './AuthContext';
 
 interface JournalContextType {
@@ -8,6 +13,7 @@ interface JournalContextType {
   error: string | null;
   refreshEntries: () => Promise<void>;
   saveEntry: (entry: Partial<JournalEntry>) => Promise<JournalEntry | null>;
+  deleteEntry: (entryId: number) => Promise<boolean>;
 }
 
 const JournalContext = createContext<JournalContextType | undefined>(undefined);
@@ -69,6 +75,26 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
     }
   };
 
+  const deleteEntry = async (entryId: number) => {
+    try {
+      setError(null);
+      const success = await deleteJournalEntry(entryId);
+      
+      if (success) {
+        // Remove the deleted entry from state
+        setEntries(prevEntries => prevEntries.filter(entry => entry.id !== entryId));
+        return true;
+      } else {
+        setError('Failed to delete journal entry. Please try again.');
+        return false;
+      }
+    } catch (err) {
+      console.error('Error deleting journal entry:', err);
+      setError('Failed to delete journal entry. Please try again.');
+      return false;
+    }
+  };
+
   // Load entries when authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -81,7 +107,8 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
     loading,
     error,
     refreshEntries,
-    saveEntry
+    saveEntry,
+    deleteEntry
   };
 
   return (
