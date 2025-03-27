@@ -71,4 +71,57 @@ export const fetchUserSessions = async (): Promise<UserSession[]> => {
     console.error('Failed to fetch user sessions:', error);
     return [];
   }
+};
+
+// Save user session to the API - supports both creating new sessions and updating existing ones
+export const saveUserSession = async (session: Partial<UserSession>): Promise<UserSession | null> => {
+  // Get the auth token from localStorage
+  const { token } = checkAuthState();
+  
+  if (!token) {
+    console.error('No auth token available');
+    return null;
+  }
+  
+  try {
+    // Determine if this is a create or update operation
+    const isUpdate = session.id !== undefined && !String(session.id).startsWith('session-');
+    
+    let url = 'https://app2.operosus.com/api/user-sessions';
+    let method = 'POST';
+    let sessionData: any;
+    
+    if (isUpdate) {
+      // For updates, we use PUT and include ID in URL
+      url = `https://app2.operosus.com/api/user-sessions/${session.id}`;
+      method = 'PUT';
+      sessionData = session; // Keep the ID for PUT requests
+    } else {
+      // For creates, we use POST and remove ID from payload
+      const { id, ...sessionWithoutId } = session;
+      sessionData = sessionWithoutId;
+    }
+    
+    console.log(`Saving session using ${method} to ${url}`, sessionData);
+    
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(sessionData)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data as UserSession;
+  } catch (error) {
+    console.error('Failed to save user session:', error);
+    return null;
+  }
 }; 

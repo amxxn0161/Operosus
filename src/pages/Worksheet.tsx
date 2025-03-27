@@ -13,14 +13,16 @@ import {
   Tabs,
   Tab,
   TextareaAutosize,
-  IconButton
+  IconButton,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GoalItem from '../components/GoalItem';
-import { fetchUserSessions, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
+import { fetchUserSessions, saveUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -95,7 +97,9 @@ const Worksheet: React.FC = () => {
   const [newSessionName, setNewSessionName] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{
     actions: string | null;
     reflections: string | null;
@@ -228,8 +232,9 @@ const Worksheet: React.FC = () => {
     setIsEditingSessionName(true);
   };
   
-  const handleSaveSessionName = () => {
+  const handleSaveSessionName = async () => {
     if (newSessionName.trim()) {
+      // Update session name in local state
       const updatedSessions = sessions.map(session => 
         session.id === currentSessionId 
           ? { ...session, name: newSessionName.trim() } 
@@ -237,6 +242,33 @@ const Worksheet: React.FC = () => {
       );
       setSessions(updatedSessions);
       localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
+      
+      // Get the current session to update
+      const currentSessionData = updatedSessions.find(s => s.id === currentSessionId);
+      
+      // Only send to API if it's not a temporary local session
+      if (currentSessionData && !currentSessionData.id.startsWith('session-')) {
+        try {
+          setSaving(true);
+          
+          // Prepare minimal data to update just the name
+          const sessionUpdate = {
+            id: Number(currentSessionData.id),
+            name: newSessionName.trim()
+          };
+          
+          // Save to API
+          await saveUserSession(sessionUpdate);
+          
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (error) {
+          console.error('Error updating session name:', error);
+          setError('Failed to update session name. Please try again.');
+        } finally {
+          setSaving(false);
+        }
+      }
     }
     setIsEditingSessionName(false);
   };
@@ -267,12 +299,69 @@ const Worksheet: React.FC = () => {
     localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
   };
 
-  const handleSaveWorksheet = () => {
-    // Save current session
-    handleSaveSession();
-    
-    // Show brief saved message
-    alert('Your progress has been saved!');
+  const handleSaveWorksheet = async () => {
+    try {
+      setSaving(true);
+      // Save to local state first
+      handleSaveSession();
+      
+      // Find the current session
+      const currentSessionData = sessions.find(s => s.id === currentSessionId);
+      
+      if (!currentSessionData) {
+        throw new Error('Current session not found');
+      }
+      
+      // Format data for API - ID will be handled by saveUserSession
+      const sessionForApi = {
+        id: currentSessionData.id.startsWith('session-') ? undefined : Number(currentSessionData.id),
+        name: currentSessionData.name,
+        achievements: currentSessionData.achievements,
+        personalValues: currentSessionData.personalValues,
+        coreValues: currentSessionData.coreValues,
+        goals: currentSessionData.goals.map(goal => ({
+          id: goal.id,
+          description: goal.description,
+          deadline: goal.deadline,
+          keyResults: goal.keyResults
+        })),
+        actions: currentSessionData.actions.map(action => ({
+          id: action.id,
+          description: action.description,
+          deadline: action.deadline,
+          status: action.status
+        })),
+        alignment: currentSessionData.alignment,
+        reflections: currentSessionData.reflections
+      };
+      
+      // Save to API
+      const savedSession = await saveUserSession(sessionForApi);
+      
+      if (savedSession) {
+        // Update the session ID in case it was a new session and got an ID from the server
+        if (currentSessionData.id.startsWith('session-')) {
+          const newSessions = sessions.map(session => 
+            session.id === currentSessionId 
+              ? { ...session, id: String(savedSession.id) } 
+              : session
+          );
+          setSessions(newSessions);
+          setCurrentSessionId(String(savedSession.id));
+          localStorage.setItem('productivitySessions', JSON.stringify(newSessions));
+        }
+        
+        setSaveSuccess(true);
+        // Hide success message after 3 seconds
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+      
+      setSaving(false);
+    } catch (error) {
+      console.error('Error saving worksheet:', error);
+      setSaving(false);
+      setError('Failed to save your session. Please try again.');
+    }
   };
 
   const handlePrevious = () => {
@@ -281,7 +370,7 @@ const Worksheet: React.FC = () => {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     // Clear any previous validation errors
     setValidationErrors({ actions: null, reflections: null });
     
@@ -303,7 +392,7 @@ const Worksheet: React.FC = () => {
       }
       
       // If on the last tab and validation passes, save and redirect to dashboard
-      handleSaveWorksheet();
+      await handleSaveWorksheet();
       navigate('/dashboard');
       return;
     }
@@ -632,6 +721,7 @@ const Worksheet: React.FC = () => {
                       onClick={handleSaveSessionName}
                       variant="contained"
                       size="medium"
+                      disabled={saving}
                       sx={{ 
                         fontFamily: 'Poppins', 
                         textTransform: 'none',
@@ -640,12 +730,13 @@ const Worksheet: React.FC = () => {
                         minWidth: '90px',
                       }}
                     >
-                      Save
+                      {saving ? 'Saving...' : 'Save'}
                     </Button>
                     <Button 
                       onClick={handleCancelEditSessionName}
                       variant="outlined"
                       size="medium"
+                      disabled={saving}
                       sx={{ 
                         fontFamily: 'Poppins', 
                         textTransform: 'none',
@@ -742,8 +833,9 @@ const Worksheet: React.FC = () => {
             </Tabs>
           </Box>
 
-          {/* Tab Content - updated references to access current session data via destructured variables */}
+          {/* Tab Content */}
           <TabPanel value={currentTab} index={0}>
+            {/* Personal Values Tab Content */}
             <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
               Personal Values
             </Typography>
@@ -819,65 +911,126 @@ const Worksheet: React.FC = () => {
                 </Box>
               ))}
             </Box>
-          </TabPanel>
 
-          <TabPanel value={currentTab} index={1}>
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              Core Values
-            </Typography>
-            
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                Define Your Core Values
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={10}
-                placeholder="What matters most to me..."
-                value={coreValues}
-                onChange={(e) => updateCoreValues(e.target.value)}
-                sx={{ mb: 1 }}
-              />
-              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-                Minimum 50 characters, maximum 1000 characters
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={currentTab} index={2}>
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              Alignment
-            </Typography>
-            
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                How Your Values Align With Your Work
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={10}
-                placeholder="Describe how your work aligns with your personal and core values..."
-                value={alignment}
-                onChange={(e) => updateAlignment(e.target.value)}
-                sx={{ mb: 1 }}
-              />
-              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-                Minimum 50 characters, maximum 1000 characters
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={currentTab} index={3}>
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              Goals
-            </Typography>
-            
             <Box sx={{ mb: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                  Your Objectives & Key Results (OKRs)
+                  Personal Values
+                </Typography>
+                <Button 
+                  startIcon={<AddIcon />} 
+                  onClick={addPersonalValue}
+                  sx={{ 
+                    fontFamily: 'Poppins', 
+                    textTransform: 'none', 
+                    color: '#1056F5',
+                    backgroundColor: 'white',
+                    border: '1px solid #1056F5',
+                    '&:hover': {
+                      backgroundColor: '#f0f7ff',
+                    },
+                  }}
+                >
+                  Add Value
+                </Button>
+              </Box>
+
+              {personalValues.map((value, index) => (
+                <Box key={value.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                    Value {index + 1}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Value Description
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={2}
+                    placeholder="Describe what you value in life..."
+                    value={value.description}
+                    onChange={(e) => updatePersonalValue(value.id, e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  {personalValues.length > 1 && (
+                    <Button 
+                      startIcon={<DeleteIcon />} 
+                      onClick={() => removePersonalValue(value.id)}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none', 
+                        color: '#d32f2f'
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={1}>
+            {/* Core Values Tab Content */}
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Core Values
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+              Reflect on the achievements and personal values you've identified. What core values emerge from these?
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+              Your Core Values
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={6}
+              placeholder="Identify and describe your core values based on your achievements and personal values..."
+              value={coreValues}
+              onChange={(e) => updateCoreValues(e.target.value)}
+              sx={{ mb: 4 }}
+            />
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={2}>
+            {/* Alignment Tab Content */}
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Alignment
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+              Consider how your daily actions align with your core values. Are there areas of misalignment?
+            </Typography>
+            
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+              Value Alignment Assessment
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={6}
+              placeholder="Describe how your daily activities align or don't align with your core values..."
+              value={alignment}
+              onChange={(e) => updateAlignment(e.target.value)}
+              sx={{ mb: 4 }}
+            />
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={3}>
+            {/* Goals Tab Content */}
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Goals
+            </Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+              Set goals that align with your core values to increase your productivity and fulfillment.
+            </Typography>
+
+            <Box sx={{ mb: 4 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+                  Your Goals
                 </Typography>
                 <Button 
                   startIcon={<AddIcon />} 
@@ -898,57 +1051,128 @@ const Worksheet: React.FC = () => {
               </Box>
 
               {goals.map((goal, index) => (
-                <GoalItem
-                  key={goal.id}
-                  goal={goal}
-                  index={index}
-                  canRemove={goals.length > 1}
-                  onUpdateGoal={updateGoal}
-                  onRemoveGoal={removeGoal}
-                  onAddKeyResult={addKeyResult}
-                  onUpdateKeyResult={updateKeyResult}
-                  onRemoveKeyResult={removeKeyResult}
-                />
+                <Box key={goal.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                    Goal {index + 1}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Goal Description
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={2}
+                    placeholder="Describe your goal..."
+                    value={goal.description}
+                    onChange={(e) => updateGoal(goal.id, 'description', e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Target Deadline
+                  </Typography>
+                  <TextField
+                    type="date"
+                    fullWidth
+                    value={goal.deadline}
+                    onChange={(e) => updateGoal(goal.id, 'deadline', e.target.value)}
+                    sx={{ mb: 3 }}
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Key Results
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontFamily: 'Poppins', mb: 2, display: 'block', color: 'text.secondary' }}>
+                    How will you measure success for this goal?
+                  </Typography>
+                  
+                  {goal.keyResults.map((keyResult, keyIndex) => (
+                    <Box key={keyIndex} sx={{ display: 'flex', mb: 2, gap: 1 }}>
+                      <TextField
+                        fullWidth
+                        placeholder={`Key result ${keyIndex + 1}...`}
+                        value={keyResult}
+                        onChange={(e) => updateKeyResult(goal.id, keyIndex, e.target.value)}
+                      />
+                      {goal.keyResults.length > 1 && (
+                        <IconButton 
+                          onClick={() => removeKeyResult(goal.id, keyIndex)}
+                          color="error"
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ))}
+                  
+                  <Button
+                    startIcon={<AddIcon />}
+                    onClick={() => addKeyResult(goal.id)}
+                    sx={{ 
+                      fontFamily: 'Poppins', 
+                      textTransform: 'none', 
+                      mb: 2,
+                      color: '#1056F5'
+                    }}
+                  >
+                    Add Key Result
+                  </Button>
+                  
+                  {goals.length > 1 && (
+                    <Button 
+                      startIcon={<DeleteIcon />} 
+                      onClick={() => removeGoal(goal.id)}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none', 
+                        color: '#d32f2f',
+                        display: 'block'
+                      }}
+                    >
+                      Remove Goal
+                    </Button>
+                  )}
+                </Box>
               ))}
             </Box>
           </TabPanel>
 
           <TabPanel value={currentTab} index={4}>
+            {/* Actions Tab Content */}
             <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
+              Actions
             </Typography>
-            
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 2, color: validationErrors.actions ? 'error.main' : 'text.secondary' }}>
+              {validationErrors.actions || 'Break down your goals into actionable steps. What specific actions will help you achieve your goals?'}
+            </Typography>
+
             <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                Define Key Actions
-              </Typography>
-              <Button 
-                startIcon={<AddIcon />} 
-                onClick={addAction}
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  textTransform: 'none',
-                  mb: 3,
-                  color: '#1056F5'
-                }}
-              >
-                Add Action
-              </Button>
-              
-              {/* Display validation error for Actions */}
-              {validationErrors.actions && (
-                <Typography 
-                  variant="body2" 
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+                  Action Items
+                </Typography>
+                <Button 
+                  startIcon={<AddIcon />} 
+                  onClick={addAction}
                   sx={{ 
                     fontFamily: 'Poppins', 
-                    color: 'error.main', 
-                    mb: 2,
-                    fontWeight: 'medium' 
+                    textTransform: 'none', 
+                    color: '#1056F5',
+                    backgroundColor: 'white',
+                    border: '1px solid #1056F5',
+                    '&:hover': {
+                      backgroundColor: '#f0f7ff',
+                    },
                   }}
                 >
-                  {validationErrors.actions}
-                </Typography>
-              )}
+                  Add Action
+                </Button>
+              </Box>
 
               {actions.map((action, index) => (
                 <Box key={action.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -957,14 +1181,17 @@ const Worksheet: React.FC = () => {
                   </Typography>
                   
                   <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Description
+                    Action Description
                   </Typography>
                   <TextField
                     fullWidth
-                    placeholder="Describe the action to take..."
+                    multiline
+                    rows={2}
+                    placeholder="Describe the specific action to take..."
                     value={action.description}
                     onChange={(e) => updateAction(action.id, 'description', e.target.value)}
                     sx={{ mb: 2 }}
+                    error={validationErrors.actions !== null && action.description.trim() === ''}
                   />
                   
                   <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
@@ -972,9 +1199,13 @@ const Worksheet: React.FC = () => {
                   </Typography>
                   <TextField
                     type="date"
+                    fullWidth
                     value={action.deadline}
                     onChange={(e) => updateAction(action.id, 'deadline', e.target.value)}
                     sx={{ mb: 2 }}
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
                   />
                   
                   <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
@@ -983,7 +1214,8 @@ const Worksheet: React.FC = () => {
                   <FormControl fullWidth sx={{ mb: 2 }}>
                     <Select
                       value={action.status}
-                      onChange={(e) => updateAction(action.id, 'status', e.target.value as 'Not Started' | 'In Progress' | 'Completed')}
+                      onChange={(e) => updateAction(action.id, 'status', e.target.value)}
+                      displayEmpty
                     >
                       <MenuItem value="Not Started">Not Started</MenuItem>
                       <MenuItem value="In Progress">In Progress</MenuItem>
@@ -1010,44 +1242,35 @@ const Worksheet: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={currentTab} index={5}>
+            {/* Reflections Tab Content */}
             <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
+              Reflections
             </Typography>
-            
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                Session Reflections
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={10}
-                placeholder="Reflect on your progress, challenges, and insights..."
-                value={reflections}
-                onChange={(e) => updateReflections(e.target.value)}
-                sx={{ mb: 1 }}
-                error={!!validationErrors.reflections}
-              />
-              
-              {/* Display validation error for Reflections */}
-              {validationErrors.reflections ? (
-                <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'error.main' }}>
-                  {validationErrors.reflections}
-                </Typography>
-              ) : (
-                <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-                  Minimum 50 characters, maximum 1000 characters
-                </Typography>
-              )}
-            </Box>
-          </TabPanel>
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 2, color: validationErrors.reflections ? 'error.main' : 'text.secondary' }}>
+              {validationErrors.reflections || 'Reflect on your productivity journey. What insights have you gained? How do you feel about your progress?'}
+            </Typography>
 
-          {/* Navigation Buttons - Update the message to clarify auto-saving */}
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+              Your Reflections
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={10}
+              placeholder="Share your thoughts, insights, and reflections about your productivity journey..."
+              value={reflections}
+              onChange={(e) => updateReflections(e.target.value)}
+              sx={{ mb: 4 }}
+              error={validationErrors.reflections !== null}
+            />
+          </TabPanel>
+          
+          {/* Navigation Buttons */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
             <Button
               variant="outlined"
               onClick={handlePrevious}
-              disabled={currentTab === 0}
+              disabled={currentTab === 0 || saving}
               sx={{
                 fontFamily: 'Poppins',
                 textTransform: 'none',
@@ -1061,11 +1284,12 @@ const Worksheet: React.FC = () => {
               Previous
             </Button>
             <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', alignSelf: 'center' }}>
-              Your progress is automatically saved when you switch sessions.
+              {saving ? 'Saving your progress...' : 'Your progress is automatically saved when you switch sessions.'}
             </Typography>
             <Button
               variant="contained"
               onClick={handleNext}
+              disabled={saving}
               sx={{
                 fontFamily: 'Poppins',
                 textTransform: 'none',
@@ -1075,12 +1299,24 @@ const Worksheet: React.FC = () => {
                 },
               }}
             >
-              {currentTab === 5 ? 'Finish' : 'Next: ' + 
+              {saving ? 'Saving...' : currentTab === 5 ? 'Finish' : 'Next: ' + 
                 ['Core Values', 'Alignment', 'Goals', 'Actions', 'Reflections', 'Submit'][currentTab]}
             </Button>
           </Box>
         </Paper>
       )}
+
+      {/* Success Notification */}
+      <Snackbar 
+        open={saveSuccess} 
+        autoHideDuration={6000} 
+        onClose={() => setSaveSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSaveSuccess(false)} severity="success">
+          Your worksheet has been saved successfully!
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
