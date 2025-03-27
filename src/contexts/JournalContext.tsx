@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
   fetchJournalEntries, 
   saveJournalEntry, 
@@ -36,13 +36,16 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
 
-  const refreshEntries = async () => {
+  // Use useCallback to memoize the refreshEntries function
+  const refreshEntries = useCallback(async () => {
     if (!isAuthenticated) return;
     
     try {
       setLoading(true);
       setError(null);
+      console.log('Fetching journal entries from API...');
       const journalEntries = await fetchJournalEntries();
+      console.log('API response:', journalEntries);
       setEntries(journalEntries);
     } catch (err) {
       console.error('Error fetching journal entries:', err);
@@ -50,7 +53,7 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   const saveEntry = async (entry: Partial<JournalEntry>) => {
     try {
@@ -98,9 +101,10 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
   // Load entries when authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      console.log('User authenticated, fetching journal entries...');
       refreshEntries();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshEntries]);
 
   const value = {
     entries,

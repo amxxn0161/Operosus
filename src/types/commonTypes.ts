@@ -11,16 +11,20 @@ export interface Task {
 
 // Journal-related types
 export interface JournalEntry {
-  id: string;
+  id: number;
   date: string;
   productivityScore: number;
-  meetingScore: number;
+  meetingScore: number | null;
+  hadNoMeetings?: number;
   focusTime: string;
   breaksTaken: string;
   supportNeeded?: string;
   improvementPlans?: string;
   timestamp: string;
   distractions?: string[];
+  user_id?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Chart-related types

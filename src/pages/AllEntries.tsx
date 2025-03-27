@@ -15,14 +15,15 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useJournal } from '../contexts/JournalContext';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 
 const AllEntries: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { entries, loading, error, refreshEntries } = useJournal();
   const navigate = useNavigate();
-  const [entries, setEntries] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
@@ -32,22 +33,15 @@ const AllEntries: React.FC = () => {
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
       navigate('/login');
+      return;
     }
     
-    // Load entries from localStorage
-    const loadEntries = () => {
-      try {
-        const savedEntries = localStorage.getItem('reflectionEntries');
-        if (savedEntries) {
-          setEntries(JSON.parse(savedEntries));
-        }
-      } catch (error) {
-        console.error('Error loading entries:', error);
-      }
-    };
-    
-    loadEntries();
-  }, [isAuthenticated, navigate]);
+    // Refresh entries from API when component mounts
+    // Using refreshEntries only on mount and not in the dependency array
+    // to prevent infinite refreshing
+    refreshEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, navigate]); // Removed refreshEntries from dependencies
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -58,12 +52,15 @@ const AllEntries: React.FC = () => {
     setPage(0);
   };
 
-  const handleViewEntry = (index: number) => {
-    // Calculate the actual index in the full entries array
-    const actualIndex = page * rowsPerPage + index;
-    // Navigate to the entry detail page
-    navigate(`/entry/${actualIndex}`);
+  const handleViewEntry = (entry: any) => {
+    // Navigate to the entry detail page using the entry's ID
+    navigate(`/entry/${entry.id}`);
   };
+
+  // Reset page when entries change
+  useEffect(() => {
+    setPage(0);
+  }, [entries.length]);
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -81,7 +78,29 @@ const AllEntries: React.FC = () => {
       </Box>
 
       <Paper sx={{ p: 4, borderRadius: 2 }}>
-        {entries.length > 0 ? (
+        {loading ? (
+          <Box sx={{ 
+            height: 200, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center'
+          }}>
+            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+              Loading entries...
+            </Typography>
+          </Box>
+        ) : error ? (
+          <Box sx={{ 
+            height: 200, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center'
+          }}>
+            <Typography variant="body1" color="error" sx={{ fontFamily: 'Poppins' }}>
+              {error}
+            </Typography>
+          </Box>
+        ) : entries.length > 0 ? (
           <>
             <TableContainer>
               <Table>
@@ -102,30 +121,32 @@ const AllEntries: React.FC = () => {
                   {entries
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                     .map((entry, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={entry.id || index}>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                         {entry.date}
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                         <Box sx={{ 
-                          backgroundColor: '#FEFFD6', 
+                          backgroundColor: '#1056F5', 
                           display: 'inline-block',
                           px: 2,
                           py: 0.5,
                           borderRadius: 16,
-                          fontWeight: 'medium'
+                          fontWeight: 'medium',
+                          color: 'white'
                         }}>
                           {Math.round(entry.productivityScore * 10)}%
                         </Box>
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                         <Box sx={{ 
-                          backgroundColor: '#FEFFD6', 
+                          backgroundColor: '#1056F5', 
                           display: 'inline-block',
                           px: 2,
                           py: 0.5,
                           borderRadius: 16,
-                          fontWeight: 'medium'
+                          fontWeight: 'medium',
+                          color: 'white'
                         }}>
                           {entry.productivityScore}
                         </Box>
@@ -137,12 +158,13 @@ const AllEntries: React.FC = () => {
                           </Box>
                         ) : (
                           <Box sx={{ 
-                            backgroundColor: '#FEFFD6', 
+                            backgroundColor: '#1056F5', 
                             display: 'inline-block',
                             px: 2,
                             py: 0.5,
                             borderRadius: 16,
-                            fontWeight: 'medium'
+                            fontWeight: 'medium',
+                            color: 'white'
                           }}>
                             {entry.meetingScore}
                           </Box>
@@ -182,7 +204,7 @@ const AllEntries: React.FC = () => {
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                         <Button 
-                          onClick={() => handleViewEntry(index)}
+                          onClick={() => handleViewEntry(entry)}
                           sx={{ 
                             fontFamily: 'Poppins', 
                             textTransform: 'none', 
