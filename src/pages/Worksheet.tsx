@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GoalItem from '../components/GoalItem';
+import { fetchUserSessions, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -88,23 +89,13 @@ const Worksheet: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState(0);
-  const [sessions, setSessions] = useState<CoachingSession[]>([
-    { 
-      id: 'session-1', 
-      name: 'Session 1',
-      achievements: [{ id: 1, description: '', howAchieved: '' }],
-      personalValues: [{ id: 1, description: '' }],
-      coreValues: '',
-      goals: [{ id: 1, description: '', deadline: '', keyResults: [''] }],
-      actions: [{ id: 1, description: '', deadline: '', status: 'Not Started' as 'Not Started' | 'In Progress' | 'Completed' }],
-      alignment: '',
-      reflections: ''
-    }
-  ]);
-  const [currentSessionId, setCurrentSessionId] = useState('session-1');
+  const [sessions, setSessions] = useState<CoachingSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState('');
   const [isEditingSessionName, setIsEditingSessionName] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{
     actions: string | null;
     reflections: string | null;
@@ -116,38 +107,81 @@ const Worksheet: React.FC = () => {
   // Derived state - current session data
   const currentSession = sessions.find(s => s.id === currentSessionId) || sessions[0];
   
-  // Destructure current session for easier access
+  // Destructure current session for easier access (only if a session exists)
   const { 
-    achievements, 
-    personalValues, 
-    coreValues, 
-    goals, 
-    actions, 
-    alignment, 
-    reflections 
-  } = currentSession;
+    achievements = [], 
+    personalValues = [], 
+    coreValues = '', 
+    goals = [], 
+    actions = [], 
+    alignment = '', 
+    reflections = '' 
+  } = currentSession || {};
 
   useEffect(() => {
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
       navigate('/login');
+      return;
     }
 
-    // Load previously saved sessions from localStorage
-    const savedSessions = localStorage.getItem('productivitySessions');
-    if (savedSessions) {
+    // Fetch user sessions from API
+    const loadSessions = async () => {
       try {
-        const parsedSessions = JSON.parse(savedSessions) as CoachingSession[];
-        setSessions(parsedSessions);
+        setLoading(true);
+        const apiSessions = await fetchUserSessions();
         
-        // If there are sessions, set current to the first one
-        if (parsedSessions.length > 0) {
-          setCurrentSessionId(parsedSessions[0].id);
+        if (apiSessions.length > 0) {
+          // Convert API sessions to the format expected by the component
+          const formattedSessions = apiSessions.map((apiSession: UserSession) => ({
+            id: String(apiSession.id),
+            name: apiSession.name,
+            achievements: apiSession.achievements,
+            personalValues: apiSession.personalValues,
+            coreValues: apiSession.coreValues || '',
+            goals: apiSession.goals.map((goal: ApiGoal) => ({
+              id: goal.id,
+              description: goal.description,
+              deadline: goal.deadline,
+              keyResults: goal.keyResults || []
+            })),
+            actions: apiSession.actions.map((action: ApiAction) => ({
+              id: action.id,
+              description: action.description,
+              deadline: action.deadline,
+              status: action.status as 'Not Started' | 'In Progress' | 'Completed'
+            })),
+            alignment: apiSession.alignment || '',
+            reflections: apiSession.reflections || ''
+          }));
+          
+          setSessions(formattedSessions);
+          setCurrentSessionId(String(apiSessions[0].id));
+        } else {
+          // If no sessions from API, create an empty default one
+          setSessions([{ 
+            id: 'session-default', 
+            name: 'Session 1',
+            achievements: [{ id: 1, description: '', howAchieved: '' }],
+            personalValues: [{ id: 1, description: '' }],
+            coreValues: '',
+            goals: [{ id: 1, description: '', deadline: '', keyResults: [''] }],
+            actions: [{ id: 1, description: '', deadline: '', status: 'Not Started' as 'Not Started' | 'In Progress' | 'Completed' }],
+            alignment: '',
+            reflections: ''
+          }]);
+          setCurrentSessionId('session-default');
         }
+        
+        setLoading(false);
       } catch (error) {
-        console.error('Error parsing saved sessions:', error);
+        console.error('Error fetching sessions:', error);
+        setError('Failed to load sessions. Please try again later.');
+        setLoading(false);
       }
-    }
+    };
+
+    loadSessions();
   }, [isAuthenticated, navigate]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -551,485 +585,502 @@ const Worksheet: React.FC = () => {
         Productivity Pulse Worksheet
       </Typography>
 
-      <Paper sx={{ p: 4, borderRadius: 2 }}>
-        <Typography 
-          variant="h5" 
-          sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 3 }}
-        >
-          Productivity Pulse Coaching Worksheet
-        </Typography>
-        <Typography variant="body1" sx={{ fontFamily: 'Poppins', mb: 3, color: 'text.secondary' }}>
-          Complete the following sections to track your productivity journey. Each session builds on your previous work.
-        </Typography>
-
-        {/* Session Selection with Add & Edit */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-            Coaching Session
+      {loading ? (
+        <Paper sx={{ p: 4, borderRadius: 2, textAlign: 'center' }}>
+          <Typography variant="h6">Loading your sessions...</Typography>
+        </Paper>
+      ) : error ? (
+        <Paper sx={{ p: 4, borderRadius: 2, textAlign: 'center' }}>
+          <Typography variant="h6" color="error">{error}</Typography>
+          <Button 
+            variant="contained"
+            onClick={() => window.location.reload()}
+            sx={{ mt: 2 }}
+          >
+            Retry
+          </Button>
+        </Paper>
+      ) : (
+        <Paper sx={{ p: 4, borderRadius: 2 }}>
+          <Typography 
+            variant="h5" 
+            sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 3 }}
+          >
+            Productivity Pulse Coaching Worksheet
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ flexGrow: 1 }}>
-              {isEditingSessionName ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TextField 
-                    fullWidth 
-                    value={newSessionName} 
-                    onChange={(e) => setNewSessionName(e.target.value)}
-                    placeholder="Enter session name..."
-                    sx={{ fontFamily: 'Poppins', height: '48px', '& .MuiInputBase-root': { height: '48px' } }}
-                  />
+          <Typography variant="body1" sx={{ fontFamily: 'Poppins', mb: 3, color: 'text.secondary' }}>
+            Complete the following sections to track your productivity journey. Each session builds on your previous work.
+          </Typography>
+
+          {/* Session Selection with Add & Edit */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+              Coaching Session
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ flexGrow: 1 }}>
+                {isEditingSessionName ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextField 
+                      fullWidth 
+                      value={newSessionName} 
+                      onChange={(e) => setNewSessionName(e.target.value)}
+                      placeholder="Enter session name..."
+                      sx={{ fontFamily: 'Poppins', height: '48px', '& .MuiInputBase-root': { height: '48px' } }}
+                    />
+                    <Button 
+                      onClick={handleSaveSessionName}
+                      variant="contained"
+                      size="medium"
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none',
+                        backgroundColor: '#1056F5',
+                        height: '48px',
+                        minWidth: '90px',
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button 
+                      onClick={handleCancelEditSessionName}
+                      variant="outlined"
+                      size="medium"
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none',
+                        height: '48px',
+                        minWidth: '90px',
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </Box>
+                ) : (
+                  <FormControl fullWidth>
+                    <Select
+                      value={currentSessionId}
+                      onChange={(e) => handleSessionChange(e as React.ChangeEvent<{ value: unknown }>)}
+                      displayEmpty
+                      sx={{ fontFamily: 'Poppins', height: '48px' }}
+                    >
+                      {sessions.map(session => (
+                        <MenuItem key={session.id} value={session.id}>
+                          {session.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </Box>
+              {!isEditingSessionName && (
+                <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button 
-                    onClick={handleSaveSessionName}
+                    variant="outlined"
+                    onClick={handleStartEditSessionName}
+                    size="medium"
+                    sx={{ 
+                      fontFamily: 'Poppins', 
+                      textTransform: 'none',
+                      height: '48px',
+                      minWidth: '90px',
+                    }}
+                  >
+                    Rename
+                  </Button>
+                  <Button 
                     variant="contained"
+                    onClick={handleAddSession}
+                    startIcon={<AddIcon />}
                     size="medium"
                     sx={{ 
                       fontFamily: 'Poppins', 
                       textTransform: 'none',
                       backgroundColor: '#1056F5',
                       height: '48px',
-                      minWidth: '90px',
+                      minWidth: '130px',
                     }}
                   >
-                    Save
-                  </Button>
-                  <Button 
-                    onClick={handleCancelEditSessionName}
-                    variant="outlined"
-                    size="medium"
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none',
-                      height: '48px',
-                      minWidth: '90px',
-                    }}
-                  >
-                    Cancel
+                    New Session
                   </Button>
                 </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <Select
-                    value={currentSessionId}
-                    onChange={(e) => handleSessionChange(e as React.ChangeEvent<{ value: unknown }>)}
-                    displayEmpty
-                    sx={{ fontFamily: 'Poppins', height: '48px' }}
-                  >
-                    {sessions.map(session => (
-                      <MenuItem key={session.id} value={session.id}>
-                        {session.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
               )}
             </Box>
-            {!isEditingSessionName && (
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button 
-                  variant="outlined"
-                  onClick={handleStartEditSessionName}
-                  size="medium"
-                  sx={{ 
-                    fontFamily: 'Poppins', 
-                    textTransform: 'none',
-                    height: '48px',
-                    minWidth: '90px',
-                  }}
-                >
-                  Rename
-                </Button>
-                <Button 
-                  variant="contained"
-                  onClick={handleAddSession}
-                  startIcon={<AddIcon />}
-                  size="medium"
-                  sx={{ 
-                    fontFamily: 'Poppins', 
-                    textTransform: 'none',
-                    backgroundColor: '#1056F5',
-                    height: '48px',
-                    minWidth: '130px',
-                  }}
-                >
-                  New Session
-                </Button>
-              </Box>
-            )}
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', mt: 2 }}>
+              Select which coaching session you're currently working on or create a new one
+            </Typography>
           </Box>
-          <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', mt: 2 }}>
-            Select which coaching session you're currently working on or create a new one
-          </Typography>
-        </Box>
 
-        {/* Navigation Tabs */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs
-            value={currentTab}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              '& .MuiTab-root': {
-                fontFamily: 'Poppins',
-                textTransform: 'none',
-                fontWeight: 'medium',
-              },
-              '& .Mui-selected': {
-                color: '#1056F5',
-                fontWeight: 'bold',
-              },
-              '& .MuiTabs-indicator': {
-                backgroundColor: '#1056F5',
-              },
-            }}
-          >
-            <Tab label="Personal Values" />
-            <Tab label="Core Values" />
-            <Tab label="Alignment" />
-            <Tab label="Goals" />
-            <Tab label={<Box component="span">Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
-            <Tab label={<Box component="span">Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
-          </Tabs>
-        </Box>
-
-        {/* Tab Content - updated references to access current session data via destructured variables */}
-        <TabPanel value={currentTab} index={0}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Personal Values
-          </Typography>
-
-          <Box sx={{ mb: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                Proud Achievements
-              </Typography>
-              <Button 
-                startIcon={<AddIcon />} 
-                onClick={addAchievement}
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  textTransform: 'none', 
+          {/* Navigation Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs
+              value={currentTab}
+              onChange={handleTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                '& .MuiTab-root': {
+                  fontFamily: 'Poppins',
+                  textTransform: 'none',
+                  fontWeight: 'medium',
+                },
+                '& .Mui-selected': {
                   color: '#1056F5',
-                  backgroundColor: 'white',
-                  border: '1px solid #1056F5',
-                  '&:hover': {
-                    backgroundColor: '#f0f7ff',
-                  },
-                }}
-              >
-                Add Achievement
-              </Button>
-            </Box>
-
-            {achievements.map((achievement, index) => (
-              <Box key={achievement.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                  Achievement {index + 1}
-                </Typography>
-                
-                <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                  Achievement Description
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={4}
-                  placeholder="Describe an achievement you're proud of..."
-                  value={achievement.description}
-                  onChange={(e) => updateAchievement(achievement.id, 'description', e.target.value)}
-                  sx={{ mb: 2 }}
-                />
-                
-                <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                  How You Achieved It
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={4}
-                  placeholder="Describe what it took to achieve this..."
-                  value={achievement.howAchieved}
-                  onChange={(e) => updateAchievement(achievement.id, 'howAchieved', e.target.value)}
-                  sx={{ mb: 2 }}
-                />
-                
-                {achievements.length > 1 && (
-                  <Button 
-                    startIcon={<DeleteIcon />} 
-                    onClick={() => removeAchievement(achievement.id)}
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none', 
-                      color: '#d32f2f'
-                    }}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </Box>
-            ))}
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={currentTab} index={1}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Core Values
-          </Typography>
-          
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-              Define Your Core Values
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={10}
-              placeholder="What matters most to me..."
-              value={coreValues}
-              onChange={(e) => updateCoreValues(e.target.value)}
-              sx={{ mb: 1 }}
-            />
-            <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-              Minimum 50 characters, maximum 1000 characters
-            </Typography>
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={currentTab} index={2}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Alignment
-          </Typography>
-          
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-              How Your Values Align With Your Work
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={10}
-              placeholder="Describe how your work aligns with your personal and core values..."
-              value={alignment}
-              onChange={(e) => updateAlignment(e.target.value)}
-              sx={{ mb: 1 }}
-            />
-            <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-              Minimum 50 characters, maximum 1000 characters
-            </Typography>
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={currentTab} index={3}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Goals
-          </Typography>
-          
-          <Box sx={{ mb: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                Your Objectives & Key Results (OKRs)
-              </Typography>
-              <Button 
-                startIcon={<AddIcon />} 
-                onClick={addGoal}
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  textTransform: 'none', 
-                  color: '#1056F5',
-                  backgroundColor: 'white',
-                  border: '1px solid #1056F5',
-                  '&:hover': {
-                    backgroundColor: '#f0f7ff',
-                  },
-                }}
-              >
-                Add Goal
-              </Button>
-            </Box>
-
-            {goals.map((goal, index) => (
-              <GoalItem
-                key={goal.id}
-                goal={goal}
-                index={index}
-                canRemove={goals.length > 1}
-                onUpdateGoal={updateGoal}
-                onRemoveGoal={removeGoal}
-                onAddKeyResult={addKeyResult}
-                onUpdateKeyResult={updateKeyResult}
-                onRemoveKeyResult={removeKeyResult}
-              />
-            ))}
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={currentTab} index={4}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
-          </Typography>
-          
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-              Define Key Actions
-            </Typography>
-            <Button 
-              startIcon={<AddIcon />} 
-              onClick={addAction}
-              sx={{ 
-                fontFamily: 'Poppins', 
-                textTransform: 'none',
-                mb: 3,
-                color: '#1056F5'
+                  fontWeight: 'bold',
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: '#1056F5',
+                },
               }}
             >
-              Add Action
-            </Button>
-            
-            {/* Display validation error for Actions */}
-            {validationErrors.actions && (
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  color: 'error.main', 
-                  mb: 2,
-                  fontWeight: 'medium' 
-                }}
-              >
-                {validationErrors.actions}
-              </Typography>
-            )}
-
-            {actions.map((action, index) => (
-              <Box key={action.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-                  Action {index + 1}
-                </Typography>
-                
-                <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                  Description
-                </Typography>
-                <TextField
-                  fullWidth
-                  placeholder="Describe the action to take..."
-                  value={action.description}
-                  onChange={(e) => updateAction(action.id, 'description', e.target.value)}
-                  sx={{ mb: 2 }}
-                />
-                
-                <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                  Deadline
-                </Typography>
-                <TextField
-                  type="date"
-                  value={action.deadline}
-                  onChange={(e) => updateAction(action.id, 'deadline', e.target.value)}
-                  sx={{ mb: 2 }}
-                />
-                
-                <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                  Status
-                </Typography>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <Select
-                    value={action.status}
-                    onChange={(e) => updateAction(action.id, 'status', e.target.value as 'Not Started' | 'In Progress' | 'Completed')}
-                  >
-                    <MenuItem value="Not Started">Not Started</MenuItem>
-                    <MenuItem value="In Progress">In Progress</MenuItem>
-                    <MenuItem value="Completed">Completed</MenuItem>
-                  </Select>
-                </FormControl>
-                
-                {actions.length > 1 && (
-                  <Button 
-                    startIcon={<DeleteIcon />} 
-                    onClick={() => removeAction(action.id)}
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none', 
-                      color: '#d32f2f'
-                    }}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </Box>
-            ))}
+              <Tab label="Personal Values" />
+              <Tab label="Core Values" />
+              <Tab label="Alignment" />
+              <Tab label="Goals" />
+              <Tab label={<Box component="span">Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
+              <Tab label={<Box component="span">Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box></Box>} />
+            </Tabs>
           </Box>
-        </TabPanel>
 
-        <TabPanel value={currentTab} index={5}>
-          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-            Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
-          </Typography>
-          
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-              Session Reflections
+          {/* Tab Content - updated references to access current session data via destructured variables */}
+          <TabPanel value={currentTab} index={0}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Personal Values
             </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={10}
-              placeholder="Reflect on your progress, challenges, and insights..."
-              value={reflections}
-              onChange={(e) => updateReflections(e.target.value)}
-              sx={{ mb: 1 }}
-              error={!!validationErrors.reflections}
-            />
+
+            <Box sx={{ mb: 4 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+                  Proud Achievements
+                </Typography>
+                <Button 
+                  startIcon={<AddIcon />} 
+                  onClick={addAchievement}
+                  sx={{ 
+                    fontFamily: 'Poppins', 
+                    textTransform: 'none', 
+                    color: '#1056F5',
+                    backgroundColor: 'white',
+                    border: '1px solid #1056F5',
+                    '&:hover': {
+                      backgroundColor: '#f0f7ff',
+                    },
+                  }}
+                >
+                  Add Achievement
+                </Button>
+              </Box>
+
+              {achievements.map((achievement, index) => (
+                <Box key={achievement.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                    Achievement {index + 1}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Achievement Description
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={4}
+                    placeholder="Describe an achievement you're proud of..."
+                    value={achievement.description}
+                    onChange={(e) => updateAchievement(achievement.id, 'description', e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    How You Achieved It
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={4}
+                    placeholder="Describe what it took to achieve this..."
+                    value={achievement.howAchieved}
+                    onChange={(e) => updateAchievement(achievement.id, 'howAchieved', e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  {achievements.length > 1 && (
+                    <Button 
+                      startIcon={<DeleteIcon />} 
+                      onClick={() => removeAchievement(achievement.id)}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none', 
+                        color: '#d32f2f'
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={1}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Core Values
+            </Typography>
             
-            {/* Display validation error for Reflections */}
-            {validationErrors.reflections ? (
-              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'error.main' }}>
-                {validationErrors.reflections}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                Define Your Core Values
               </Typography>
-            ) : (
+              <TextField
+                fullWidth
+                multiline
+                rows={10}
+                placeholder="What matters most to me..."
+                value={coreValues}
+                onChange={(e) => updateCoreValues(e.target.value)}
+                sx={{ mb: 1 }}
+              />
               <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
                 Minimum 50 characters, maximum 1000 characters
               </Typography>
-            )}
-          </Box>
-        </TabPanel>
+            </Box>
+          </TabPanel>
 
-        {/* Navigation Buttons - Update the message to clarify auto-saving */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-          <Button
-            variant="outlined"
-            onClick={handlePrevious}
-            disabled={currentTab === 0}
-            sx={{
-              fontFamily: 'Poppins',
-              textTransform: 'none',
-              color: '#1056F5',
-              borderColor: '#1056F5',
-              '&:hover': {
-                borderColor: '#0D47D9',
-              },
-            }}
-          >
-            Previous
-          </Button>
-          <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', alignSelf: 'center' }}>
-            Your progress is automatically saved when you switch sessions.
-          </Typography>
-          <Button
-            variant="contained"
-            onClick={handleNext}
-            sx={{
-              fontFamily: 'Poppins',
-              textTransform: 'none',
-              backgroundColor: '#1056F5',
-              '&:hover': {
-                backgroundColor: '#0D47D9',
-              },
-            }}
-          >
-            {currentTab === 5 ? 'Finish' : 'Next: ' + 
-              ['Core Values', 'Alignment', 'Goals', 'Actions', 'Reflections', 'Submit'][currentTab]}
-          </Button>
-        </Box>
-      </Paper>
+          <TabPanel value={currentTab} index={2}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Alignment
+            </Typography>
+            
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                How Your Values Align With Your Work
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                rows={10}
+                placeholder="Describe how your work aligns with your personal and core values..."
+                value={alignment}
+                onChange={(e) => updateAlignment(e.target.value)}
+                sx={{ mb: 1 }}
+              />
+              <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
+                Minimum 50 characters, maximum 1000 characters
+              </Typography>
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={3}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Goals
+            </Typography>
+            
+            <Box sx={{ mb: 4 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+                  Your Objectives & Key Results (OKRs)
+                </Typography>
+                <Button 
+                  startIcon={<AddIcon />} 
+                  onClick={addGoal}
+                  sx={{ 
+                    fontFamily: 'Poppins', 
+                    textTransform: 'none', 
+                    color: '#1056F5',
+                    backgroundColor: 'white',
+                    border: '1px solid #1056F5',
+                    '&:hover': {
+                      backgroundColor: '#f0f7ff',
+                    },
+                  }}
+                >
+                  Add Goal
+                </Button>
+              </Box>
+
+              {goals.map((goal, index) => (
+                <GoalItem
+                  key={goal.id}
+                  goal={goal}
+                  index={index}
+                  canRemove={goals.length > 1}
+                  onUpdateGoal={updateGoal}
+                  onRemoveGoal={removeGoal}
+                  onAddKeyResult={addKeyResult}
+                  onUpdateKeyResult={updateKeyResult}
+                  onRemoveKeyResult={removeKeyResult}
+                />
+              ))}
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={4}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Actions<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
+            </Typography>
+            
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                Define Key Actions
+              </Typography>
+              <Button 
+                startIcon={<AddIcon />} 
+                onClick={addAction}
+                sx={{ 
+                  fontFamily: 'Poppins', 
+                  textTransform: 'none',
+                  mb: 3,
+                  color: '#1056F5'
+                }}
+              >
+                Add Action
+              </Button>
+              
+              {/* Display validation error for Actions */}
+              {validationErrors.actions && (
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontFamily: 'Poppins', 
+                    color: 'error.main', 
+                    mb: 2,
+                    fontWeight: 'medium' 
+                  }}
+                >
+                  {validationErrors.actions}
+                </Typography>
+              )}
+
+              {actions.map((action, index) => (
+                <Box key={action.id} sx={{ mb: 3, p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                    Action {index + 1}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Description
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    placeholder="Describe the action to take..."
+                    value={action.description}
+                    onChange={(e) => updateAction(action.id, 'description', e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Deadline
+                  </Typography>
+                  <TextField
+                    type="date"
+                    value={action.deadline}
+                    onChange={(e) => updateAction(action.id, 'deadline', e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+                    Status
+                  </Typography>
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <Select
+                      value={action.status}
+                      onChange={(e) => updateAction(action.id, 'status', e.target.value as 'Not Started' | 'In Progress' | 'Completed')}
+                    >
+                      <MenuItem value="Not Started">Not Started</MenuItem>
+                      <MenuItem value="In Progress">In Progress</MenuItem>
+                      <MenuItem value="Completed">Completed</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  {actions.length > 1 && (
+                    <Button 
+                      startIcon={<DeleteIcon />} 
+                      onClick={() => removeAction(action.id)}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        textTransform: 'none', 
+                        color: '#d32f2f'
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={5}>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
+              Reflections<Box component="span" sx={{ color: '#f44336' }}>*</Box> <Box component="span" sx={{ fontWeight: 'normal', color: '#757575', fontSize: '0.9rem', ml: 1 }}>(required)</Box>
+            </Typography>
+            
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ fontFamily: 'Poppins', mb: 2 }}>
+                Session Reflections
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                rows={10}
+                placeholder="Reflect on your progress, challenges, and insights..."
+                value={reflections}
+                onChange={(e) => updateReflections(e.target.value)}
+                sx={{ mb: 1 }}
+                error={!!validationErrors.reflections}
+              />
+              
+              {/* Display validation error for Reflections */}
+              {validationErrors.reflections ? (
+                <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'error.main' }}>
+                  {validationErrors.reflections}
+                </Typography>
+              ) : (
+                <Typography variant="caption" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
+                  Minimum 50 characters, maximum 1000 characters
+                </Typography>
+              )}
+            </Box>
+          </TabPanel>
+
+          {/* Navigation Buttons - Update the message to clarify auto-saving */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+            <Button
+              variant="outlined"
+              onClick={handlePrevious}
+              disabled={currentTab === 0}
+              sx={{
+                fontFamily: 'Poppins',
+                textTransform: 'none',
+                color: '#1056F5',
+                borderColor: '#1056F5',
+                '&:hover': {
+                  borderColor: '#0D47D9',
+                },
+              }}
+            >
+              Previous
+            </Button>
+            <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', alignSelf: 'center' }}>
+              Your progress is automatically saved when you switch sessions.
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={handleNext}
+              sx={{
+                fontFamily: 'Poppins',
+                textTransform: 'none',
+                backgroundColor: '#1056F5',
+                '&:hover': {
+                  backgroundColor: '#0D47D9',
+                },
+              }}
+            >
+              {currentTab === 5 ? 'Finish' : 'Next: ' + 
+                ['Core Values', 'Alignment', 'Goals', 'Actions', 'Reflections', 'Submit'][currentTab]}
+            </Button>
+          </Box>
+        </Paper>
+      )}
     </Container>
   );
 };
