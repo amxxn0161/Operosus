@@ -31,8 +31,6 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GoalItem from '../components/GoalItem';
 import { fetchUserSessions, saveUserSession, deleteUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
-import DocumentUploader from '../components/DocumentUploader';
-import { ExtractedContent } from '../utils/documentParser';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -631,71 +629,6 @@ const Worksheet: React.FC = () => {
     setSessions(updatedSessions);
   };
 
-  // Handle document upload processing
-  const handleDocumentProcessed = (extractedContent: ExtractedContent) => {
-    // If no current session, return
-    if (!currentSession) return;
-    
-    try {
-      // Apply extracted data to the current session
-      const updatedSessions = sessions.map(session => {
-        if (session.id === currentSessionId) {
-          return {
-            ...session,
-            personalValues: {
-              ...session.personalValues,
-              proudOf: extractedContent.personalValues.proudOf.length > 0 ? 
-                extractedContent.personalValues.proudOf : session.personalValues.proudOf,
-              achievement: extractedContent.personalValues.achievement.length > 0 ? 
-                extractedContent.personalValues.achievement : session.personalValues.achievement,
-              happiness: extractedContent.personalValues.happiness.length > 0 ? 
-                extractedContent.personalValues.happiness : session.personalValues.happiness,
-              inspiration: extractedContent.personalValues.inspiration.length > 0 ? 
-                extractedContent.personalValues.inspiration : session.personalValues.inspiration
-            },
-            productivityConnection: {
-              ...session.productivityConnection,
-              coreValues: extractedContent.productivityConnection.coreValues || session.productivityConnection.coreValues,
-              valueImpact: extractedContent.productivityConnection.valueImpact || session.productivityConnection.valueImpact
-            },
-            goals: {
-              ...session.goals,
-              description: extractedContent.goals.description || session.goals.description,
-              impact: extractedContent.goals.impact.some(Boolean) ? 
-                extractedContent.goals.impact : session.goals.impact
-            },
-            workshopOutput: {
-              ...session.workshopOutput,
-              actions: extractedContent.workshopOutput.actions.length > 0 ? 
-                extractedContent.workshopOutput.actions : session.workshopOutput.actions,
-              reflections: extractedContent.workshopOutput.reflections || session.workshopOutput.reflections
-            }
-          };
-        }
-        return session;
-      });
-      
-      // Update state with the modified session data
-      setSessions(updatedSessions);
-      
-      // Save to localStorage
-      localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
-      
-      // Show success message
-      setSaveSuccess(true);
-      
-      // Hide message after 3 seconds
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-      
-      console.log('Document data successfully applied to worksheet:', extractedContent);
-    } catch (error) {
-      console.error('Error applying document data:', error);
-      setError('Failed to apply document data to worksheet.');
-    }
-  };
-
   // Session deletion handlers
   const handleDeleteClick = () => {
     setDeleteDialogOpen(true);
@@ -779,25 +712,18 @@ const Worksheet: React.FC = () => {
         </Paper>
       ) : (
         <Paper sx={{ p: 4, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-            <Box>
-              <Typography 
-                variant="h5" 
-                sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 1 }}
-              >
-                Productivity Pulse Coaching Worksheet
-              </Typography>
-              
-              <Typography variant="body1" sx={{ fontFamily: 'Poppins', color: 'text.secondary', maxWidth: '70%' }}>
-                Complete the following sections to track your productivity journey. Each session builds on your previous work.
-              </Typography>
-            </Box>
-            
-            <DocumentUploader onDocumentProcessed={handleDocumentProcessed} />
-          </Box>
+          <Typography 
+            variant="h5" 
+            sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 3 }}
+          >
+            Productivity Pulse Coaching Worksheet
+          </Typography>
+          <Typography variant="body1" sx={{ fontFamily: 'Poppins', mb: 3, color: 'text.secondary' }}>
+            Complete the following sections to track your productivity journey. Each session builds on your previous work.
+          </Typography>
 
           {/* Session Selection with Add & Edit */}
-          <Box sx={{ mt: 3, mb: 3 }}>
+          <Box sx={{ mb: 4 }}>
             <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 2 }}>
               Coaching Session
             </Typography>

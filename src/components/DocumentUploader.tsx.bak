@@ -1,0 +1,240 @@
+import React, { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
+import {
+  Box,
+  Typography,
+  Button,
+  CircularProgress,
+  Paper,
+  Alert,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
+} from '@mui/material';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import { handleDocumentUpload, ExtractedContent } from '../utils/documentParser';
+
+interface DocumentUploaderProps {
+  onDocumentProcessed: (data: ExtractedContent) => void;
+}
+
+const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentProcessed }) => {
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [extractedData, setExtractedData] = useState<ExtractedContent | null>(null);
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+    
+    const file = acceptedFiles[0];
+    
+    // Check if file is PDF or Word
+    if (
+      file.type !== 'application/pdf' && 
+      file.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+      file.type !== 'application/msword'
+    ) {
+      setError('Please upload a PDF or Word document.');
+      return;
+    }
+    
+    setIsUploading(true);
+    setError(null);
+    
+    try {
+      const data = await handleDocumentUpload(file);
+      setExtractedData(data);
+      setSuccessMessage('Document successfully processed. Review the extracted data below.');
+      setPreviewDialogOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while processing the document.');
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+  
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'application/msword': ['.doc']
+    },
+    maxFiles: 1,
+    disabled: isUploading
+  });
+  
+  const handleApplyData = () => {
+    if (extractedData) {
+      onDocumentProcessed(extractedData);
+      setPreviewDialogOpen(false);
+      setSuccessMessage('Document data successfully applied to the worksheet.');
+    }
+  };
+  
+  const handleClosePreview = () => {
+    setPreviewDialogOpen(false);
+  };
+  
+  const handleCloseSnackbar = () => {
+    setSuccessMessage(null);
+  };
+
+  return (
+    <>
+      <Paper
+        sx={{
+          p: 2,
+          mb: 3,
+          bgcolor: '#f9f9fd',
+          borderRadius: 2,
+          border: '1px dashed rgba(0, 0, 0, 0.2)',
+          textAlign: 'center'
+        }}
+      >
+        <Box {...getRootProps()} sx={{ 
+          p: 3, 
+          cursor: isUploading ? 'not-allowed' : 'pointer',
+          opacity: isUploading ? 0.7 : 1,
+          transition: 'all 0.2s ease-in-out',
+          borderRadius: 1,
+          bgcolor: isDragActive ? 'rgba(75, 0, 130, 0.05)' : 'transparent',
+          '&:hover': {
+            bgcolor: 'rgba(16, 86, 245, 0.05)'
+          }
+        }}>
+          <input {...getInputProps()} />
+          <CloudUploadIcon sx={{ fontSize: 48, color: '#1056F5', mb: 2 }} />
+          <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 1 }}>
+            Import from Document
+          </Typography>
+          <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', mb: 2 }}>
+            Drag & drop a PDF or Word document here, or click to select a file
+          </Typography>
+          <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', fontStyle: 'italic' }}>
+            The system will attempt to extract and auto-fill worksheet fields from the document
+          </Typography>
+          
+          {isUploading && (
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+              <CircularProgress size={24} />
+            </Box>
+          )}
+        </Box>
+      </Paper>
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      
+      {/* Success Message */}
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity="success"
+          sx={{ width: '100%', fontFamily: 'Poppins' }}
+        >
+          {successMessage}
+        </Alert>
+      </Snackbar>
+      
+      {/* Preview Dialog */}
+      <Dialog
+        open={previewDialogOpen}
+        onClose={handleClosePreview}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins' }}>
+          Document Data Preview
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2, fontFamily: 'Poppins' }}>
+            Review the extracted data before applying it to your worksheet:
+          </DialogContentText>
+          
+          {extractedData && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontFamily: 'Poppins', color: '#1056F5', mt: 2 }}>
+                Personal Values
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • What am I most proud of: {extractedData.personalValues.proudOf.filter(Boolean).join(', ') || '(No data extracted)'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • What did it take: {extractedData.personalValues.achievement.filter(Boolean).join(', ') || '(No data extracted)'}
+              </Typography>
+              
+              <Typography variant="subtitle2" sx={{ fontFamily: 'Poppins', color: '#1056F5', mt: 2 }}>
+                Core Values & Productivity
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • My Values: {extractedData.productivityConnection.coreValues ? 'Data found' : '(No data extracted)'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • Productivity Impact: {extractedData.productivityConnection.valueImpact ? 'Data found' : '(No data extracted)'}
+              </Typography>
+              
+              <Typography variant="subtitle2" sx={{ fontFamily: 'Poppins', color: '#1056F5', mt: 2 }}>
+                Goals
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • Description: {extractedData.goals.description ? 'Data found' : '(No data extracted)'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • Impact: {extractedData.goals.impact.some(Boolean) ? 'Data found' : '(No data extracted)'}
+              </Typography>
+              
+              <Typography variant="subtitle2" sx={{ fontFamily: 'Poppins', color: '#1056F5', mt: 2 }}>
+                Workshop Output
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • Actions: {extractedData.workshopOutput.actions.some(Boolean) ? 'Data found' : '(No data extracted)'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mt: 1 }}>
+                • Reflections: {extractedData.workshopOutput.reflections ? 'Data found' : '(No data extracted)'}
+              </Typography>
+            </Box>
+          )}
+          
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Note: The system extracts data based on pattern matching. Some fields may not be extracted correctly depending on the document formatting.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleClosePreview} 
+            sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleApplyData} 
+            variant="contained"
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              backgroundColor: '#1056F5'
+            }}
+          >
+            Apply to Worksheet
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+export default DocumentUploader; 
