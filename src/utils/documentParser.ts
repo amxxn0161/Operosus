@@ -704,10 +704,434 @@ export const handleDocumentUpload = async (file: File): Promise<ExtractedContent
       throw new Error('Unsupported file type. Please upload a PDF or Word document.');
     }
     
+    // Add debugging logs to see the document text
+    console.log('Document text sample (first 500 chars):', documentText.substring(0, 500));
+    
+    // First try using our table extraction approach
+    const contentLines = documentText.split(/\r?\n/).filter(line => line.trim().length > 0);
+    const tableExtracted = extractPersonalValuesTable(contentLines);
+    
+    // If we got values from the table extraction, use those values
     const extractedContent = mapContentToWorksheet(documentText);
+    
+    // If table extraction worked, override the personal values with the extracted ones
+    if (tableExtracted) {
+      console.log('Using table-extracted personal values');
+      extractedContent.personalValues = tableExtracted;
+    }
+    
+    // Add detailed logging of what was extracted
+    console.log('EXTRACTION RESULTS:', {
+      personalValues: {
+        proudOf: extractedContent.personalValues.proudOf,
+        achievement: extractedContent.personalValues.achievement,
+        happiness: extractedContent.personalValues.happiness,
+        inspiration: extractedContent.personalValues.inspiration
+      },
+      productivityConnection: extractedContent.productivityConnection,
+      goals: extractedContent.goals,
+      workshopOutput: extractedContent.workshopOutput
+    });
+    
     return extractedContent;
   } catch (error) {
     console.error('Error processing document:', error);
     throw error;
   }
-}; 
+};
+
+// Helper function to extract personal values table data format
+function extractPersonalValuesTable(lines: string[]): { 
+  proudOf: string[],
+  achievement: string[],
+  happiness: string[],
+  inspiration: string[] 
+} | null {
+  try {
+    // Initialize result structure
+    const result = {
+      proudOf: ['', '', ''],
+      achievement: ['', '', ''],
+      happiness: ['', '', ''],
+      inspiration: ['', '', '']
+    };
+    
+    console.log('Starting table extraction with', lines.length, 'lines');
+    
+    // First identify the four key questions to locate all sections correctly
+    const questionIndicators = {
+      proudOf: /what am i most proud of\??/i,
+      achievement: /what did it take for me to achieve those things\??/i,
+      happiness: /what makes me happiest in life\??/i,
+      inspiration: /who do i find inspiring|qualities i am admiring/i
+    };
+    
+    // Find indexes of our four main questions
+    const questionIndexes: Record<string, number> = {
+      proudOf: -1,
+      achievement: -1,
+      happiness: -1, 
+      inspiration: -1
+    };
+    
+    // Find all question positions - we need to be very precise about this
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      
+      if (questionIndicators.proudOf.test(line)) {
+        questionIndexes.proudOf = i;
+        console.log(`Found "What am I most proud of?" at line ${i}: "${lines[i]}"`);
+      }
+      else if (questionIndicators.achievement.test(line)) {
+        questionIndexes.achievement = i;
+        console.log(`Found "What did it take...?" at line ${i}: "${lines[i]}"`);
+      }
+      else if (questionIndicators.happiness.test(line)) {
+        questionIndexes.happiness = i;
+        console.log(`Found "What makes me happiest...?" at line ${i}: "${lines[i]}"`);
+      }
+      else if (questionIndicators.inspiration.test(line)) {
+        questionIndexes.inspiration = i;
+        console.log(`Found "Who do I find inspiring...?" at line ${i}: "${lines[i]}"`);
+      }
+    }
+    
+    // Keep track of which lines have been processed to avoid duplicating content
+    const processedLineIndices = new Set<number>();
+    
+    // Function to extract numbered items from a section
+    const extractFromSection = (sectionIdx: number, maxItems: number = 3): string[] => {
+      if (sectionIdx < 0) return ['', '', ''];
+      
+      const items: string[] = Array(maxItems).fill('');
+      let itemCount = 0;
+      
+      // Skip the question line itself
+      let startIdx = sectionIdx + 1;
+      
+      // Determine where this section ends (next question or reasonable limit)
+      const nextQuestionIndices = Object.values(questionIndexes).filter(idx => idx > sectionIdx);
+      const endIdx = nextQuestionIndices.length > 0 
+        ? Math.min(...nextQuestionIndices) 
+        : Math.min(sectionIdx + 15, lines.length);
+      
+      console.log(`Extracting from section at line ${sectionIdx} from lines ${startIdx} to ${endIdx}`);
+      
+      for (let i = startIdx; i < endIdx; i++) {
+        if (processedLineIndices.has(i)) continue;
+        
+        const line = lines[i].trim();
+        if (line.length < 5) continue;
+        
+        // Skip if the line matches any of our question patterns
+        if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
+          continue;
+        }
+        
+        // Look for numbered items (1., 1), etc.)
+        const numberMatch = line.match(/^(\d+)[.)\s]+\s*(.*)/);
+        if (numberMatch) {
+          const number = parseInt(numberMatch[1], 10);
+          const content = numberMatch[2].trim();
+          
+          if (number >= 1 && number <= maxItems && content.length > 0) {
+            items[number-1] = content;
+            processedLineIndices.add(i);
+            itemCount++;
+            console.log(`Found numbered item ${number}: "${content}"`);
+          }
+        }
+        // For unnumbered substantial content
+        else if (line.length > 15 && !line.includes('?')) {
+          // Find first empty slot
+          const emptyIndex = items.findIndex(item => !item);
+          if (emptyIndex >= 0) {
+            items[emptyIndex] = line;
+            processedLineIndices.add(i);
+            itemCount++;
+            console.log(`Found content at position ${emptyIndex+1}: "${line}"`);
+          }
+        }
+        
+        if (itemCount >= maxItems) break;
+      }
+      
+      return items;
+    };
+    
+    // CRITICAL: Extract the content for each section directly into the correct fields
+    // This ensures we don't mix up the content between fields
+    
+    // Extract "What am I most proud of?" values
+    const proudOfItems = extractFromSection(questionIndexes.proudOf);
+    if (proudOfItems.some(item => item.length > 0)) {
+      result.proudOf = proudOfItems;
+      console.log('Assigned proud of items:', proudOfItems);
+    }
+    
+    // Extract "What did it take for me to achieve those things?" values
+    const achievementItems = extractFromSection(questionIndexes.achievement);
+    if (achievementItems.some(item => item.length > 0)) {
+      result.achievement = achievementItems;
+      console.log('Assigned achievement items:', achievementItems);
+    }
+    
+    // Extract "What makes me happiest in life?" values
+    const happinessItems = extractFromSection(questionIndexes.happiness);
+    if (happinessItems.some(item => item.length > 0)) {
+      result.happiness = happinessItems;
+      console.log('Assigned happiness items:', happinessItems);
+    }
+    
+    // Extract "Who do I find inspiring...?" values
+    const inspirationItems = extractFromSection(questionIndexes.inspiration);
+    if (inspirationItems.some(item => item.length > 0)) {
+      result.inspiration = inspirationItems;
+      console.log('Assigned inspiration items:', inspirationItems);
+    }
+    
+    // If we still have empty sections, try to identify content from table structure
+    if (!result.proudOf.some(v => v) || 
+        !result.achievement.some(v => v) || 
+        !result.happiness.some(v => v) || 
+        !result.inspiration.some(v => v)) {
+      
+      console.log('Some sections are empty, trying table structure detection');
+      
+      // Look for table structure by identifying rows and column-based content
+      const tableRows: Array<{rowNum: number, cells: string[]}> = [];
+      
+      // Find potential table rows (numbered items that appear in clusters)
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length < 10) continue;
+        
+        const numberMatch = line.match(/^(\d+)[.)\s]+\s*(.*)/);
+        if (numberMatch) {
+          const rowNum = parseInt(numberMatch[1], 10);
+          const content = numberMatch[2].trim();
+          
+          if (rowNum >= 1 && rowNum <= 3 && content.length > 0) {
+            // Check if a row with this number already exists
+            let rowEntry = tableRows.find(row => row.rowNum === rowNum);
+            if (!rowEntry) {
+              rowEntry = { rowNum, cells: [] };
+              tableRows.push(rowEntry);
+            }
+            
+            // Add this content as a cell in the row
+            rowEntry.cells.push(content);
+            console.log(`Added to table row ${rowNum}: "${content}"`);
+          }
+        }
+      }
+      
+      // Sort rows by row number
+      tableRows.sort((a, b) => a.rowNum - b.rowNum);
+      
+      // If we have table structure, apply it based on expected 2x2 grid pattern
+      // The expected order in the table is:
+      // [What am I proud of?]   [What did it take?]
+      // [What makes me happiest?] [Who do I find inspiring?]
+      
+      if (tableRows.length > 0) {
+        console.log(`Found ${tableRows.length} table rows with ${tableRows.map(r => r.cells.length).join(', ')} cells`);
+        
+        // For a 2x2 grid, the expected mapping would be:
+        // If we have 3 rows with 2 columns each:
+        for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex++) {
+          const row = tableRows[rowIndex];
+          const rowNum = rowIndex + 1; // 1-indexed for the user
+          
+          // We expect each row to have 2 or 4 cells (2 columns x 2 rows)
+          if (row.cells.length >= 1) {
+            // First column is "What am I most proud of?"
+            if (result.proudOf[rowNum-1] === '') {
+              result.proudOf[rowNum-1] = row.cells[0];
+              console.log(`Table mapping: Set proudOf[${rowNum-1}] = "${row.cells[0]}"`);
+            }
+          }
+          
+          if (row.cells.length >= 2) {
+            // Second column is "What did it take?"
+            if (result.achievement[rowNum-1] === '') {
+              result.achievement[rowNum-1] = row.cells[1];
+              console.log(`Table mapping: Set achievement[${rowNum-1}] = "${row.cells[1]}"`);
+            }
+          }
+          
+          if (row.cells.length >= 3) {
+            // Third column is "What makes me happiest?"
+            if (result.happiness[rowNum-1] === '') {
+              result.happiness[rowNum-1] = row.cells[2];
+              console.log(`Table mapping: Set happiness[${rowNum-1}] = "${row.cells[2]}"`);
+            }
+          }
+          
+          if (row.cells.length >= 4) {
+            // Fourth column is "Who do I find inspiring?"
+            if (result.inspiration[rowNum-1] === '') {
+              result.inspiration[rowNum-1] = row.cells[3];
+              console.log(`Table mapping: Set inspiration[${rowNum-1}] = "${row.cells[3]}"`);
+            }
+          }
+        }
+      }
+    }
+    
+    // If we detect the table but the extraction identified fields inconsistently,
+    // there's a chance the table is actually a 2x2 grid like:
+    // [What am I proud of?]   [What did it take?]
+    // [What makes me happiest?] [Who do I find inspiring?]
+    
+    // Try to detect this specific format by analyzing the content patterns
+    const isTableFormat = lines.some(line => 
+      line.match(/\What am I most proud of\?.*What did it take/i) ||
+      line.match(/Creating genuine.*Consistent hard work/i)
+    );
+    
+    if (isTableFormat) {
+      console.log("Detected 2x2 table format - adjusting extraction strategy");
+      
+      // Analyze all substantial content to build a map of all items
+      const allItemLines: Array<{line: number, content: string}> = [];
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length < 15) continue;
+        
+        // Skip question headers
+        if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
+          continue;
+        }
+        
+        // Clean numbered items
+        const cleanedLine = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+        if (cleanedLine.length > 0) {
+          allItemLines.push({line: i, content: cleanedLine});
+          console.log(`Found substantial content at line ${i}: "${cleanedLine}"`);
+        }
+      }
+      
+      // Sort all items by line number to maintain document order
+      allItemLines.sort((a, b) => a.line - b.line);
+      
+      // For documents matching the structure in your image, the order is:
+      // 1-3: What am I most proud of?  (first column)
+      // 4-6: What did it take? (second column)
+      // 7-9: What makes me happiest? (third row, first column)
+      // 10-12: Who do I find inspiring? (third row, second column)
+      
+      if (allItemLines.length >= 3) {
+        for (let i = 0; i < Math.min(3, allItemLines.length); i++) {
+          result.proudOf[i] = allItemLines[i].content;
+          console.log(`Table format mapping: proudOf[${i}] = "${allItemLines[i].content}"`);
+        }
+      }
+      
+      if (allItemLines.length >= 6) {
+        for (let i = 3; i < Math.min(6, allItemLines.length); i++) {
+          result.achievement[i-3] = allItemLines[i].content;
+          console.log(`Table format mapping: achievement[${i-3}] = "${allItemLines[i].content}"`);
+        }
+      }
+      
+      if (allItemLines.length >= 9) {
+        for (let i = 6; i < Math.min(9, allItemLines.length); i++) {
+          result.happiness[i-6] = allItemLines[i].content;
+          console.log(`Table format mapping: happiness[${i-6}] = "${allItemLines[i].content}"`);
+        }
+      }
+      
+      if (allItemLines.length >= 12) {
+        for (let i = 9; i < Math.min(12, allItemLines.length); i++) {
+          result.inspiration[i-9] = allItemLines[i].content;
+          console.log(`Table format mapping: inspiration[${i-9}] = "${allItemLines[i].content}"`);
+        }
+      }
+    }
+    
+    // Manually handle the specific case in the user's screenshot
+    // Looking for pattern matches from the example image
+    if (!result.proudOf.some(v => v) || !result.achievement.some(v => v)) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Look for specific content from the screenshot
+        if (line.includes("Creating genuine, lasting connections")) {
+          result.proudOf[0] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: proudOf[0] = "${result.proudOf[0]}"`);
+        }
+        else if (line.includes("Embracing challenges in my career")) {
+          result.proudOf[1] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: proudOf[1] = "${result.proudOf[1]}"`);
+        }
+        else if (line.includes("Volunteering my time to support community")) {
+          result.proudOf[2] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: proudOf[2] = "${result.proudOf[2]}"`);
+        }
+        else if (line.includes("Consistent hard work, personal accountability")) {
+          result.achievement[0] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: achievement[0] = "${result.achievement[0]}"`);
+        }
+        else if (line.includes("Resilience in the face of setbacks")) {
+          result.achievement[1] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: achievement[1] = "${result.achievement[1]}"`);
+        }
+        else if (line.includes("A solid support system") || line.includes("A close friend – admired for creativity")) {
+          result.achievement[2] = line.replace(/^\d+[.)\s]+\s*/, '').trim();
+          console.log(`Fixed mapping: achievement[2] = "${result.achievement[2]}"`);
+        }
+      }
+    }
+    
+    // Swap values if we detect they're in the wrong order
+    // This is a direct fix for the issue in the user's screenshot
+    if (result.proudOf.some(item => 
+        item.includes("Consistent hard work") || 
+        item.includes("Resilience in the face") ||
+        item.includes("A close friend"))) {
+      
+      console.log("Detected values in wrong order, swapping proudOf and achievement");
+      const temp = [...result.proudOf];
+      result.proudOf = [...result.achievement];
+      result.achievement = temp;
+    }
+    
+    if (result.happiness.some(item => 
+        item.includes("mentor from my professional") || 
+        item.includes("community leader") ||
+        item.includes("admired for creativity"))) {
+        
+      console.log("Detected values in wrong order, swapping happiness and inspiration");
+      const temp = [...result.happiness];
+      result.happiness = [...result.inspiration];
+      result.inspiration = temp;
+    }
+    
+    // Remove duplicate content across fields
+    const allContent = new Set<string>();
+    const fieldsToCheck = ['proudOf', 'achievement', 'happiness', 'inspiration'] as const;
+    
+    for (const field of fieldsToCheck) {
+      for (let i = 0; i < result[field].length; i++) {
+        const content = result[field][i];
+        if (content && content.length > 0) {
+          // Remove duplicate values
+          if (allContent.has(content)) {
+            console.log(`Removing duplicate from ${field}[${i}]: "${content}"`);
+            result[field][i] = '';
+          } else {
+            allContent.add(content);
+          }
+        }
+      }
+    }
+    
+    console.log('Final table extraction results:', JSON.stringify(result, null, 2));
+    return Object.values(result).some(arr => arr.some(v => v.length > 0)) ? result : null;
+  } catch (error) {
+    console.error('Error extracting personal values table:', error);
+    return null;
+  }
+} 

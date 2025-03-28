@@ -23,7 +23,12 @@ import {
   DialogTitle,
   CircularProgress,
   Grid,
-  Divider
+  Divider,
+  Chip,
+  Tooltip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +38,7 @@ import GoalItem from '../components/GoalItem';
 import { fetchUserSessions, saveUserSession, deleteUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
 import DocumentUploader from '../components/DocumentUploader';
 import { ExtractedContent } from '../utils/documentParser';
+import { CheckCircleOutline, InfoOutlined, AutoAwesomeOutlined, ExpandMore } from '@mui/icons-material';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -631,68 +637,101 @@ const Worksheet: React.FC = () => {
     setSessions(updatedSessions);
   };
 
-  // Handle document upload processing
-  const handleDocumentProcessed = (extractedContent: ExtractedContent) => {
-    // If no current session, return
-    if (!currentSession) return;
+  // Update where the onDocumentProcessed handler is defined
+  const handleProcessExtractedDocument = (extractedContent: ExtractedContent) => {
+    console.log('Received extracted content for processing:', extractedContent);
+    
+    // Check if personal values were extracted
+    const hasPersonalValues = extractedContent.personalValues.proudOf.some(v => v) || 
+                            extractedContent.personalValues.achievement.some(v => v) ||
+                            extractedContent.personalValues.happiness.some(v => v) ||
+                            extractedContent.personalValues.inspiration.some(v => v);
+                            
+    console.log('Has personal values:', hasPersonalValues);
     
     try {
-      // Apply extracted data to the current session
-      const updatedSessions = sessions.map(session => {
-        if (session.id === currentSessionId) {
-          return {
-            ...session,
-            personalValues: {
-              ...session.personalValues,
-              proudOf: extractedContent.personalValues.proudOf.length > 0 ? 
-                extractedContent.personalValues.proudOf : session.personalValues.proudOf,
-              achievement: extractedContent.personalValues.achievement.length > 0 ? 
-                extractedContent.personalValues.achievement : session.personalValues.achievement,
-              happiness: extractedContent.personalValues.happiness.length > 0 ? 
-                extractedContent.personalValues.happiness : session.personalValues.happiness,
-              inspiration: extractedContent.personalValues.inspiration.length > 0 ? 
-                extractedContent.personalValues.inspiration : session.personalValues.inspiration
-            },
-            productivityConnection: {
-              ...session.productivityConnection,
-              coreValues: extractedContent.productivityConnection.coreValues || session.productivityConnection.coreValues,
-              valueImpact: extractedContent.productivityConnection.valueImpact || session.productivityConnection.valueImpact
-            },
-            goals: {
-              ...session.goals,
-              description: extractedContent.goals.description || session.goals.description,
-              impact: extractedContent.goals.impact.some(Boolean) ? 
-                extractedContent.goals.impact : session.goals.impact
-            },
-            workshopOutput: {
-              ...session.workshopOutput,
-              actions: extractedContent.workshopOutput.actions.length > 0 ? 
-                extractedContent.workshopOutput.actions : session.workshopOutput.actions,
-              reflections: extractedContent.workshopOutput.reflections || session.workshopOutput.reflections
-            }
-          };
-        }
-        return session;
-      });
+      // Deep clone the current session to avoid mutation issues
+      const sessionToUpdate = JSON.parse(JSON.stringify(
+        sessions.find(s => s.id === currentSessionId) || sessions[0]
+      ));
       
-      // Update state with the modified session data
+      // Ensure each array has exactly 3 elements - define function at the top level
+      const ensureThreeElements = (arr: string[]): string[] => {
+        const result = [...arr];
+        while (result.length < 3) result.push('');
+        return result.slice(0, 3);
+      };
+      
+      // Apply extracted content to the current session
+      if (hasPersonalValues) {
+        console.log('Applying personal values to session:');
+        console.log('- proudOf:', extractedContent.personalValues.proudOf);
+        console.log('- achievement:', extractedContent.personalValues.achievement);
+        console.log('- happiness:', extractedContent.personalValues.happiness);
+        console.log('- inspiration:', extractedContent.personalValues.inspiration);
+        
+        // Direct assignment of each field separately to preserve extracted data structure
+        sessionToUpdate.personalValues = {
+          ...sessionToUpdate.personalValues,
+          proudOf: ensureThreeElements(extractedContent.personalValues.proudOf),
+          achievement: ensureThreeElements(extractedContent.personalValues.achievement),
+          happiness: ensureThreeElements(extractedContent.personalValues.happiness),
+          inspiration: ensureThreeElements(extractedContent.personalValues.inspiration)
+        };
+      }
+      
+      // Apply productivity connection if available
+      if (extractedContent.productivityConnection.coreValues || 
+          extractedContent.productivityConnection.valueImpact) {
+        sessionToUpdate.productivityConnection = {
+          ...sessionToUpdate.productivityConnection,
+          coreValues: extractedContent.productivityConnection.coreValues || sessionToUpdate.productivityConnection.coreValues,
+          valueImpact: extractedContent.productivityConnection.valueImpact || sessionToUpdate.productivityConnection.valueImpact
+        };
+      }
+      
+      // Apply goals if available
+      if (extractedContent.goals.description || extractedContent.goals.impact.some(v => v)) {
+        sessionToUpdate.goals = {
+          ...sessionToUpdate.goals,
+          description: extractedContent.goals.description || sessionToUpdate.goals.description,
+          impact: extractedContent.goals.impact.length > 0 ? 
+                  ensureThreeElements(extractedContent.goals.impact) : 
+                  sessionToUpdate.goals.impact
+        };
+      }
+      
+      // Apply workshop output if available
+      if (extractedContent.workshopOutput.actions.some(v => v) || 
+          extractedContent.workshopOutput.reflections) {
+        sessionToUpdate.workshopOutput = {
+          ...sessionToUpdate.workshopOutput,
+          actions: extractedContent.workshopOutput.actions.some(v => v) ? 
+                  extractedContent.workshopOutput.actions :
+                  sessionToUpdate.workshopOutput.actions,
+          reflections: extractedContent.workshopOutput.reflections || 
+                    sessionToUpdate.workshopOutput.reflections
+        };
+      }
+      
+      // Update the sessions array with the modified session
+      const updatedSessions = sessions.map(session => 
+        session.id === currentSessionId ? sessionToUpdate : session
+      );
+      
+      // Set the current tab to the Plan section (index 0) to show the updated values
+      setCurrentTab(0);
+      
+      // Update state and save to localStorage
       setSessions(updatedSessions);
-      
-      // Save to localStorage
       localStorage.setItem('productivitySessions', JSON.stringify(updatedSessions));
       
       // Show success message
       setSaveSuccess(true);
-      
-      // Hide message after 3 seconds
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-      
-      console.log('Document data successfully applied to worksheet:', extractedContent);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('Error applying document data:', error);
-      setError('Failed to apply document data to worksheet.');
+      setError('Failed to apply document data to the worksheet. Please try again.');
     }
   };
 
@@ -793,7 +832,7 @@ const Worksheet: React.FC = () => {
               </Typography>
             </Box>
             
-            <DocumentUploader onDocumentProcessed={handleDocumentProcessed} />
+            <DocumentUploader onDocumentProcessed={handleProcessExtractedDocument} />
           </Box>
 
           {/* Session Selection with Add & Edit */}
@@ -949,33 +988,95 @@ const Worksheet: React.FC = () => {
 
             <Paper sx={{ 
               p: 4, 
-              mb: 4, 
+              mb: 2, 
               bgcolor: '#ffffff',
               borderRadius: 2,
               border: '1px solid rgba(0, 0, 0, 0.2)',
               boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
             }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  color: '#4B0082'
-                }}
-              >
-                MY PERSONAL VALUES: Finding meaning and importance
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography 
+                  variant="subtitle1" 
+                  sx={{ 
+                    fontFamily: 'Poppins', 
+                    fontWeight: 'medium', 
+                    color: '#4B0082'
+                  }}
+                >
+                  MY PERSONAL VALUES: Finding meaning and importance
+                </Typography>
+                
+                {/* Document extraction status */}
+                <Tooltip title="Document extraction status for personal values section">
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    bgcolor: personalValues.proudOf.some(v => v) || 
+                      personalValues.achievement.some(v => v) || 
+                      personalValues.happiness.some(v => v) || 
+                      personalValues.inspiration.some(v => v) ? '#e6f7e6' : '#f9f9fd',
+                    px: 2,
+                    py: 0.5,
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: personalValues.proudOf.some(v => v) || 
+                      personalValues.achievement.some(v => v) || 
+                      personalValues.happiness.some(v => v) || 
+                      personalValues.inspiration.some(v => v) ? '#a3e0a3' : '#e0e0e0'
+                  }}>
+                    {personalValues.proudOf.some(v => v) || 
+                     personalValues.achievement.some(v => v) || 
+                     personalValues.happiness.some(v => v) || 
+                     personalValues.inspiration.some(v => v) ? (
+                      <>
+                        <CheckCircleOutline sx={{ color: 'success.main', mr: 1, fontSize: 18 }} />
+                        <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 'medium' }}>
+                          Document values mapped
+                        </Typography>
+                      </>
+                    ) : (
+                      <>
+                        <InfoOutlined sx={{ color: 'text.secondary', mr: 1, fontSize: 18 }} />
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          No document values mapped
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+                </Tooltip>
+              </Box>
+              
+              <Box sx={{ mb: 3, p: 2, bgcolor: '#f0f7ff', borderRadius: 2, border: '1px solid #d0e1f9' }}>
+                <Typography variant="body2" sx={{ color: 'info.dark', display: 'flex', alignItems: 'center' }}>
+                  <InfoOutlined sx={{ mr: 1, fontSize: 18 }} />
+                  When you upload a document, the system will extract your personal values and map them to these fields. You can also enter your values directly.
+                </Typography>
+              </Box>
 
               {/* First pair of questions */}
               <Grid container spacing={4} sx={{ mb: 3 }}>
                 <Grid item xs={12} md={6}>
-                  <Box sx={{ height: '50px', mb: 1 }}>
+                  <Box sx={{ 
+                    mb: 1, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
                       What am I most proud of?
                     </Typography>
+                    {personalValues.proudOf.some(v => v) && (
+                      <Chip 
+                        size="small" 
+                        label="Extracted" 
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: '24px' }}
+                      />
+                    )}
                   </Box>
-                  {personalValues.proudOf.map((value, index) => (
+                  {/* Make sure we're iterating through all 3 items in the proudOf array */}
+                  {Array.from({length: 3}).map((_, index) => (
                     <Box key={`proud-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
                       <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
                         {index + 1}.
@@ -984,21 +1085,45 @@ const Worksheet: React.FC = () => {
                         fullWidth
                         multiline
                         rows={3}
-                        value={value}
+                        value={personalValues.proudOf[index] || ''}
                         onChange={(e) => updatePersonalValue('proudOf', index, e.target.value)}
-                        sx={{ ...numberedFieldStyles }}
+                        placeholder="Enter what you're most proud of..."
+                        sx={{ 
+                          ...numberedFieldStyles,
+                          '& .MuiOutlinedInput-root': {
+                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
+                            backgroundColor: personalValues.proudOf[index] ? '#fbfbff' : '#f9f9fd',
+                            transition: 'all 0.2s',
+                            border: personalValues.proudOf[index] ? '1px solid #d0d8ff' : '1px solid transparent',
+                          }
+                        }}
                       />
                     </Box>
                   ))}
                 </Grid>
 
                 <Grid item xs={12} md={6}>
-                  <Box sx={{ height: '50px', mb: 1 }}>
+                  <Box sx={{ 
+                    mb: 1, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
                       What did it take for me to achieve those things?
                     </Typography>
+                    {personalValues.achievement.some(v => v) && (
+                      <Chip 
+                        size="small" 
+                        label="Extracted" 
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: '24px' }}
+                      />
+                    )}
                   </Box>
-                  {personalValues.achievement.map((value, index) => (
+                  {/* Make sure we're iterating through all 3 items in the achievement array */}
+                  {Array.from({length: 3}).map((_, index) => (
                     <Box key={`achieve-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
                       <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
                         {index + 1}.
@@ -1007,9 +1132,18 @@ const Worksheet: React.FC = () => {
                         fullWidth
                         multiline
                         rows={3}
-                        value={value}
+                        value={personalValues.achievement[index] || ''}
                         onChange={(e) => updatePersonalValue('achievement', index, e.target.value)}
-                        sx={{ ...numberedFieldStyles }}
+                        placeholder="Enter what it took to achieve this..."
+                        sx={{ 
+                          ...numberedFieldStyles,
+                          '& .MuiOutlinedInput-root': {
+                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
+                            backgroundColor: personalValues.achievement[index] ? '#fbfbff' : '#f9f9fd',
+                            transition: 'all 0.2s',
+                            border: personalValues.achievement[index] ? '1px solid #d0d8ff' : '1px solid transparent',
+                          }
+                        }}
                       />
                     </Box>
                   ))}
@@ -1019,12 +1153,27 @@ const Worksheet: React.FC = () => {
               {/* Second pair of questions */}
               <Grid container spacing={4}>
                 <Grid item xs={12} md={6}>
-                  <Box sx={{ height: '50px', mb: 1 }}>
+                  <Box sx={{ 
+                    mb: 1, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
                       What makes me happiest in life?
                     </Typography>
+                    {personalValues.happiness.some(v => v) && (
+                      <Chip 
+                        size="small" 
+                        label="Extracted" 
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: '24px' }}
+                      />
+                    )}
                   </Box>
-                  {personalValues.happiness.map((value, index) => (
+                  {/* Make sure we're iterating through all 3 items in the happiness array */}
+                  {Array.from({length: 3}).map((_, index) => (
                     <Box key={`happy-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
                       <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
                         {index + 1}.
@@ -1033,21 +1182,45 @@ const Worksheet: React.FC = () => {
                         fullWidth
                         multiline
                         rows={3}
-                        value={value}
+                        value={personalValues.happiness[index] || ''}
                         onChange={(e) => updatePersonalValue('happiness', index, e.target.value)}
-                        sx={{ ...numberedFieldStyles }}
+                        placeholder="Enter what makes you happiest..."
+                        sx={{ 
+                          ...numberedFieldStyles,
+                          '& .MuiOutlinedInput-root': {
+                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
+                            backgroundColor: personalValues.happiness[index] ? '#fbfbff' : '#f9f9fd',
+                            transition: 'all 0.2s',
+                            border: personalValues.happiness[index] ? '1px solid #d0d8ff' : '1px solid transparent',
+                          }
+                        }}
                       />
                     </Box>
                   ))}
                 </Grid>
 
                 <Grid item xs={12} md={6}>
-                  <Box sx={{ height: '70px', mb: 1 }}>
+                  <Box sx={{ 
+                    mb: 1, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center'
+                  }}>
                     <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
                       Who do I find inspiring...and then, what are the qualities I am admiring?
                     </Typography>
+                    {personalValues.inspiration.some(v => v) && (
+                      <Chip 
+                        size="small" 
+                        label="Extracted" 
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: '24px' }}
+                      />
+                    )}
                   </Box>
-                  {personalValues.inspiration.map((value, index) => (
+                  {/* Make sure we're iterating through all 3 items in the inspiration array */}
+                  {Array.from({length: 3}).map((_, index) => (
                     <Box key={`inspire-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
                       <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
                         {index + 1}.
@@ -1056,14 +1229,106 @@ const Worksheet: React.FC = () => {
                         fullWidth
                         multiline
                         rows={3}
-                        value={value}
+                        value={personalValues.inspiration[index] || ''}
                         onChange={(e) => updatePersonalValue('inspiration', index, e.target.value)}
-                        sx={{ ...numberedFieldStyles }}
+                        placeholder="Enter who inspires you and what qualities you admire..."
+                        sx={{ 
+                          ...numberedFieldStyles,
+                          '& .MuiOutlinedInput-root': {
+                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
+                            backgroundColor: personalValues.inspiration[index] ? '#fbfbff' : '#f9f9fd',
+                            transition: 'all 0.2s',
+                            border: personalValues.inspiration[index] ? '1px solid #d0d8ff' : '1px solid transparent',
+                          }
+                        }}
                       />
                     </Box>
                   ))}
                 </Grid>
               </Grid>
+            </Paper>
+            
+            {/* Manual Document Mapping Tool */}
+            <Paper sx={{ 
+              p: 3, 
+              mb: 4, 
+              bgcolor: '#ffffff',
+              borderRadius: 2,
+              border: '1px solid rgba(0, 0, 0, 0.1)',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+            }}>
+              <Typography 
+                variant="subtitle1" 
+                sx={{ 
+                  fontFamily: 'Poppins', 
+                  fontWeight: 'medium', 
+                  mb: 2,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <AutoAwesomeOutlined sx={{ mr: 1, color: '#4B0082' }} />
+                Document Mapping Helper
+              </Typography>
+              
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                If your uploaded document wasn't fully extracted, you can use this helper to map content from your document to the fields above.
+              </Typography>
+              
+              <Accordion sx={{ 
+                mb: 2, 
+                boxShadow: 'none', 
+                border: '1px solid #e0e0e0',
+                '&:before': { display: 'none' } 
+              }}>
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Typography variant="body2" sx={{ fontWeight: 'medium' }}>How to map document values</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body2" component="div">
+                    <ol style={{ paddingLeft: '1.5rem', margin: 0 }}>
+                      <li>Upload your document using the document uploader at the top</li>
+                      <li>Check if values were automatically extracted and populated in the fields</li>
+                      <li>If some fields weren't populated, you can manually enter them</li>
+                      <li>Look for common patterns like numbered lists in your document</li>
+                      <li>Click "Save" when you're satisfied with the mapping</li>
+                    </ol>
+                  </Typography>
+                </AccordionDetails>
+              </Accordion>
+              
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  sx={{ mr: 2 }}
+                  onClick={() => {
+                    // Reset all fields
+                    const updatedValues: PersonalValue = {
+                      id: personalValues.id,
+                      proudOf: ['', '', ''],
+                      achievement: ['', '', ''],
+                      happiness: ['', '', ''],
+                      inspiration: ['', '', '']
+                    };
+                    
+                    const updatedSessions = sessions.map(session => 
+                      session.id === currentSessionId 
+                        ? { ...session, personalValues: updatedValues } 
+                        : session
+                    );
+                    setSessions(updatedSessions);
+                  }}
+                >
+                  Clear All Fields
+                </Button>
+                <Button 
+                  variant="contained" 
+                  color="primary"
+                  onClick={() => setSaveSuccess(true)}
+                >
+                  Save Values
+                </Button>
+              </Box>
             </Paper>
           </TabPanel>
 

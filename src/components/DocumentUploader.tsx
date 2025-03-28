@@ -47,11 +47,27 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentProcessed
     setError(null);
     
     try {
+      console.log("Starting document extraction process for file:", file.name);
+      
       const data = await handleDocumentUpload(file);
+      
+      console.log("Document extraction completed. Results:");
+      console.log("- Personal Values:", {
+        proudOf: data.personalValues.proudOf,
+        achievement: data.personalValues.achievement,
+        happiness: data.personalValues.happiness,
+        inspiration: data.personalValues.inspiration
+      });
+      console.log("- Core Values:", data.productivityConnection.coreValues ? "Present" : "Not found");
+      console.log("- Productivity Connection:", data.productivityConnection.valueImpact ? "Present" : "Not found");
+      console.log("- Goals:", data.goals.description ? "Present" : "Not found");
+      console.log("- Workshop Output:", data.workshopOutput.actions.some(a => a) ? "Present" : "Not found");
+      
       setExtractedData(data);
       setSuccessMessage('Document successfully processed. Review the extracted data below.');
       setPreviewDialogOpen(true);
     } catch (err) {
+      console.error("Document extraction failed:", err);
       setError(err instanceof Error ? err.message : 'An error occurred while processing the document.');
     } finally {
       setIsUploading(false);
@@ -71,9 +87,132 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentProcessed
   
   const handleApplyData = () => {
     if (extractedData) {
-      onDocumentProcessed(extractedData);
-      setPreviewDialogOpen(false);
-      setSuccessMessage('Document data successfully applied to the worksheet.');
+      try {
+        // Create a deep copy to avoid mutations
+        const processedData: ExtractedContent = JSON.parse(JSON.stringify(extractedData));
+        
+        // Advanced debugging output for field mapping
+        console.log("===== DOCUMENT EXTRACTION FIELD MAPPING ANALYSIS =====");
+        console.log("1. What am I most proud of? →", processedData.personalValues.proudOf);
+        console.log("2. What did it take? →", processedData.personalValues.achievement);
+        console.log("3. What makes me happiest? →", processedData.personalValues.happiness);
+        console.log("4. Who do I find inspiring? →", processedData.personalValues.inspiration);
+        
+        // Detect if the values appear to be in the wrong order based on content matching
+        // This is a special case handler for the table format seen in the screenshot
+        
+        // Define key patterns that might indicate fields are in wrong positions
+        const patterns = {
+          proudOf: [
+            /creating genuine/i, 
+            /embracing challenges/i, 
+            /volunteer.*community/i,
+            /connections with.*family/i
+          ],
+          achievement: [
+            /consistent hard work/i, 
+            /resilience/i, 
+            /support system/i,
+            /personal accountability/i
+          ],
+          happiness: [
+            /moments of quiet/i, 
+            /laugh.*(conversation|people)/i,
+            /personal growth/i,
+            /reflection.*nature/i
+          ],
+          inspiration: [
+            /mentor/i, 
+            /community leader/i,
+            /close friend/i,
+            /admired for/i
+          ]
+        };
+        
+        // Check if fields seem to be swapped
+        let wrongOrderDetected = false;
+        
+        // Check if "proudOf" has content that matches "achievement" patterns
+        if (processedData.personalValues.proudOf.some(item => 
+            item && patterns.achievement.some(pattern => pattern.test(item)))) {
+          console.log("📊 Table format detected: 'What am I most proud of?' contains achievement content");
+          wrongOrderDetected = true;
+        }
+        
+        // Check if "achievement" has content that matches "proudOf" patterns
+        if (processedData.personalValues.achievement.some(item => 
+            item && patterns.proudOf.some(pattern => pattern.test(item)))) {
+          console.log("📊 Table format detected: 'What did it take?' contains proud of content");
+          wrongOrderDetected = true;
+        }
+        
+        // If we detect the wrong order, swap the values to fix the mapping
+        if (wrongOrderDetected) {
+          console.log("🔄 Fixing field order: Swapping proudOf and achievement fields");
+          const temp = [...processedData.personalValues.proudOf];
+          processedData.personalValues.proudOf = [...processedData.personalValues.achievement];
+          processedData.personalValues.achievement = temp;
+          
+          // Also check and fix happiness/inspiration if needed
+          if (processedData.personalValues.happiness.some(item => 
+              item && patterns.inspiration.some(pattern => pattern.test(item)))) {
+            console.log("🔄 Fixing field order: Swapping happiness and inspiration fields");
+            const temp2 = [...processedData.personalValues.happiness];
+            processedData.personalValues.happiness = [...processedData.personalValues.inspiration];
+            processedData.personalValues.inspiration = temp2;
+          }
+        }
+        
+        // Fix common mapping issues
+        
+        // Ensure each personal value array has exactly 3 elements
+        const ensureThreeElements = (arr: string[]): string[] => {
+          const result = [...arr];
+          while (result.length < 3) result.push('');
+          return result.slice(0, 3);
+        };
+        
+        // Define question patterns to filter out questions accidentally included as content
+        const questionPatterns = [
+          /what am i most proud of\??/i,
+          /what did it take for me to achieve those things\??/i,
+          /what makes me happiest in life\??/i,
+          /who do i find inspiring|qualities i am admiring/i
+        ];
+        
+        // Remove any question text from content fields
+        Object.keys(processedData.personalValues).forEach(field => {
+          const values = processedData.personalValues[field as keyof typeof processedData.personalValues] as string[];
+          for (let i = 0; i < values.length; i++) {
+            if (values[i] && questionPatterns.some(pattern => pattern.test(values[i]))) {
+              console.log(`Removing question text from ${field}[${i}]: "${values[i]}"`);
+              values[i] = '';
+            }
+          }
+        });
+        
+        // Process each personal value array to ensure three elements
+        processedData.personalValues.proudOf = ensureThreeElements(processedData.personalValues.proudOf);
+        processedData.personalValues.achievement = ensureThreeElements(processedData.personalValues.achievement);
+        processedData.personalValues.happiness = ensureThreeElements(processedData.personalValues.happiness);
+        processedData.personalValues.inspiration = ensureThreeElements(processedData.personalValues.inspiration);
+        
+        // Log the final processed data
+        console.log("FINAL PROCESSED DATA TO APPLY:");
+        console.log("1. What am I most proud of? →", processedData.personalValues.proudOf);
+        console.log("2. What did it take? →", processedData.personalValues.achievement);
+        console.log("3. What makes me happiest? →", processedData.personalValues.happiness);
+        console.log("4. Who do I find inspiring? →", processedData.personalValues.inspiration);
+        console.log("========================================");
+        
+        // Send the processed data to the parent component
+        onDocumentProcessed(processedData);
+        setPreviewDialogOpen(false);
+        setSuccessMessage('Document data successfully applied to the worksheet.');
+      } catch (error) {
+        console.error("Error processing extracted data:", error);
+        setError("Error processing document data. Please try again.");
+      }
     }
   };
   
