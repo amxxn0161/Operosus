@@ -98,76 +98,84 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentProcessed
         console.log("3. What makes me happiest? →", processedData.personalValues.happiness);
         console.log("4. Who do I find inspiring? →", processedData.personalValues.inspiration);
         
-        // Detect if the values appear to be in the wrong order based on content matching
-        // This is a special case handler for the table format seen in the screenshot
-        
-        // Define key patterns that might indicate fields are in wrong positions
-        const patterns = {
-          proudOf: [
-            /creating genuine/i, 
-            /embracing challenges/i, 
-            /volunteer.*community/i,
-            /connections with.*family/i
-          ],
-          achievement: [
-            /consistent hard work/i, 
-            /resilience/i, 
-            /support system/i,
-            /personal accountability/i
-          ],
-          happiness: [
-            /moments of quiet/i, 
-            /laugh.*(conversation|people)/i,
-            /personal growth/i,
-            /reflection.*nature/i
-          ],
-          inspiration: [
-            /mentor/i, 
-            /community leader/i,
-            /close friend/i,
-            /admired for/i
-          ]
+        // Analyze the distribution of content across fields
+        const fieldCounts = {
+          proudOf: processedData.personalValues.proudOf.filter(Boolean).length,
+          achievement: processedData.personalValues.achievement.filter(Boolean).length,
+          happiness: processedData.personalValues.happiness.filter(Boolean).length,
+          inspiration: processedData.personalValues.inspiration.filter(Boolean).length
         };
         
-        // Check if fields seem to be swapped
-        let wrongOrderDetected = false;
+        console.log("Field content distribution:", fieldCounts);
         
-        // Check if "proudOf" has content that matches "achievement" patterns
-        if (processedData.personalValues.proudOf.some(item => 
-            item && patterns.achievement.some(pattern => pattern.test(item)))) {
-          console.log("📊 Table format detected: 'What am I most proud of?' contains achievement content");
-          wrongOrderDetected = true;
-        }
+        // Check for structural imbalances that might indicate wrong field mapping
+        const hasImbalance = (Math.max(...Object.values(fieldCounts)) > 0) && 
+                            (Object.values(fieldCounts).filter(count => count === 0).length >= 2);
         
-        // Check if "achievement" has content that matches "proudOf" patterns
-        if (processedData.personalValues.achievement.some(item => 
-            item && patterns.proudOf.some(pattern => pattern.test(item)))) {
-          console.log("📊 Table format detected: 'What did it take?' contains proud of content");
-          wrongOrderDetected = true;
-        }
+        // Common 2x2 grid format that causes incorrect grouping
+        const has2x2GridPattern = (
+          // Case 1: Content in fields 1 & 3, but not 2 & 4
+          (fieldCounts.proudOf > 0 && fieldCounts.achievement === 0 && 
+           fieldCounts.happiness > 0 && fieldCounts.inspiration === 0) ||
+          // Case 2: Content in fields 2 & 4, but not 1 & 3
+          (fieldCounts.proudOf === 0 && fieldCounts.achievement > 0 && 
+           fieldCounts.happiness === 0 && fieldCounts.inspiration > 0)
+        );
         
-        // If we detect the wrong order, swap the values to fix the mapping
-        if (wrongOrderDetected) {
-          console.log("🔄 Fixing field order: Swapping proudOf and achievement fields");
-          const temp = [...processedData.personalValues.proudOf];
-          processedData.personalValues.proudOf = [...processedData.personalValues.achievement];
-          processedData.personalValues.achievement = temp;
+        // If we detect a 2x2 grid pattern, rebalance the fields based on structure
+        if (has2x2GridPattern) {
+          console.log("📊 Detected 2x2 grid format with imbalanced field mapping");
           
-          // Also check and fix happiness/inspiration if needed
-          if (processedData.personalValues.happiness.some(item => 
-              item && patterns.inspiration.some(pattern => pattern.test(item)))) {
-            console.log("🔄 Fixing field order: Swapping happiness and inspiration fields");
-            const temp2 = [...processedData.personalValues.happiness];
-            processedData.personalValues.happiness = [...processedData.personalValues.inspiration];
-            processedData.personalValues.inspiration = temp2;
+          // Case 1: Content in fields 1 & 3, but not 2 & 4
+          if (fieldCounts.proudOf > 0 && fieldCounts.achievement === 0 && 
+              fieldCounts.happiness > 0 && fieldCounts.inspiration === 0) {
+            console.log("🔄 Rebalancing fields: Moving content from happiness to achievement");
+            processedData.personalValues.achievement = [...processedData.personalValues.happiness];
+            processedData.personalValues.happiness = ['', '', ''];
+          }
+          // Case 2: Content in fields 2 & 4, but not 1 & 3
+          else if (fieldCounts.proudOf === 0 && fieldCounts.achievement > 0 && 
+                  fieldCounts.happiness === 0 && fieldCounts.inspiration > 0) {
+            console.log("🔄 Rebalancing fields: Moving content from achievement to proudOf");
+            processedData.personalValues.proudOf = [...processedData.personalValues.achievement];
+            processedData.personalValues.achievement = [...processedData.personalValues.inspiration];
+            processedData.personalValues.inspiration = ['', '', ''];
+          }
+        }
+        // Check for the case where all content is in one field
+        else if (hasImbalance) {
+          const nonEmptyField = Object.entries(fieldCounts)
+            .find(([_, count]) => count > 8)?.[0] as keyof typeof processedData.personalValues | undefined;
+          
+          if (nonEmptyField && fieldCounts[nonEmptyField] >= 8) {
+            console.log(`🔄 Detected all content in single field: ${nonEmptyField}`);
+            
+            // Get all content from the non-empty field
+            const allContent = [...processedData.personalValues[nonEmptyField]].filter(Boolean);
+            
+            // Distribute content across all fields
+            if (allContent.length >= 8) {
+              console.log("🔄 Distributing content from single field to all fields");
+              
+              // Distribute items across fields (3 items per field)
+              processedData.personalValues.proudOf = allContent.slice(0, 3);
+              processedData.personalValues.achievement = allContent.slice(3, 6);
+              processedData.personalValues.happiness = allContent.slice(6, 9);
+              processedData.personalValues.inspiration = allContent.slice(9, 12);
+              
+              // Ensure each field has exactly 3 elements
+              Object.keys(processedData.personalValues).forEach(field => {
+                const values = processedData.personalValues[field as keyof typeof processedData.personalValues];
+                while (values.length < 3) values.push('');
+                if (values.length > 3) values.splice(3);
+              });
+            }
           }
         }
         
-        // Fix common mapping issues
-        
         // Ensure each personal value array has exactly 3 elements
         const ensureThreeElements = (arr: string[]): string[] => {
-          const result = [...arr];
+          const result = arr.filter(Boolean); // Remove empty strings
           while (result.length < 3) result.push('');
           return result.slice(0, 3);
         };
