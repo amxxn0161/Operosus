@@ -766,6 +766,32 @@ function extractPersonalValuesTable(lines: string[]): {
       inspiration: /who do i find inspiring|qualities i am admiring/i
     };
     
+    // Define patterns to identify headers (NOT content)
+    const headerPatterns = [
+      /^MY [A-Z\s]+:?/i,          // e.g. "MY PERSONAL VALUES:"
+      /^PRODUCTIVITY [A-Z\s]+:?/i, // e.g. "PRODUCTIVITY SUPERHERO WORKSHEET"
+      /finding meaning and importance/i,
+      /^\s*WORKSHEET\s*$/i,
+      /^Section \d+/i,
+      /^Table \d+/i
+    ];
+    
+    // Helper to check if text is likely a header/title and not content
+    const isLikelyHeader = (text: string): boolean => {
+      if (!text) return false;
+      
+      // Headers are often all caps or start with capital words
+      const isAllCaps = text === text.toUpperCase() && text.length > 5;
+      
+      // Check against known header patterns
+      const matchesHeaderPattern = headerPatterns.some(pattern => pattern.test(text));
+      
+      // Headers often don't have sentence-like structure
+      const hasNoSentenceStructure = !text.includes(',') && !text.includes(' and ');
+      
+      return (isAllCaps || matchesHeaderPattern) && hasNoSentenceStructure;
+    };
+    
     // Find indexes of section headers in the document
     const questionIndexes: Record<string, number> = {
       proudOf: -1,
@@ -811,121 +837,151 @@ function extractPersonalValuesTable(lines: string[]): {
       console.log('Table format detected with questions at positions:', 
         questionPositions.map(([q, idx]) => `${q}: ${idx}`).join(', '));
       
-      // Determine if we have a 2x2 grid structure based on question positioning
-      const is2x2Grid = questionPositions.length === 4;
+      // Find numbered items in the document
+      const numberedItems: Array<{
+        index: number, 
+        number: number, 
+        text: string,
+        closestQuestion: string | null
+      }> = [];
       
-      if (is2x2Grid) {
-        console.log('Detected possible 2x2 grid structure');
+      // Search for all numbered items in the document (1., 2., 3., etc.)
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length < 5) continue;
         
-        // For a 2x2 grid, analyze the pattern of question placements
-        const xCoordinates = new Set();
-        const yCoordinates = new Set();
+        // Skip if the line contains a question
+        if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
+          continue;
+        }
         
-        // In a typical PDF or document extraction, we don't have exact x,y coordinates
-        // But we can infer relative positioning based on line indices and sequence
-        questionPositions.forEach(([_, idx], i) => {
-          // Logic to estimate x,y position based on line indices
-          // This is a simplified version that assumes questions in a grid will be
-          // spaced somewhat evenly
-          xCoordinates.add(i % 2); // Alternate between 0 and 1 for columns
-          yCoordinates.add(Math.floor(i / 2)); // 0 for first row, 1 for second row
-        });
-        
-        const hasTwoColumns = xCoordinates.size === 2;
-        const hasTwoRows = yCoordinates.size === 2;
-        
-        if (hasTwoColumns && hasTwoRows) {
-          console.log('Confirmed 2x2 grid structure for questions');
+        // Look for the numbered item pattern: "1. Content", "1) Content", etc.
+        const numberMatch = line.match(/^(\d+)[.)\s]+\s*(.*)/);
+        if (numberMatch) {
+          const number = parseInt(numberMatch[1], 10);
+          const text = numberMatch[2].trim();
           
-          // In a 2x2 table, we need to carefully associate content with the right questions
-          // Content belongs to the question DIRECTLY ABOVE it, not to the side
-          
-          // We'll create ranges for each question's content
-          const contentRanges: Record<string, {start: number, end: number}> = {};
-          
-          // Sort question positions by line number to determine content ranges
-          const sortedQuestions = [...questionPositions].sort((a, b) => a[1] - b[1]);
-          
-          // Define content ranges for each question
-          for (let i = 0; i < sortedQuestions.length; i++) {
-            const [field, startIdx] = sortedQuestions[i];
-            // The end of this question's content is either the start of the next question
-            // or some reasonable number of lines ahead
-            const endIdx = (i < sortedQuestions.length - 1) 
-              ? sortedQuestions[i + 1][1] 
-              : startIdx + 20;
-            
-            contentRanges[field] = {start: startIdx + 1, end: endIdx};
-            console.log(`Content range for ${field}: lines ${startIdx+1} to ${endIdx-1}`);
+          // Skip likely headers
+          if (isLikelyHeader(text)) {
+            console.log(`Skipping likely header at line ${i}: "${text}"`);
+            continue;
           }
           
-          // Extract content for each question based on its range
-          for (const [field, range] of Object.entries(contentRanges)) {
-            const items: string[] = [];
+          if (number >= 1 && number <= 3 && text.length > 0) {
+            // Find closest question for this numbered item
+            let closestQuestion: string | null = null;
+            let minDistance = Number.MAX_SAFE_INTEGER;
             
-            // Look for numbered items (1., 2., 3.) or bullet points within this range
-            for (let i = range.start; i < range.end; i++) {
-              if (processedLineIndices.has(i)) continue;
-              
-              const line = lines[i].trim();
-              if (line.length < 5) continue;
-              
-              // Skip if the line contains another question
-              if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
-                continue;
-              }
-              
-              // Check for numbered item format (1. content, 2. content, etc)
-              const numberMatch = line.match(/^(\d+)[.)\s]+\s*(.*)/);
-              if (numberMatch) {
-                const number = parseInt(numberMatch[1], 10);
-                const content = numberMatch[2].trim();
-                
-                if (number >= 1 && number <= 3 && content.length > 0) {
-                  if (items.length < 3) {
-                    // Use the number as the position in the array (0-indexed)
-                    const position = number - 1;
-                    items[position] = content;
-                    processedLineIndices.add(i);
-                    console.log(`Found numbered item ${number} for ${field}: "${content}"`);
-                  }
-                }
-              }
-              // Check for bullet point format
-              else if (line.startsWith('•') || line.startsWith('-') || line.startsWith('*')) {
-                const content = line.replace(/^[•\-*]\s*/, '').trim();
-                if (content.length > 0 && items.length < 3) {
-                  items.push(content);
-                  processedLineIndices.add(i);
-                  console.log(`Found bullet point for ${field}: "${content}"`);
-                }
-              }
-              // Also include substantial non-numbered content
-              else if (line.length > 10 && !line.includes('?')) {
-                if (items.length < 3) {
-                  items.push(line);
-                  processedLineIndices.add(i);
-                  console.log(`Found substantial content for ${field}: "${line}"`);
+            for (const [field, idx] of Object.entries(questionIndexes)) {
+              if (idx >= 0 && i > idx) { // Only look at questions that appear before this item
+                const distance = i - idx;
+                if (distance < minDistance) {
+                  minDistance = distance;
+                  closestQuestion = field;
                 }
               }
             }
             
-            // Ensure we have exactly 3 items
-            while (items.length < 3) items.push('');
+            numberedItems.push({
+              index: i,
+              number,
+              text,
+              closestQuestion
+            });
             
-            // Apply the items to the result
-            if (field === 'proudOf') result.proudOf = items.slice(0, 3);
-            else if (field === 'achievement') result.achievement = items.slice(0, 3);
-            else if (field === 'happiness') result.happiness = items.slice(0, 3);
-            else if (field === 'inspiration') result.inspiration = items.slice(0, 3);
+            console.log(`Found numbered item ${number} at line ${i}: "${text}", closest question: ${closestQuestion}`);
+          }
+        }
+      }
+      
+      // Group the numbered items by their closest question
+      const groupedItems: Record<string, Array<{number: number, text: string}>> = {
+        proudOf: [],
+        achievement: [],
+        happiness: [],
+        inspiration: []
+      };
+      
+      for (const item of numberedItems) {
+        if (item.closestQuestion) {
+          groupedItems[item.closestQuestion].push({
+            number: item.number,
+            text: item.text
+          });
+        }
+      }
+      
+      // Now process each group and assign to the result
+      for (const [field, items] of Object.entries(groupedItems)) {
+        // Sort by number
+        items.sort((a, b) => a.number - b.number);
+        
+        if (items.length > 0) {
+          // Create an array with 3 empty strings
+          const fieldValues = ['', '', ''];
+          
+          // Assign each item to its position (number - 1)
+          for (const item of items) {
+            if (item.number >= 1 && item.number <= 3) {
+              fieldValues[item.number - 1] = item.text;
+            }
+          }
+          
+          // Only update if we found some content
+          if (fieldValues.some(v => v.length > 0)) {
+            result[field as keyof typeof result] = fieldValues;
+            console.log(`Setting ${field} items to:`, fieldValues);
+          }
+        }
+      }
+      
+      // If we still have missing values, try a different approach - look for content near each question
+      for (const field of Object.keys(result) as Array<keyof typeof result>) {
+        if (!result[field].some(Boolean) && questionIndexes[field] >= 0) {
+          console.log(`Field ${field} is still empty, trying content-based extraction`);
+          
+          const questionIdx = questionIndexes[field];
+          const contentItems: string[] = [];
+          
+          // Look at the next few lines after the question
+          for (let i = questionIdx + 1; i < questionIdx + 10 && i < lines.length; i++) {
+            if (processedLineIndices.has(i)) continue;
             
-            console.log(`Final items for ${field}:`, items);
+            const line = lines[i].trim();
+            if (line.length < 10) continue;
+            
+            // Skip if the line contains a question
+            if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
+              continue;
+            }
+            
+            // Skip likely headers
+            if (isLikelyHeader(line)) {
+              console.log(`Skipping likely header at line ${i}: "${line}"`);
+              continue;
+            }
+            
+            // Check if this line looks like substantial content
+            if (line.length > 10 && !line.includes('?')) {
+              contentItems.push(line);
+              processedLineIndices.add(i);
+              console.log(`Found content item for ${field} at line ${i}: "${line}"`);
+              
+              if (contentItems.length >= 3) break;
+            }
+          }
+          
+          // If we found content, update the result
+          if (contentItems.length > 0) {
+            // Ensure exactly 3 items
+            while (contentItems.length < 3) contentItems.push('');
+            result[field] = contentItems.slice(0, 3);
           }
         }
       }
     }
     
-    // If we couldn't extract through grid analysis, fall back to section-based extraction
+    // If we still have missing values, fall back to section-based extraction
     if (!result.proudOf.some(Boolean) || 
         !result.achievement.some(Boolean) || 
         !result.happiness.some(Boolean) || 
@@ -966,6 +1022,12 @@ function extractPersonalValuesTable(lines: string[]): {
             continue;
           }
           
+          // Skip likely headers
+          if (isLikelyHeader(line)) {
+            console.log(`Skipping likely header at line ${i}: "${line}"`);
+            continue;
+          }
+          
           // Look for numbered items
           const numberMatch = line.match(/^(\d+)[.)\s]+\s*(.*)/);
           if (numberMatch) {
@@ -991,6 +1053,9 @@ function extractPersonalValuesTable(lines: string[]): {
           }
           // For unnumbered substantial content
           else if (line.length > 10 && !line.includes('?')) {
+            // Skip likely headers
+            if (isLikelyHeader(line)) continue;
+            
             const emptyIndex = items.findIndex(item => !item);
             if (emptyIndex >= 0) {
               items[emptyIndex] = line;
@@ -1007,35 +1072,13 @@ function extractPersonalValuesTable(lines: string[]): {
       };
       
       // Extract content for each section if we have section headers
-      if (questionIndexes.proudOf >= 0) {
-        const proudOfItems = extractContentFromSection(questionIndexes.proudOf);
-        if (proudOfItems.some(item => item.length > 0)) {
-          result.proudOf = proudOfItems;
-          console.log('Extracted proud of items by section:', proudOfItems);
-        }
-      }
-      
-      if (questionIndexes.achievement >= 0) {
-        const achievementItems = extractContentFromSection(questionIndexes.achievement);
-        if (achievementItems.some(item => item.length > 0)) {
-          result.achievement = achievementItems;
-          console.log('Extracted achievement items by section:', achievementItems);
-        }
-      }
-      
-      if (questionIndexes.happiness >= 0) {
-        const happinessItems = extractContentFromSection(questionIndexes.happiness);
-        if (happinessItems.some(item => item.length > 0)) {
-          result.happiness = happinessItems;
-          console.log('Extracted happiness items by section:', happinessItems);
-        }
-      }
-      
-      if (questionIndexes.inspiration >= 0) {
-        const inspirationItems = extractContentFromSection(questionIndexes.inspiration);
-        if (inspirationItems.some(item => item.length > 0)) {
-          result.inspiration = inspirationItems;
-          console.log('Extracted inspiration items by section:', inspirationItems);
+      for (const field of Object.keys(questionIndexes) as Array<keyof typeof questionIndexes>) {
+        if (questionIndexes[field] >= 0 && !result[field as keyof typeof result].some(Boolean)) {
+          const items = extractContentFromSection(questionIndexes[field]);
+          if (items.some(item => item.length > 0)) {
+            result[field as keyof typeof result] = items;
+            console.log(`Extracted ${field} items by section:`, items);
+          }
         }
       }
     }
@@ -1064,6 +1107,12 @@ function extractPersonalValuesTable(lines: string[]): {
         
         // Skip question headings
         if (Object.values(questionIndicators).some(pattern => pattern.test(line.toLowerCase()))) {
+          continue;
+        }
+        
+        // Skip likely headers
+        if (isLikelyHeader(line)) {
+          console.log(`Skipping likely header at line ${i}: "${line}"`);
           continue;
         }
         
@@ -1126,7 +1175,8 @@ function extractPersonalValuesTable(lines: string[]): {
             for (const [field, idx] of Object.entries(questionIndexes)) {
               if (idx >= 0) {
                 // Distance is simply the difference in line numbers
-                const distance = Math.abs(item.index - idx);
+                // But we heavily favor questions that appear BEFORE the content
+                const distance = item.index > idx ? (item.index - idx) : 1000 + (idx - item.index);
                 distances.push([field, distance]);
               }
             }

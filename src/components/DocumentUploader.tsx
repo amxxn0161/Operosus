@@ -350,7 +350,7 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentProcessed
           )}
           
           <Alert severity="info" sx={{ mt: 2 }}>
-            Note: The system extracts data based on document structure and proximity of content to questions. Some fields may not be extracted correctly depending on the document formatting.
+            Note: The system extracts data based on document structure and proximity of content to questions. Content is matched with the question above it in the document. Some fields may not be extracted correctly if the document has an unusual format.
           </Alert>
         </DialogContent>
         <DialogActions>
