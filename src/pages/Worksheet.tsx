@@ -209,43 +209,111 @@ const Worksheet: React.FC = () => {
       try {
         setLoading(true);
         const apiSessions = await fetchUserSessions();
+        console.log('API sessions received:', apiSessions);
         
         if (apiSessions.length > 0) {
           // Convert API sessions to the format expected by the component
-          const formattedSessions = apiSessions.map((apiSession: UserSession) => ({
-            id: String(apiSession.id),
-            name: apiSession.name,
-            personalValues: {
-              id: 1,
-              proudOf: apiSession.achievements?.length ? 
-                apiSession.achievements.map(a => a.description).slice(0, 3) : 
-                ['', '', ''],
-              achievement: apiSession.achievements?.length ? 
-                apiSession.achievements.map(a => a.howAchieved).slice(0, 3) : 
-                ['', '', ''],
-              happiness: apiSession.personalValues?.length ? 
-                apiSession.personalValues.map(v => v.description).slice(0, 3) : 
-                ['', '', ''],
-              inspiration: ['', '', ''] // New field
-            },
-            productivityConnection: {
-              id: 1,
-              coreValues: apiSession.coreValues || '',
-              valueImpact: apiSession.alignment || ''
-            },
-            goals: {
-              id: 1,
-              description: apiSession.goals?.length ? apiSession.goals[0].description : '',
-              impact: ['', '', ''] // New field
-            },
-            workshopOutput: {
-              id: 1,
-              actions: apiSession.actions?.length ? 
-                apiSession.actions.map(a => a.description).slice(0, 5) : 
-                ['', '', '', '', ''],
-              reflections: apiSession.reflections || ''
+          const formattedSessions = apiSessions.map((apiSession: UserSession) => {
+            console.log(`Processing session ID ${apiSession.id}: "${apiSession.name}"`);
+            
+            // Add debugging for personalValues from API
+            console.log('Processing personalValues from API:', apiSession.personalValues);
+            console.log('First 3 values (happiness):', apiSession.personalValues?.slice(0, 3));
+            console.log('Next 3 values (inspiration):', apiSession.personalValues?.length > 3 ? 
+              apiSession.personalValues.slice(3, 6) : 'Not available');
+            
+            // Extract impact fields from goal descriptions if they exist
+            const impactFields = ['', '', ''];
+            let mainDescription = ''; // Declare the variable to fix linter errors
+            
+            // If there are goals in the API response
+            if (apiSession.goals?.length) {
+              console.log(`Found ${apiSession.goals.length} goals in API response`);
+              
+              // First goal is always the main description
+              if (apiSession.goals[0]) {
+                mainDescription = apiSession.goals[0].description || '';
+                console.log(`Main goal description from API:`, mainDescription);
+              }
+              
+              // Look for additional goals that contain the impact fields
+              apiSession.goals.forEach(goal => {
+                const description = goal.description || '';
+                
+                // Check for specific impact field prefixes
+                if (description.startsWith('How will you feel:')) {
+                  impactFields[0] = description.replace('How will you feel:', '').trim();
+                  console.log(`Found 'How will you feel' goal (ID: ${goal.id}): "${impactFields[0]}"`);
+                } 
+                else if (description.startsWith('Who benefits:')) {
+                  impactFields[1] = description.replace('Who benefits:', '').trim();
+                  console.log(`Found 'Who benefits' goal (ID: ${goal.id}): "${impactFields[1]}"`);
+                } 
+                else if (description.startsWith('I want to improve:')) {
+                  impactFields[2] = description.replace('I want to improve:', '').trim();
+                  console.log(`Found 'I want to improve' goal (ID: ${goal.id}): "${impactFields[2]}"`);
+                }
+              });
+              
+              // Log out what we found
+              console.log(`Extracted impact fields from API:`, impactFields);
+              
+              // Also check for bullet points (•) which might indicate a list of goals
+              if (mainDescription.includes('•')) {
+                console.log('Bullet points found in goal description - preserving original format');
+              }
+            } else {
+              console.log('No goals found in API response');
             }
-          }));
+            
+            const formattedSession = {
+              id: String(apiSession.id),
+              name: apiSession.name,
+              personalValues: {
+                id: 1,
+                proudOf: apiSession.achievements?.length ? 
+                  apiSession.achievements.map(a => a.description).slice(0, 3) : 
+                  ['', '', ''],
+                achievement: apiSession.achievements?.length ? 
+                  apiSession.achievements.map(a => a.howAchieved).slice(0, 3) : 
+                  ['', '', ''],
+                happiness: apiSession.personalValues?.length ? 
+                  apiSession.personalValues.slice(0, 3).map(v => v.description) : 
+                  ['', '', ''],
+                inspiration: apiSession.personalValues?.length && apiSession.personalValues.length > 3 ? 
+                  apiSession.personalValues.slice(3, 6).map(v => v.description) : 
+                  ['', '', ''] // Now properly extracting values with IDs 4-6
+              },
+              productivityConnection: {
+                id: 1,
+                coreValues: apiSession.coreValues || '',
+                valueImpact: apiSession.alignment || ''
+              },
+              goals: {
+                id: 1,
+                // Use the extracted main description instead of just the first line
+                description: apiSession.goals?.length ? mainDescription : '',
+                impact: impactFields // Use the extracted impact fields
+              },
+              workshopOutput: {
+                id: 1,
+                actions: apiSession.actions?.length ? 
+                  apiSession.actions.map(a => a.description).slice(0, 5) : 
+                  ['', '', '', '', ''],
+                reflections: apiSession.reflections || ''
+              }
+            };
+            
+            console.log('Formatted session with extracted impact fields:', {
+              ...formattedSession,
+              goals: {
+                ...formattedSession.goals,
+                impact: formattedSession.goals.impact
+              }
+            });
+            
+            return formattedSession;
+          });
           
           setSessions(formattedSessions);
           setCurrentSessionId(String(apiSessions[0].id));
@@ -446,6 +514,7 @@ const Worksheet: React.FC = () => {
   const handleSaveWorksheet = async () => {
     try {
       setSaving(true);
+      console.log('🔄 Starting save process - saving to local state first');
       // Save to local state first
       handleSaveSession();
       
@@ -456,6 +525,7 @@ const Worksheet: React.FC = () => {
         throw new Error('Current session not found');
       }
       
+      console.log('📋 Preparing data for API submission');
       // Format data for API - convert from new format to API format
       const sessionForApi = {
         id: currentSessionData.id.startsWith('session-') ? undefined : Number(currentSessionData.id),
@@ -464,52 +534,117 @@ const Worksheet: React.FC = () => {
           id: i + 1,
           description: text,
           howAchieved: currentSessionData.personalValues.achievement[i] || ''
-        })),
-        personalValues: currentSessionData.personalValues.happiness.map((text, i) => ({
-          id: i + 1,
-          description: text
-        })),
+        })).filter(item => item.description.trim() !== ''),
+        // Include both happiness and inspiration in personalValues
+        personalValues: [
+          ...currentSessionData.personalValues.happiness.map((text, i) => ({
+            id: i + 1,
+            description: text
+          })),
+          ...currentSessionData.personalValues.inspiration.map((text, i) => ({
+            id: currentSessionData.personalValues.happiness.length + i + 1,
+            description: text
+          })).filter(item => item.description.trim() !== '') // Only include non-empty inspiration values
+        ],
         coreValues: currentSessionData.productivityConnection.coreValues,
-        goals: [{
-          id: 1,
-          description: currentSessionData.goals.description,
-          deadline: '',
-          keyResults: []
-        }],
+        goals: [
+          // Main goal - always include this
+          {
+            id: 1,
+            description: currentSessionData.goals.description.includes('\n') || 
+                        currentSessionData.goals.description.includes('•') ?
+              // If it already has bullet points or line breaks, preserve them
+              currentSessionData.goals.description :
+              // Otherwise just use the main description
+              currentSessionData.goals.description,
+            deadline: '',
+            keyResults: []
+          },
+          // Add additional goals for each impact field with non-empty values
+          ...(currentSessionData.goals.impact[0]?.trim() ? [{
+            id: 2,
+            description: `How will you feel: ${currentSessionData.goals.impact[0]}`,
+            deadline: '',
+            keyResults: []
+          }] : []),
+          ...(currentSessionData.goals.impact[1]?.trim() ? [{
+            id: 3,
+            description: `Who benefits: ${currentSessionData.goals.impact[1]}`,
+            deadline: '',
+            keyResults: []
+          }] : []),
+          ...(currentSessionData.goals.impact[2]?.trim() ? [{
+            id: 4,
+            description: `I want to improve: ${currentSessionData.goals.impact[2]}`,
+            deadline: '',
+            keyResults: []
+          }] : [])
+        ],
         actions: currentSessionData.workshopOutput.actions.map((text, i) => ({
           id: i + 1,
           description: text,
           deadline: '',
           status: 'Not Started' as 'Not Started' | 'In Progress' | 'Completed'
-        })),
+        })).filter(action => action.description.trim() !== ''), // Only include non-empty actions
         alignment: currentSessionData.productivityConnection.valueImpact,
         reflections: currentSessionData.workshopOutput.reflections
       };
       
+      console.log('🔍 Full session data being saved to API:', sessionForApi);
+      console.log('📊 Personal values breakdown:');
+      console.log('- Happiness values:', currentSessionData.personalValues.happiness);
+      console.log('- Inspiration values:', currentSessionData.personalValues.inspiration);
+      console.log('- API format personal values:', sessionForApi.personalValues);
+      
+      console.log('📤 Calling API to save session...', sessionForApi.id ? 'UPDATE' : 'CREATE', sessionForApi);
       // Save to API
       const savedSession = await saveUserSession(sessionForApi);
       
       if (savedSession) {
+        console.log('✅ API save successful, received session ID:', savedSession.id);
+        
+        // Important: Preserve the current UI state of the goals and impact fields
+        // that might not be reflected in the API response
+        let updatedSession = { ...currentSession };
+        
         // Update the session ID in case it was a new session and got an ID from the server
         if (currentSessionData.id.startsWith('session-')) {
+          updatedSession = { ...updatedSession, id: String(savedSession.id) };
+          
+          // Update sessions array with the new ID
           const newSessions = sessions.map(session => 
             session.id === currentSessionId 
-              ? { ...session, id: String(savedSession.id) } 
+              ? updatedSession
               : session
           );
+          
           setSessions(newSessions);
           setCurrentSessionId(String(savedSession.id));
+          localStorage.setItem('productivitySessions', JSON.stringify(newSessions));
+        } else {
+          // Even for existing sessions, ensure we keep our UI state
+          // but with any updated info from the server
+          const newSessions = sessions.map(session => 
+            session.id === currentSessionId 
+              ? updatedSession
+              : session
+          );
+          
+          setSessions(newSessions);
           localStorage.setItem('productivitySessions', JSON.stringify(newSessions));
         }
         
         setSaveSuccess(true);
         // Hide success message after 3 seconds
         setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        console.error('❌ API save failed - saveUserSession returned null');
+        setError('Failed to save to the API. Please check your connection and try again.');
       }
       
       setSaving(false);
     } catch (error) {
-      console.error('Error saving worksheet:', error);
+      console.error('❌ Error saving worksheet:', error);
       setSaving(false);
       setError('Failed to save your session. Please try again.');
     }
@@ -1000,7 +1135,7 @@ const Worksheet: React.FC = () => {
                   sx={{ 
                     fontFamily: 'Poppins', 
                     fontWeight: 'medium', 
-                    color: '#4B0082'
+                    color: '#1056F5'
                   }}
                 >
                   MY PERSONAL VALUES: Finding meaning and importance
@@ -1049,7 +1184,11 @@ const Worksheet: React.FC = () => {
               <Box sx={{ mb: 3, p: 2, bgcolor: '#f0f7ff', borderRadius: 2, border: '1px solid #d0e1f9' }}>
                 <Typography variant="body2" sx={{ color: 'info.dark', display: 'flex', alignItems: 'center' }}>
                   <InfoOutlined sx={{ mr: 1, fontSize: 18 }} />
-                  When you upload a document, the system will extract your personal values and map them to these fields. You can also enter your values directly.
+                  When you upload your initial productivity superhero worksheet, the system will attempt to extract your personal values and map them to these fields. You can also enter your values directly.
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', mt: 1 }}>
+                  <InfoOutlined sx={{ mr: 1, fontSize: 18 }} />
+                  Please note that document extraction may not always map values correctly depending on the document format. Manual adjustments may be needed.
                 </Typography>
               </Box>
 
@@ -1267,7 +1406,7 @@ const Worksheet: React.FC = () => {
                   alignItems: 'center'
                 }}
               >
-                <AutoAwesomeOutlined sx={{ mr: 1, color: '#4B0082' }} />
+                <AutoAwesomeOutlined sx={{ mr: 1, color: '#1056F5' }} />
                 Document Mapping Helper
               </Typography>
               
@@ -1300,7 +1439,6 @@ const Worksheet: React.FC = () => {
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                 <Button 
                   variant="outlined" 
-                  sx={{ mr: 2 }}
                   onClick={() => {
                     // Reset all fields
                     const updatedValues: PersonalValue = {
@@ -1320,13 +1458,6 @@ const Worksheet: React.FC = () => {
                   }}
                 >
                   Clear All Fields
-                </Button>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => setSaveSuccess(true)}
-                >
-                  Save Values
                 </Button>
               </Box>
             </Paper>
@@ -1352,7 +1483,7 @@ const Worksheet: React.FC = () => {
                   fontFamily: 'Poppins', 
                   fontWeight: 'medium', 
                   mb: 2,
-                  color: '#4B0082'
+                  color: '#1056F5'
                 }}
               >
                 MY VALUES - what matters most to me?
@@ -1390,7 +1521,7 @@ const Worksheet: React.FC = () => {
                   fontFamily: 'Poppins', 
                   fontWeight: 'medium', 
                   mb: 2,
-                  color: '#4B0082'
+                  color: '#1056F5'
                 }}
               >
                 MY PRODUCTIVITY - how does it link to my values?
@@ -1432,7 +1563,7 @@ const Worksheet: React.FC = () => {
                   fontFamily: 'Poppins', 
                   fontWeight: 'medium', 
                   mb: 2,
-                  color: '#4B0082'
+                  color: '#1056F5'
                 }}
               >
                 MY GOALS: what do I want to achieve?
@@ -1520,7 +1651,7 @@ const Worksheet: React.FC = () => {
                   fontFamily: 'Poppins', 
                   fontWeight: 'medium', 
                   mb: 2,
-                  color: '#4B0082'
+                  color: '#1056F5'
                 }}
               >
                 WORKSHOP ONE ACTIONS / COMMITMENTS
@@ -1557,7 +1688,7 @@ const Worksheet: React.FC = () => {
                   fontWeight: 'medium', 
                   mb: 2,
                   mt: 3,
-                  color: '#4B0082'
+                  color: '#1056F5'
                 }}
               >
                 WORKSHOP ONE REFLECTIONS
@@ -1601,12 +1732,13 @@ const Worksheet: React.FC = () => {
             
             <Box>
               <Button
-                variant="contained"
+                variant="outlined"
                 onClick={handleSaveWorksheet}
                 sx={{ 
                   fontFamily: 'Poppins', 
-                  textTransform: 'none',
-                  backgroundColor: '#1056F5',
+                  textTransform: 'none', 
+                  color: '#1056F5',
+                  borderColor: '#1056F5',
                   mr: 2
                 }}
                 disabled={saving}

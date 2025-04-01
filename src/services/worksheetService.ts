@@ -102,7 +102,7 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
       sessionData = sessionWithoutId;
     }
     
-    console.log(`Saving session using ${method} to ${url}`, sessionData);
+    console.log(`⭐️ API REQUEST: Saving session using ${method} to ${url}`, sessionData);
     
     const response = await fetch(url, {
       method,
@@ -119,9 +119,10 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
     }
     
     const data = await response.json();
+    console.log('✅ API RESPONSE SUCCESS:', data);
     return data as UserSession;
   } catch (error) {
-    console.error('Failed to save user session:', error);
+    console.error('❌ Failed to save user session:', error);
     return null;
   }
 };
