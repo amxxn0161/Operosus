@@ -254,7 +254,8 @@ const Dashboard: React.FC = () => {
     // Transform entries for the chart
     const processedData = journalEntries.map(entry => {
       // Format date/time for display
-      const date = new Date(entry.date);
+      // Use the timestamp field which contains the actual time the entry was created
+      const date = new Date(entry.timestamp || entry.date);
       
       // Format date to match "Mar 25, 9:02 AM" style
       const formattedDate = `${date.toLocaleDateString('en-US', { 
@@ -317,6 +318,7 @@ const Dashboard: React.FC = () => {
           Your Dashboard
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* Worksheet button hidden temporarily
           <Button 
             variant="outlined"
             onClick={() => navigate('/worksheet')}
@@ -333,6 +335,7 @@ const Dashboard: React.FC = () => {
           >
             Worksheet
           </Button>
+          */}
           <Button 
             variant="contained" 
             startIcon={<AddIcon />}
@@ -591,25 +594,34 @@ const Dashboard: React.FC = () => {
                 </Box>
                 
                 {entries && entries.length > 0 ? (
-                  <TableContainer>
-                    <Table>
+                  <TableContainer sx={{ 
+                    overflowX: 'auto',
+                    '&::-webkit-scrollbar': {
+                      height: '6px'
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '4px'
+                    }
+                  }}>
+                    <Table size="small">
                       <TableHead>
                         <TableRow>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>PRODUCTIVITY</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>MEETINGS</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>FOCUS TIME</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>BREAKS</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SUPPORT</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>PLAN</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', sm: 'table-cell' } }}>PRODUCTIVITY</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>MEETINGS</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS TIME</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>BREAKS</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>SUPPORT</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>PLAN</TableCell>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}></TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {entries.slice(0, 6).map((entry, index) => (
-                          <TableRow key={entry.id || index}>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                          <TableRow key={entry.id || index} hover>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                               {new Date(entry.date).toLocaleDateString('en-US', { 
                                 month: 'short', 
                                 day: 'numeric'
@@ -619,21 +631,22 @@ const Dashboard: React.FC = () => {
                               <Box sx={{ 
                                 backgroundColor: '#1056F5', 
                                 display: 'inline-block', 
-                                px: 2,
+                                px: { xs: 1, sm: 2 },
                                 py: 0.5, 
                                 borderRadius: 16,
                                 fontWeight: 'medium',
-                                color: 'white'
+                                color: 'white',
+                                fontSize: { xs: '0.75rem', sm: '0.875rem' }
                               }}>
                                 {Math.round(entry.productivityScore * 10)}%
                               </Box>
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
                               <Box sx={{ 
                                 backgroundColor: '#1056F5', 
                                 display: 'inline-block',
                                 px: 2,
-                                py: 0.5,
+                                py: 0.5, 
                                 borderRadius: 16,
                                 fontWeight: 'medium',
                                 color: 'white'
@@ -641,7 +654,7 @@ const Dashboard: React.FC = () => {
                                 {entry.productivityScore}
                               </Box>
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                               {entry.hadNoMeetings ? (
                                 <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
                                   -
@@ -660,7 +673,7 @@ const Dashboard: React.FC = () => {
                                 </Box>
                               )}
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                               {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
                                 <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                                   <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -675,7 +688,7 @@ const Dashboard: React.FC = () => {
                                 </Box>
                               )}
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                               {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
                                 <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                                   <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -686,20 +699,23 @@ const Dashboard: React.FC = () => {
                                 </Box>
                               )}
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                               {entry.supportNeeded ? entry.supportNeeded.substring(0, 10) + (entry.supportNeeded.length > 10 ? '...' : '') : '-'}
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                               {entry.improvementPlans ? entry.improvementPlans.substring(0, 10) + (entry.improvementPlans.length > 10 ? '...' : '') : '-'}
                             </TableCell>
-                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
                               <Button
                                 onClick={() => handleViewEntry(index)}
+                                size="small"
                                 sx={{ 
                                   fontFamily: 'Poppins', 
                                   textTransform: 'none', 
                                   color: '#1056F5',
-                                  fontWeight: 'medium'
+                                  fontWeight: 'medium',
+                                  minWidth: { xs: '40px', sm: '64px' },
+                                  px: { xs: 1, sm: 2 }
                                 }}
                               >
                                 View
@@ -1056,24 +1072,35 @@ const Dashboard: React.FC = () => {
             </Typography>
             
             {entries && entries.length > 0 ? (
-              <TableContainer component={Paper} sx={{ borderRadius: 2, p: 1 }}>
-                <Table>
+              <TableContainer component={Paper} sx={{ 
+                borderRadius: 2, 
+                p: 1,
+                overflowX: 'auto',
+                '&::-webkit-scrollbar': {
+                  height: '6px'
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderRadius: '4px'
+                }
+              }}>
+                <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Date</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Productivity Score</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Meeting Score</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Focus Time</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Breaks Taken</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Support Needed</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Improvement Plan</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Score</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', sm: 'table-cell' } }}>Meeting</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', md: 'table-cell' } }}>Focus</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', md: 'table-cell' } }}>Breaks</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', lg: 'table-cell' } }}>Support</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', lg: 'table-cell' } }}>Plan</TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {entries.map((entry, index) => (
-                      <TableRow key={entry.id || index}>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableRow key={entry.id || index} hover>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                           {new Date(entry.date).toLocaleDateString('en-US', { 
                             month: 'short', 
                             day: 'numeric'
@@ -1083,16 +1110,17 @@ const Dashboard: React.FC = () => {
                           <Box sx={{ 
                             backgroundColor: '#1056F5', 
                             display: 'inline-block', 
-                            px: 2,
+                            px: { xs: 1, sm: 2 },
                             py: 0.5, 
                             borderRadius: 16,
                             fontWeight: 'medium',
-                            color: 'white'
+                            color: 'white',
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' }
                           }}>
                             {entry.productivityScore}
                           </Box>
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
                           {entry.hadNoMeetings ? (
                             <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
                               -
@@ -1111,7 +1139,7 @@ const Dashboard: React.FC = () => {
                             </Box>
                           )}
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                           {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
                             <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                               <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -1126,7 +1154,7 @@ const Dashboard: React.FC = () => {
                             </Box>
                           )}
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                           {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
                             <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                               <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -1137,20 +1165,23 @@ const Dashboard: React.FC = () => {
                             </Box>
                           )}
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                           {entry.supportNeeded || '-'}
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                           {entry.improvementPlans || '-'}
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
                           <Button
                             onClick={() => handleViewEntry(index)}
+                            size="small"
                             sx={{ 
                               fontFamily: 'Poppins', 
                               textTransform: 'none', 
                               color: '#1056F5',
-                              fontWeight: 'medium'
+                              fontWeight: 'medium',
+                              minWidth: { xs: '40px', sm: '64px' },
+                              px: { xs: 1, sm: 2 }
                             }}
                           >
                             View

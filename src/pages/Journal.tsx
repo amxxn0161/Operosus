@@ -102,7 +102,7 @@ const Journal: React.FC = () => {
       supportNeeded,
       improvementPlans,
       distractions, // Add distractions to the entry
-      timestamp: `${formattedDate} ${new Date().toTimeString().split(' ')[0]}` // Format as expected by API
+      timestamp: new Date().toISOString() // Use full ISO string with timezone information
     };
     
     try {

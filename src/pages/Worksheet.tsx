@@ -28,12 +28,16 @@ import {
   Tooltip,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import GoalItem from '../components/GoalItem';
 import { fetchUserSessions, saveUserSession, deleteUserSession, UserSession, Achievement as ApiAchievement, Goal as ApiGoal, Action as ApiAction } from '../services/worksheetService';
 import DocumentUploader from '../components/DocumentUploader';
@@ -102,7 +106,7 @@ interface CoachingSession {
   workshopOutput: WorkshopOutput;
 }
 
-// Update the text field styling for a more elegant appearance
+// Update the text field styling for a more elegant appearance and mobile friendliness
 const textFieldStyles = {
   '& .MuiOutlinedInput-root': {
     borderRadius: '8px',
@@ -131,12 +135,22 @@ const textFieldStyles = {
     fontFamily: 'Poppins',
     padding: '12px 14px',
   },
+  mb: { xs: 2, sm: 3 },
+};
+
+// Compact button style for web view
+const compactButtonStyle = {
+  py: { sm: 0.5, md: 0.75 },
+  px: { sm: 1, md: 1.5 },
+  fontSize: { sm: '0.75rem', md: '0.8125rem' },
+  minWidth: { sm: 'auto' },
+  maxHeight: { sm: '32px', md: '36px' },
 };
 
 const numberedFieldStyles = {
   ...textFieldStyles,
   '& .MuiInputBase-root': {
-    minHeight: '80px',
+    minHeight: { xs: '60px', sm: '80px' },
     backgroundColor: '#f9f9fd',
   },
   '& .MuiOutlinedInput-inputMultiline': {
@@ -147,6 +161,8 @@ const numberedFieldStyles = {
 const Worksheet: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [currentTab, setCurrentTab] = useState(0);
   const [sessions, setSessions] = useState<CoachingSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState('');
@@ -927,895 +943,667 @@ const Worksheet: React.FC = () => {
   };
 
   return (
-    <Container sx={{ py: 4 }}>
-      <Typography 
-        variant="h4" 
-        component="h1" 
-        sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 3 }}
+    <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 2, sm: 3 } }}>
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: { xs: 2, sm: 3, md: 4 }, 
+          borderRadius: '12px', 
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)' 
+        }}
       >
-        Productivity Pulse Worksheet
-      </Typography>
+        {/* Header section */}
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' }, 
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          mb: { xs: 3, sm: 4 }
+        }}>
+          <Box>
+            <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: '#1056F5' }}>
+              Productivity Superhero
+            </Typography>
+            <Typography variant="body1" color="textSecondary">
+              Your personalized productivity coaching worksheet
+            </Typography>
+          </Box>
 
-      {loading ? (
-        <Paper sx={{ p: 4, borderRadius: 2, textAlign: 'center' }}>
-          <Typography variant="h6">Loading your sessions...</Typography>
-        </Paper>
-      ) : error ? (
-        <Paper sx={{ p: 4, borderRadius: 2, textAlign: 'center' }}>
-          <Typography variant="h6" color="error">{error}</Typography>
-          <Button 
-            variant="contained"
-            onClick={() => window.location.reload()}
-            sx={{ mt: 2 }}
+          {/* Session selector/manager */}
+          <Box 
+            sx={{ 
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              mt: { xs: 2, sm: 0 },
+              width: { xs: '100%', sm: 'auto' }
+            }}
           >
-            Retry
-          </Button>
-        </Paper>
-      ) : (
-        <Paper sx={{ p: 4, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-            <Box>
-              <Typography 
-                variant="h5" 
-                sx={{ fontWeight: 'bold', fontFamily: 'Poppins', mb: 1 }}
-              >
-                Productivity Pulse Coaching Worksheet
-              </Typography>
-              
-              <Typography variant="body1" sx={{ fontFamily: 'Poppins', color: 'text.secondary', maxWidth: '70%' }}>
-                Complete the following sections to track your productivity journey. Each session builds on your previous work.
-              </Typography>
-            </Box>
-            
-            <DocumentUploader onDocumentProcessed={handleProcessExtractedDocument} />
-          </Box>
-
-          {/* Session Selection with Add & Edit */}
-          <Box sx={{ mt: 3, mb: 3 }}>
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 2 }}>
-              Coaching Session
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ flexGrow: 1 }}>
-                {isEditingSessionName ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <TextField 
-                      fullWidth 
-                      value={newSessionName} 
-                      onChange={(e) => setNewSessionName(e.target.value)}
-                      placeholder="Enter session name..."
-                      sx={{ fontFamily: 'Poppins', height: '48px', '& .MuiInputBase-root': { height: '48px' } }}
-                    />
-                    <Button 
-                      onClick={handleSaveSessionName}
-                      variant="contained"
-                      size="medium"
-                      disabled={saving}
-                      sx={{ 
-                        fontFamily: 'Poppins', 
-                        textTransform: 'none',
-                        backgroundColor: '#1056F5',
-                        height: '48px',
-                        minWidth: '90px',
-                      }}
-                    >
-                      {saving ? 'Saving...' : 'Save'}
-                    </Button>
-                    <Button 
-                      onClick={handleCancelEditSessionName}
-                      variant="outlined"
-                      size="medium"
-                      disabled={saving}
-                      sx={{ 
-                        fontFamily: 'Poppins', 
-                        textTransform: 'none',
-                        height: '48px',
-                        minWidth: '90px',
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </Box>
-                ) : (
-                  <FormControl fullWidth>
-                    <Select
-                      value={currentSessionId}
-                      onChange={(e) => handleSessionChange(e as React.ChangeEvent<{ value: unknown }>)}
-                      displayEmpty
-                      sx={{ fontFamily: 'Poppins', height: '48px' }}
-                    >
-                      {sessions.map(session => (
-                        <MenuItem key={session.id} value={session.id}>
-                          {session.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              </Box>
-              {!isEditingSessionName && (
-                <>
-                  <Button 
-                    onClick={handleStartEditSessionName}
-                    variant="outlined"
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none', 
-                      color: '#1056F5',
-                      borderColor: '#1056F5',
-                    }}
-                  >
-                    Rename
-                  </Button>
-                  
-                  <Button 
-                    onClick={handleDeleteClick}
-                    variant="outlined"
-                    color="error"
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none'
-                    }}
-                    disabled={sessions.length <= 1}
-                  >
-                    Delete
-                  </Button>
-                  
-                  <Button 
-                    onClick={handleAddSession}
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    sx={{ 
-                      fontFamily: 'Poppins', 
-                      textTransform: 'none', 
-                      bgcolor: '#1056F5',
-                      '&:hover': {
-                        bgcolor: '#0c43d0',
-                      },
-                    }}
-                  >
-                    New Session
-                  </Button>
-                </>
-              )}
-            </Box>
-            <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary', mt: 2 }}>
-              Select which coaching session you're currently working on or create a new one
-            </Typography>
-          </Box>
-
-          {/* Navigation Tabs */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs
-              value={currentTab}
-              onChange={handleTabChange}
-              variant="scrollable"
-              scrollButtons="auto"
-              sx={{
-                '& .MuiTab-root': {
-                  fontFamily: 'Poppins',
-                  textTransform: 'none',
-                  fontWeight: 'medium',
-                },
-                '& .Mui-selected': {
-                  color: '#1056F5',
-                  fontWeight: 'bold',
-                },
-                '& .MuiTabs-indicator': {
-                  backgroundColor: '#1056F5',
-                },
-              }}
-            >
-              <Tab label="1. PLAN" />
-              <Tab label="2. MY VALUES" />
-              <Tab label="3. MY PRODUCTIVITY" />
-              <Tab label="4. MY GOALS" />
-              <Tab label="5. ACTIONS & REFLECTIONS" />
-            </Tabs>
-          </Box>
-
-          {/* Tab Content */}
-          <TabPanel value={currentTab} index={0}>
-            {/* Personal Values Tab Content */}
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              1. PLAN
-            </Typography>
-
-            <Paper sx={{ 
-              p: 4, 
-              mb: 2, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.2)',
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography 
-                  variant="subtitle1" 
-                  sx={{ 
-                    fontFamily: 'Poppins', 
-                    fontWeight: 'medium', 
-                    color: '#1056F5'
-                  }}
-                >
-                  MY PERSONAL VALUES: Finding meaning and importance
-                </Typography>
-                
-                {/* Document extraction status */}
-                <Tooltip title="Document extraction status for personal values section">
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    bgcolor: personalValues.proudOf.some(v => v) || 
-                      personalValues.achievement.some(v => v) || 
-                      personalValues.happiness.some(v => v) || 
-                      personalValues.inspiration.some(v => v) ? '#e6f7e6' : '#f9f9fd',
-                    px: 2,
-                    py: 0.5,
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: personalValues.proudOf.some(v => v) || 
-                      personalValues.achievement.some(v => v) || 
-                      personalValues.happiness.some(v => v) || 
-                      personalValues.inspiration.some(v => v) ? '#a3e0a3' : '#e0e0e0'
-                  }}>
-                    {personalValues.proudOf.some(v => v) || 
-                     personalValues.achievement.some(v => v) || 
-                     personalValues.happiness.some(v => v) || 
-                     personalValues.inspiration.some(v => v) ? (
-                      <>
-                        <CheckCircleOutline sx={{ color: 'success.main', mr: 1, fontSize: 18 }} />
-                        <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 'medium' }}>
-                          Document values mapped
-                        </Typography>
-                      </>
-                    ) : (
-                      <>
-                        <InfoOutlined sx={{ color: 'text.secondary', mr: 1, fontSize: 18 }} />
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          No document values mapped
-                        </Typography>
-                      </>
-                    )}
-                  </Box>
-                </Tooltip>
-              </Box>
-              
-              <Box sx={{ mb: 3, p: 2, bgcolor: '#f0f7ff', borderRadius: 2, border: '1px solid #d0e1f9' }}>
-                <Typography variant="body2" sx={{ color: 'info.dark', display: 'flex', alignItems: 'center' }}>
-                  <InfoOutlined sx={{ mr: 1, fontSize: 18 }} />
-                  When you upload your initial productivity superhero worksheet, the system will attempt to extract your personal values and map them to these fields. You can also enter your values directly.
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', mt: 1 }}>
-                  <InfoOutlined sx={{ mr: 1, fontSize: 18 }} />
-                  Please note that document extraction may not always map values correctly depending on the document format. Manual adjustments may be needed.
-                </Typography>
-              </Box>
-
-              {/* First pair of questions */}
-              <Grid container spacing={4} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ 
-                    mb: 1, 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center'
-                  }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                      What am I most proud of?
-                    </Typography>
-                    {personalValues.proudOf.some(v => v) && (
-                      <Chip 
-                        size="small" 
-                        label="Extracted" 
-                        color="success"
-                        variant="outlined"
-                        sx={{ height: '24px' }}
-                      />
-                    )}
-                  </Box>
-                  {/* Make sure we're iterating through all 3 items in the proudOf array */}
-                  {Array.from({length: 3}).map((_, index) => (
-                    <Box key={`proud-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
-                        {index + 1}.
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={personalValues.proudOf[index] || ''}
-                        onChange={(e) => updatePersonalValue('proudOf', index, e.target.value)}
-                        placeholder="Enter what you're most proud of..."
-                        sx={{ 
-                          ...numberedFieldStyles,
-                          '& .MuiOutlinedInput-root': {
-                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
-                            backgroundColor: personalValues.proudOf[index] ? '#fbfbff' : '#f9f9fd',
-                            transition: 'all 0.2s',
-                            border: personalValues.proudOf[index] ? '1px solid #d0d8ff' : '1px solid transparent',
-                          }
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ 
-                    mb: 1, 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center'
-                  }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                      What did it take for me to achieve those things?
-                    </Typography>
-                    {personalValues.achievement.some(v => v) && (
-                      <Chip 
-                        size="small" 
-                        label="Extracted" 
-                        color="success"
-                        variant="outlined"
-                        sx={{ height: '24px' }}
-                      />
-                    )}
-                  </Box>
-                  {/* Make sure we're iterating through all 3 items in the achievement array */}
-                  {Array.from({length: 3}).map((_, index) => (
-                    <Box key={`achieve-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
-                        {index + 1}.
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={personalValues.achievement[index] || ''}
-                        onChange={(e) => updatePersonalValue('achievement', index, e.target.value)}
-                        placeholder="Enter what it took to achieve this..."
-                        sx={{ 
-                          ...numberedFieldStyles,
-                          '& .MuiOutlinedInput-root': {
-                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
-                            backgroundColor: personalValues.achievement[index] ? '#fbfbff' : '#f9f9fd',
-                            transition: 'all 0.2s',
-                            border: personalValues.achievement[index] ? '1px solid #d0d8ff' : '1px solid transparent',
-                          }
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Grid>
-              </Grid>
-
-              {/* Second pair of questions */}
-              <Grid container spacing={4}>
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ 
-                    mb: 1, 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center'
-                  }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                      What makes me happiest in life?
-                    </Typography>
-                    {personalValues.happiness.some(v => v) && (
-                      <Chip 
-                        size="small" 
-                        label="Extracted" 
-                        color="success"
-                        variant="outlined"
-                        sx={{ height: '24px' }}
-                      />
-                    )}
-                  </Box>
-                  {/* Make sure we're iterating through all 3 items in the happiness array */}
-                  {Array.from({length: 3}).map((_, index) => (
-                    <Box key={`happy-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
-                        {index + 1}.
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={personalValues.happiness[index] || ''}
-                        onChange={(e) => updatePersonalValue('happiness', index, e.target.value)}
-                        placeholder="Enter what makes you happiest..."
-                        sx={{ 
-                          ...numberedFieldStyles,
-                          '& .MuiOutlinedInput-root': {
-                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
-                            backgroundColor: personalValues.happiness[index] ? '#fbfbff' : '#f9f9fd',
-                            transition: 'all 0.2s',
-                            border: personalValues.happiness[index] ? '1px solid #d0d8ff' : '1px solid transparent',
-                          }
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ 
-                    mb: 1, 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center'
-                  }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
-                      Who do I find inspiring...and then, what are the qualities I am admiring?
-                    </Typography>
-                    {personalValues.inspiration.some(v => v) && (
-                      <Chip 
-                        size="small" 
-                        label="Extracted" 
-                        color="success"
-                        variant="outlined"
-                        sx={{ height: '24px' }}
-                      />
-                    )}
-                  </Box>
-                  {/* Make sure we're iterating through all 3 items in the inspiration array */}
-                  {Array.from({length: 3}).map((_, index) => (
-                    <Box key={`inspire-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
-                        {index + 1}.
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={personalValues.inspiration[index] || ''}
-                        onChange={(e) => updatePersonalValue('inspiration', index, e.target.value)}
-                        placeholder="Enter who inspires you and what qualities you admire..."
-                        sx={{ 
-                          ...numberedFieldStyles,
-                          '& .MuiOutlinedInput-root': {
-                            ...numberedFieldStyles['& .MuiOutlinedInput-root'],
-                            backgroundColor: personalValues.inspiration[index] ? '#fbfbff' : '#f9f9fd',
-                            transition: 'all 0.2s',
-                            border: personalValues.inspiration[index] ? '1px solid #d0d8ff' : '1px solid transparent',
-                          }
-                        }}
-                      />
-                    </Box>
-                  ))}
-                </Grid>
-              </Grid>
-            </Paper>
-            
-            {/* Manual Document Mapping Tool */}
-            <Paper sx={{ 
-              p: 3, 
-              mb: 4, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.1)',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-            }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <AutoAwesomeOutlined sx={{ mr: 1, color: '#1056F5' }} />
-                Document Mapping Helper
-              </Typography>
-              
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                If your uploaded document wasn't fully extracted, you can use this helper to map content from your document to the fields above.
-              </Typography>
-              
-              <Accordion sx={{ 
-                mb: 2, 
-                boxShadow: 'none', 
-                border: '1px solid #e0e0e0',
-                '&:before': { display: 'none' } 
+            {isEditingSessionName ? (
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                width: { xs: '100%', sm: 'auto' },
+                flexDirection: { xs: 'column', sm: 'row' }
               }}>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography variant="body2" sx={{ fontWeight: 'medium' }}>How to map document values</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" component="div">
-                    <ol style={{ paddingLeft: '1.5rem', margin: 0 }}>
-                      <li>Upload your document using the document uploader at the top</li>
-                      <li>Check if values were automatically extracted and populated in the fields</li>
-                      <li>If some fields weren't populated, you can manually enter them</li>
-                      <li>Look for common patterns like numbered lists in your document</li>
-                      <li>Click "Save" when you're satisfied with the mapping</li>
-                    </ol>
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
-              
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                <Button 
-                  variant="outlined" 
-                  onClick={() => {
-                    // Reset all fields
-                    const updatedValues: PersonalValue = {
-                      id: personalValues.id,
-                      proudOf: ['', '', ''],
-                      achievement: ['', '', ''],
-                      happiness: ['', '', ''],
-                      inspiration: ['', '', '']
-                    };
-                    
-                    const updatedSessions = sessions.map(session => 
-                      session.id === currentSessionId 
-                        ? { ...session, personalValues: updatedValues } 
-                        : session
-                    );
-                    setSessions(updatedSessions);
+                <TextField
+                  value={newSessionName}
+                  onChange={(e) => setNewSessionName(e.target.value)}
+                  placeholder="Session name"
+                  size="small"
+                  fullWidth
+                  sx={{ 
+                    mr: { xs: 0, sm: 1 },
+                    mb: { xs: 2, sm: 0 },
+                    '& .MuiInputBase-root': {
+                      backgroundColor: '#fff'
+                    }
+                  }}
+                />
+                <Box sx={{ 
+                  display: 'flex', 
+                  gap: { xs: 1, sm: 0.75 },
+                  width: { xs: '100%', sm: 'auto' },
+                  justifyContent: { xs: 'space-between', sm: 'flex-start' }
+                }}>
+                  <Button 
+                    onClick={handleSaveSessionName} 
+                    variant="contained" 
+                    size="small"
+                    disabled={saving}
+                    sx={{ 
+                      flex: { xs: 1, sm: 'initial' },
+                      py: { sm: 0.5, md: 0.75 },
+                      px: { sm: 1, md: 1.5 },
+                      fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                      minWidth: { sm: 'auto' },
+                      maxHeight: { sm: '32px', md: '36px' },
+                      mr: { sm: 0.75 }
+                    }}
+                  >
+                    Save
+                  </Button>
+                  <Button 
+                    onClick={handleCancelEditSessionName} 
+                    variant="outlined" 
+                    size="small"
+                    sx={{ 
+                      flex: { xs: 1, sm: 'initial' },
+                      py: { sm: 0.5, md: 0.75 },
+                      px: { sm: 1, md: 1.5 },
+                      fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                      minWidth: { sm: 'auto' },
+                      maxHeight: { sm: '32px', md: '36px' }
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <>
+                <FormControl 
+                  sx={{ 
+                    mr: { xs: 0, sm: 2 }, 
+                    mb: { xs: 2, sm: 0 },
+                    minWidth: { xs: '200px', sm: '180px', md: '200px' },
+                    maxWidth: { sm: '200px', md: '220px' },
+                    width: { xs: '100%', sm: 'auto' }
                   }}
                 >
-                  Clear All Fields
-                </Button>
+                  <InputLabel>Session</InputLabel>
+                  <Select
+                    value={currentSessionId || ''}
+                    onChange={(e) => handleSessionChange(e as any)}
+                    size="small"
+                    label="Session"
+                    MenuProps={{
+                      PaperProps: {
+                        sx: { maxHeight: 200 }
+                      }
+                    }}
+                  >
+                    {sessions.map((session) => (
+                      <MenuItem key={session.id} value={session.id}>
+                        {session.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Box sx={{ 
+                  display: 'flex', 
+                  gap: { xs: 1, sm: 0.75 },
+                  width: { xs: '100%', sm: 'auto' },
+                  justifyContent: { xs: 'space-between', sm: 'flex-start' }
+                }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon sx={{ fontSize: { sm: '1rem', md: '1.25rem' } }} />}
+                    onClick={handleAddSession}
+                    disabled={saving}
+                    sx={{ 
+                      flex: { xs: 1, sm: 'initial' },
+                      py: { sm: 0.5, md: 0.75 },
+                      px: { sm: 1, md: 1.5 },
+                      fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                      minWidth: { sm: 'auto' },
+                      maxHeight: { sm: '32px', md: '36px' },
+                      mr: { sm: 0.75 }
+                    }}
+                  >
+                    {isMobile ? 'New' : 'New'}
+                  </Button>
+                  {currentSession && (
+                    <Button
+                      variant="outlined"
+                      onClick={handleStartEditSessionName}
+                      disabled={saving}
+                      sx={{ 
+                        flex: { xs: 1, sm: 'initial' },
+                        py: { sm: 0.5, md: 0.75 },
+                        px: { sm: 1, md: 1.5 },
+                        fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                        minWidth: { sm: 'auto' },
+                        maxHeight: { sm: '32px', md: '36px' },
+                        mr: { sm: 0.75 }
+                      }}
+                    >
+                      {isMobile ? 'Rename' : 'Rename'}
+                    </Button>
+                  )}
+                  {currentSession && (
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon sx={{ fontSize: { sm: '1rem', md: '1.25rem' } }} />}
+                      onClick={handleDeleteClick}
+                      disabled={saving}
+                      sx={{ 
+                        flex: { xs: 1, sm: 'initial' },
+                        py: { sm: 0.5, md: 0.75 },
+                        px: { sm: 1, md: 1.5 },
+                        fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                        minWidth: { sm: 'auto' },
+                        maxHeight: { sm: '32px', md: '36px' }
+                      }}
+                    >
+                      {isMobile ? 'Delete' : 'Delete'}
+                    </Button>
+                  )}
+                </Box>
+              </>
+            )}
+          </Box>
+        </Box>
+
+        {loading ? (
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '400px' 
+          }}>
+            <CircularProgress />
+          </Box>
+        ) : sessions.length === 0 ? (
+          <Box sx={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            py: 8
+          }}>
+            <InfoOutlined sx={{ fontSize: '3rem', color: 'primary.main', mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              No sessions yet
+            </Typography>
+            <Typography variant="body1" color="textSecondary" sx={{ mb: 4, maxWidth: '500px' }}>
+              Create a new coaching session to get started with your productivity journey
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleAddSession}
+              size="large"
+            >
+              Create First Session
+            </Button>
+          </Box>
+        ) : (
+          <>
+            {/* Tabs for worksheet sections */}
+            <Box sx={{ 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              mb: 3,
+              overflowX: 'auto',
+              '&::-webkit-scrollbar': {
+                height: '4px'
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                borderRadius: '4px'
+              }
+            }}>
+              <Tabs 
+                value={currentTab} 
+                onChange={handleTabChange}
+                variant={isMobile ? "scrollable" : "fullWidth"}
+                scrollButtons={isMobile ? "auto" : false}
+                allowScrollButtonsMobile={isMobile}
+                aria-label="worksheet sections"
+              >
+                <Tab label="Personal Values" />
+                <Tab label="Productivity Link" />
+                <Tab label="Goal Setting" />
+                <Tab label="Actions & Reflection" />
+                <Tab label="Document Upload" disabled={!currentSession} />
+              </Tabs>
+            </Box>
+
+            {/* Personal Values Tab */}
+            <TabPanel value={currentTab} index={0}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" gutterBottom>
+                  My Personal Values
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Understanding what drives you at a deeper level helps establish why productivity matters to you personally.
+                </Typography>
               </Box>
-            </Paper>
-          </TabPanel>
 
-          <TabPanel value={currentTab} index={1}>
-            {/* MY VALUES Tab Content */}
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              2. MY VALUES
-            </Typography>
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  What are you most proud of in your life?
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 4 }}>
+                  {personalValues.proudOf.map((value, index) => (
+                    <Grid item xs={12} key={index}>
+                      <TextField
+                        fullWidth
+                        placeholder={`#${index + 1}`}
+                        value={value}
+                        multiline
+                        rows={2}
+                        onChange={(e) => updatePersonalValue('proudOf', index, e.target.value)}
+                        sx={numberedFieldStyles}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
 
-            <Paper sx={{ 
-              p: 4, 
-              mb: 4, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.2)',
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  color: '#1056F5'
-                }}
-              >
-                MY VALUES - what matters most to me?
-              </Typography>
+                <Typography variant="h6" gutterBottom>
+                  What did it take for you to achieve those things?
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 4 }}>
+                  {personalValues.achievement.map((value, index) => (
+                    <Grid item xs={12} key={index}>
+                      <TextField
+                        fullWidth
+                        placeholder={`#${index + 1}`}
+                        value={value}
+                        multiline
+                        rows={2}
+                        onChange={(e) => updatePersonalValue('achievement', index, e.target.value)}
+                        sx={numberedFieldStyles}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
 
-              <TextField
-                fullWidth
-                multiline
-                rows={12}
-                placeholder="Based on your answers to the questions in the previous section, write down what matters most to you..."
-                value={productivityConnection.coreValues}
-                onChange={(e) => updateProductivityConnection('coreValues', e.target.value)}
-                sx={{ mb: 2, ...textFieldStyles }}
-              />
-            </Paper>
-          </TabPanel>
+                <Typography variant="h6" gutterBottom>
+                  What makes you happiest in life?
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 4 }}>
+                  {personalValues.happiness.map((value, index) => (
+                    <Grid item xs={12} key={index}>
+                      <TextField
+                        fullWidth
+                        placeholder={`#${index + 1}`}
+                        value={value}
+                        multiline
+                        rows={2}
+                        onChange={(e) => updatePersonalValue('happiness', index, e.target.value)}
+                        sx={numberedFieldStyles}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
 
-          <TabPanel value={currentTab} index={2}>
-            {/* MY PRODUCTIVITY Tab Content */}
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              3. MY PRODUCTIVITY
-            </Typography>
+                <Typography variant="h6" gutterBottom>
+                  Who do you find inspiring and what qualities are you admiring?
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 4 }}>
+                  {personalValues.inspiration.map((value, index) => (
+                    <Grid item xs={12} key={index}>
+                      <TextField
+                        fullWidth
+                        placeholder={`#${index + 1}`}
+                        value={value}
+                        multiline
+                        rows={2}
+                        onChange={(e) => updatePersonalValue('inspiration', index, e.target.value)}
+                        sx={numberedFieldStyles}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            </TabPanel>
 
-            <Paper sx={{ 
-              p: 4, 
-              mb: 4, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.2)',
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  color: '#1056F5'
-                }}
-              >
-                MY PRODUCTIVITY - how does it link to my values?
-              </Typography>
+            {/* Productivity Connection Tab */}
+            <TabPanel value={currentTab} index={1}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" gutterBottom>
+                  Connect Values to Productivity
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Now let's connect your core values to your productivity goals for deeper motivation.
+                </Typography>
+              </Box>
 
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1, fontStyle: 'italic' }}>
-                When I become more effective, efficient and productive in my work........the impact in terms of my values will be....
-              </Typography>
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  MY VALUES - What matters most to me?
+                </Typography>
+                <TextField
+                  fullWidth
+                  placeholder="From reflecting on the previous questions, what core values can you identify?"
+                  value={productivityConnection.coreValues}
+                  multiline
+                  rows={4}
+                  onChange={(e) => updateProductivityConnection('coreValues', e.target.value)}
+                  sx={{ ...numberedFieldStyles, mb: 4 }}
+                />
 
-              <TextField
-                fullWidth
-                multiline
-                rows={10}
-                placeholder="Describe how improved productivity connects to your core values..."
-                value={productivityConnection.valueImpact}
-                onChange={(e) => updateProductivityConnection('valueImpact', e.target.value)}
-                sx={{ mb: 2, ...textFieldStyles }}
-              />
-            </Paper>
-          </TabPanel>
+                <Typography variant="h6" gutterBottom>
+                  MY PRODUCTIVITY - How does productivity link to my values?
+                </Typography>
+                <TextField
+                  fullWidth
+                  placeholder="How will improving your productivity support what matters most to you?"
+                  value={productivityConnection.valueImpact}
+                  multiline
+                  rows={4}
+                  onChange={(e) => updateProductivityConnection('valueImpact', e.target.value)}
+                  sx={numberedFieldStyles}
+                />
+              </Box>
+            </TabPanel>
 
-          <TabPanel value={currentTab} index={3}>
-            {/* Goals Tab Content */}
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              4. MY GOALS
-            </Typography>
+            {/* Goal Setting Tab */}
+            <TabPanel value={currentTab} index={2}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" gutterBottom>
+                  Set Your Productivity Goal
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  What specific productivity goal would you like to work toward?
+                </Typography>
+              </Box>
 
-            <Paper sx={{ 
-              p: 4, 
-              mb: 4, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.2)',
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  color: '#1056F5'
-                }}
-              >
-                MY GOALS: what do I want to achieve?
-              </Typography>
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  My productivity goal is:
+                </Typography>
+                <TextField
+                  fullWidth
+                  placeholder="Be specific about what you want to achieve"
+                  value={goals.description}
+                  multiline
+                  rows={3}
+                  onChange={(e) => updateGoal('description', e.target.value)}
+                  sx={{ ...numberedFieldStyles, mb: 4 }}
+                />
 
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                Imagine it's the end of this coaching, and we've made amazing progress and change:
-              </Typography>
+                <Typography variant="h6" gutterBottom>
+                  What will be different when you achieve this goal?
+                </Typography>
 
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1, fontWeight: 'medium' }}>
-                What will be different for you?
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                placeholder="Describe what changes you'd like to see..."
-                value={goals.description}
-                onChange={(e) => updateGoal('description', e.target.value)}
-                sx={{ mb: 3, ...textFieldStyles }}
-              />
-
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1, fontWeight: 'medium' }}>
-                How will you feel?
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="Describe your emotional state after achieving your goal..."
-                value={goals.impact[0]}
-                onChange={(e) => updateGoalImpact(0, e.target.value)}
-                sx={{ mb: 3, ...textFieldStyles }}
-              />
-
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1, fontWeight: 'medium' }}>
-                Who benefits?
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="Describe who will benefit from your achievement..."
-                value={goals.impact[1]}
-                onChange={(e) => updateGoalImpact(1, e.target.value)}
-                sx={{ mb: 3, ...textFieldStyles }}
-              />
-
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1, fontWeight: 'medium', mt: 3 }}>
-                MY PRODUCTIVITY GOAL
-              </Typography>
-              
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                I want to improve.....
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="Describe what specific aspect of productivity you want to improve..."
-                value={goals.impact[2]}
-                onChange={(e) => updateGoalImpact(2, e.target.value)}
-                sx={{ mb: 3, ...textFieldStyles }}
-              />
-            </Paper>
-          </TabPanel>
-
-          <TabPanel value={currentTab} index={4}>
-            {/* Workshop Outputs Tab Content */}
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', mb: 3 }}>
-              5. ACTIONS & REFLECTIONS
-            </Typography>
-
-            <Paper sx={{ 
-              p: 4, 
-              mb: 4, 
-              bgcolor: '#ffffff',
-              borderRadius: 2,
-              border: '1px solid rgba(0, 0, 0, 0.2)',
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.15)'
-            }}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  color: '#1056F5'
-                }}
-              >
-                WORKSHOP ONE ACTIONS / COMMITMENTS
-              </Typography>
-
-              {workshopOutput.actions.map((action, index) => (
-                <Box key={`action-${index}`} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start' }}>
-                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', mr: 1, mt: 1.5, minWidth: '20px' }}>
-                    {index + 1}.
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    How will you feel?
                   </Typography>
                   <TextField
                     fullWidth
+                    placeholder="Describe the emotional benefits"
+                    value={goals.impact[0]}
                     multiline
-                    rows={3}
-                    placeholder={`Action item ${index + 1}...`}
-                    value={action}
-                    onChange={(e) => updateWorkshopAction(index, e.target.value)}
-                    sx={{ ...numberedFieldStyles }}
-                    error={validationErrors.actions !== null && action.trim() === '' && index === 0}
+                    rows={2}
+                    onChange={(e) => updateGoalImpact(0, e.target.value)}
+                    sx={{ ...textFieldStyles, mb: 3 }}
                   />
                 </Box>
-              ))}
 
-              {validationErrors.actions && (
-                <Typography color="error" sx={{ mb: 2 }}>
-                  {validationErrors.actions}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Who benefits?
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    placeholder="Who else will benefit from your productivity improvements?"
+                    value={goals.impact[1]}
+                    multiline
+                    rows={2}
+                    onChange={(e) => updateGoalImpact(1, e.target.value)}
+                    sx={{ ...textFieldStyles, mb: 3 }}
+                  />
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle1" gutterBottom>
+                    What will change?
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    placeholder="What specific results will you see?"
+                    value={goals.impact[2]}
+                    multiline
+                    rows={2}
+                    onChange={(e) => updateGoalImpact(2, e.target.value)}
+                    sx={textFieldStyles}
+                  />
+                </Box>
+              </Box>
+            </TabPanel>
+
+            {/* Actions & Reflection Tab */}
+            <TabPanel value={currentTab} index={3}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" gutterBottom>
+                  Actions & Reflections
                 </Typography>
-              )}
-
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  fontWeight: 'medium', 
-                  mb: 2,
-                  mt: 3,
-                  color: '#1056F5'
-                }}
-              >
-                WORKSHOP ONE REFLECTIONS
-              </Typography>
-
-              <Typography variant="body2" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                What am I learning?
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={6}
-                placeholder="Reflect on what you're learning through this process..."
-                value={workshopOutput.reflections}
-                onChange={(e) => updateReflections(e.target.value)}
-                sx={{ mb: 2, ...textFieldStyles }}
-                error={validationErrors.reflections !== null}
-              />
-
-              {validationErrors.reflections && (
-                <Typography color="error" sx={{ mb: 2 }}>
-                  {validationErrors.reflections}
+                <Typography variant="body1" color="textSecondary">
+                  Define specific actions to take and reflect on your productivity journey.
                 </Typography>
-              )}
-            </Paper>
-          </TabPanel>
-          
-          {/* Navigation Buttons */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-            <Button
-              variant="outlined"
-              onClick={handlePrevious}
-              disabled={currentTab === 0}
+              </Box>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <CheckCircleOutline sx={{ mr: 1, color: 'primary.main' }} />
+                  My Action Steps
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                  List specific actions you'll take to improve your productivity
+                </Typography>
+
+                {workshopOutput.actions.map((action, index) => (
+                  <TextField
+                    key={index}
+                    fullWidth
+                    placeholder={`Action ${index + 1}`}
+                    value={action}
+                    multiline
+                    rows={2}
+                    onChange={(e) => updateWorkshopAction(index, e.target.value)}
+                    sx={{ ...textFieldStyles, mb: 2 }}
+                    InputProps={{
+                      startAdornment: (
+                        <Box sx={{ 
+                          mr: 1, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          width: '28px', 
+                          height: '28px', 
+                          borderRadius: '50%', 
+                          bgcolor: 'primary.main', 
+                          color: 'white', 
+                          fontWeight: 'bold' 
+                        }}>
+                          {index + 1}
+                        </Box>
+                      ),
+                    }}
+                  />
+                ))}
+              </Box>
+
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <AutoAwesomeOutlined sx={{ mr: 1, color: 'primary.main' }} />
+                  My Reflections
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                  Reflect on your productivity journey and what you've learned
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  placeholder="What insights have you gained about your productivity? What challenges do you anticipate?"
+                  value={workshopOutput.reflections}
+                  multiline
+                  rows={5}
+                  onChange={(e) => updateReflections(e.target.value)}
+                  sx={textFieldStyles}
+                />
+              </Box>
+            </TabPanel>
+
+            {/* Document Upload Tab */}
+            <TabPanel value={currentTab} index={4}>
+              <DocumentUploader onDocumentProcessed={handleProcessExtractedDocument} />
+            </TabPanel>
+
+            {/* Navigation buttons */}
+            <Box 
               sx={{ 
-                fontFamily: 'Poppins', 
-                textTransform: 'none'
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                mt: 4,
+                gap: 2,
+                flexDirection: { xs: 'column', sm: 'row' }
               }}
             >
-              Previous
-            </Button>
-            
-            <Box>
-              <Button
-                variant="outlined"
-                onClick={handleSaveWorksheet}
-                sx={{ 
-                  fontFamily: 'Poppins', 
-                  textTransform: 'none', 
-                  color: '#1056F5',
-                  borderColor: '#1056F5',
-                  mr: 2
-                }}
-                disabled={saving}
-                startIcon={saving ? <CircularProgress size={20} color="inherit" /> : null}
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 2, 
+                order: { xs: 2, sm: 1 },
+                width: { xs: '100%', sm: 'auto' }
+              }}>
+                <Button
+                  variant="outlined"
+                  onClick={handlePrevious}
+                  disabled={currentTab === 0 || saving}
+                  startIcon={<ArrowBackIcon sx={{ fontSize: { sm: '1rem', md: '1.25rem' } }} />}
+                  sx={{ 
+                    flex: { xs: 1, sm: 'initial' },
+                    py: { sm: 0.5, md: 0.75 },
+                    px: { sm: 1, md: 1.5 },
+                    fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                    minWidth: { sm: 'auto' },
+                    maxHeight: { sm: '32px', md: '36px' },
+                    mr: { sm: 0.75 }
+                  }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={handleNext}
+                  disabled={currentTab === 4 || saving}
+                  endIcon={<ArrowForwardIcon sx={{ fontSize: { sm: '1rem', md: '1.25rem' } }} />}
+                  sx={{ 
+                    flex: { xs: 1, sm: 'initial' },
+                    py: { sm: 0.5, md: 0.75 },
+                    px: { sm: 1, md: 1.5 },
+                    fontSize: { sm: '0.75rem', md: '0.8125rem' },
+                    minWidth: { sm: 'auto' },
+                    maxHeight: { sm: '32px', md: '36px' }
+                  }}
+                >
+                  Next
+                </Button>
+              </Box>
               
               <Button
                 variant="contained"
-                onClick={handleNext}
+                color="primary"
+                onClick={handleSaveWorksheet}
+                disabled={saving || sessions.length === 0}
                 sx={{ 
-                  fontFamily: 'Poppins', 
-                  textTransform: 'none',
-                  backgroundColor: '#1056F5'
+                  ml: 'auto', 
+                  order: { xs: 1, sm: 2 },
+                  alignSelf: { xs: 'stretch', sm: 'auto' },
+                  height: { xs: '48px', sm: '32px', md: '36px' },
+                  py: { sm: 0.5, md: 0.75 },
+                  px: { sm: 1.5, md: 2 },
+                  fontSize: { sm: '0.75rem', md: '0.8125rem' }
                 }}
               >
-                {currentTab === 4 ? 'Finish' : 'Next'}
+                {saving ? <CircularProgress size={20} color="inherit" /> : 'Save'}
               </Button>
             </Box>
-          </Box>
-        </Paper>
-      )}
-      
+          </>
+        )}
+      </Paper>
+
       {/* Success Snackbar */}
       <Snackbar
         open={saveSuccess}
-        autoHideDuration={3000}
+        autoHideDuration={5000}
         onClose={() => setSaveSuccess(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSaveSuccess(false)} 
-          severity="success"
-          sx={{ width: '100%', fontFamily: 'Poppins' }}
-        >
-          Worksheet saved successfully!
+        <Alert onClose={() => setSaveSuccess(false)} severity="success">
+          Worksheet saved successfully
         </Alert>
       </Snackbar>
-      
-      {/* Delete Confirmation Dialog */}
+
+      {/* Delete Session Dialog */}
       <Dialog
         open={deleteDialogOpen}
-        onClose={!isDeleting ? handleCancelDelete : undefined}
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-description"
+        onClose={handleCancelDelete}
       >
-        <DialogTitle id="delete-dialog-title">
-          Delete Coaching Session
-        </DialogTitle>
+        <DialogTitle>Confirm Deletion</DialogTitle>
         <DialogContent>
-          <DialogContentText id="delete-dialog-description">
-            Are you sure you want to delete this coaching session? This action cannot be undone.
+          <DialogContentText>
+            Are you sure you want to delete the session "{currentSession?.name}"? This action cannot be undone.
           </DialogContentText>
-          {deleteError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteError}
-            </Alert>
-          )}
         </DialogContent>
         <DialogActions>
           <Button 
             onClick={handleCancelDelete} 
             disabled={isDeleting}
-            sx={{ fontFamily: 'Poppins' }}
+            sx={{ 
+              ...compactButtonStyle,
+              minWidth: { sm: '60px' }
+            }}
           >
             Cancel
           </Button>
           <Button 
             onClick={handleConfirmDelete} 
             color="error" 
-            autoFocus
             disabled={isDeleting}
-            startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
-            sx={{ fontFamily: 'Poppins' }}
+            startIcon={isDeleting ? <CircularProgress size={16} /> : <DeleteIcon sx={{ fontSize: { sm: '1rem', md: '1.25rem' } }} />}
+            sx={{ 
+              ...compactButtonStyle,
+              minWidth: { sm: '60px' }
+            }}
           >
-            {isDeleting ? 'Deleting...' : 'Delete Session'}
+            {isDeleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

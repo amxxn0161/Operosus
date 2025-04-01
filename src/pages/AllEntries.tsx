@@ -11,7 +11,9 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  TablePagination
+  TablePagination,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +30,9 @@ const AllEntries: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isExtraSmall = useMediaQuery('(max-width:400px)');
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -64,14 +69,33 @@ const AllEntries: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' }, 
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'flex-start', sm: 'center' }, 
+        mb: 4,
+        gap: { xs: 2, sm: 0 }
+      }}>
+        <Typography 
+          variant="h4" 
+          component="h1" 
+          sx={{ 
+            fontWeight: 'bold', 
+            fontFamily: 'Poppins',
+            fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' }
+          }}
+        >
           All Journal Entries
         </Typography>
         <Button 
           variant="outlined"
           onClick={() => navigate('/dashboard')}
-          sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          sx={{ 
+            fontFamily: 'Poppins', 
+            textTransform: 'none',
+            whiteSpace: 'nowrap'
+          }}
         >
           Back to Dashboard
         </Button>
@@ -102,18 +126,27 @@ const AllEntries: React.FC = () => {
           </Box>
         ) : entries.length > 0 ? (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ 
+              overflowX: 'auto',
+              '&::-webkit-scrollbar': {
+                height: '6px'
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                borderRadius: '4px'
+              }
+            }}>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>PRODUCTIVITY</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>MEETINGS</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>FOCUS TIME</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>BREAKS</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SUPPORT</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>PLAN</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', sm: 'table-cell' } }}>PROD</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', sm: 'table-cell' } }}>MEETINGS</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>BREAKS</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>SUPPORT</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>PLAN</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}></TableCell>
                   </TableRow>
                 </TableHead>
@@ -121,24 +154,32 @@ const AllEntries: React.FC = () => {
                   {entries
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                     .map((entry, index) => (
-                    <TableRow key={entry.id || index}>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
-                        {entry.date}
+                    <TableRow key={entry.id || index} hover>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        {typeof entry.date === 'string' ? 
+                          new Date(entry.date).toLocaleDateString('en-US', { 
+                            month: 'numeric', 
+                            day: 'numeric',
+                            year: isExtraSmall ? undefined : '2-digit'
+                          }) : 
+                          entry.date
+                        }
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
                         <Box sx={{ 
                           backgroundColor: '#1056F5', 
                           display: 'inline-block',
-                          px: 2,
+                          px: { xs: 1, sm: 2 },
                           py: 0.5,
                           borderRadius: 16,
                           fontWeight: 'medium',
-                          color: 'white'
+                          color: 'white',
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
                         }}>
                           {Math.round(entry.productivityScore * 10)}%
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
                         <Box sx={{ 
                           backgroundColor: '#1056F5', 
                           display: 'inline-block',
@@ -151,7 +192,7 @@ const AllEntries: React.FC = () => {
                           {entry.productivityScore}
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
                         {entry.hadNoMeetings ? (
                           <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
                             -
@@ -170,7 +211,7 @@ const AllEntries: React.FC = () => {
                           </Box>
                         )}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                         {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
                           <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                             <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -185,7 +226,7 @@ const AllEntries: React.FC = () => {
                           </Box>
                         )}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
                         {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
                           <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                             <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
@@ -196,20 +237,23 @@ const AllEntries: React.FC = () => {
                           </Box>
                         )}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                         {entry.supportNeeded ? entry.supportNeeded.substring(0, 10) + (entry.supportNeeded.length > 10 ? '...' : '') : '-'}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
                         {entry.improvementPlans ? entry.improvementPlans.substring(0, 10) + (entry.improvementPlans.length > 10 ? '...' : '') : '-'}
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
                         <Button 
                           onClick={() => handleViewEntry(entry)}
+                          size="small"
                           sx={{ 
                             fontFamily: 'Poppins', 
                             textTransform: 'none', 
                             color: '#1056F5',
-                            fontWeight: 'medium'
+                            fontWeight: 'medium',
+                            minWidth: { xs: '40px', sm: '64px' },
+                            px: { xs: 1, sm: 2 }
                           }}
                         >
                           View
@@ -228,7 +272,21 @@ const AllEntries: React.FC = () => {
               page={page}
               onPageChange={handleChangePage}
               onRowsPerPageChange={handleChangeRowsPerPage}
-              sx={{ fontFamily: 'Poppins' }}
+              sx={{ 
+                fontFamily: 'Poppins',
+                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                  margin: { xs: 0, sm: 2 },
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                },
+                '.MuiTablePagination-toolbar': {
+                  padding: { xs: '0 8px', sm: '0 16px' },
+                  flexWrap: { xs: 'wrap', sm: 'nowrap' }
+                },
+                '.MuiInputBase-root': {
+                  marginRight: { xs: 1, sm: 2 }
+                }
+              }}
+              labelRowsPerPage={isMobile ? 'Rows:' : 'Rows per page:'}
             />
           </>
         ) : (
