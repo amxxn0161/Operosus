@@ -65,6 +65,44 @@ interface DistractionData {
   percentage: string;
 }
 
+// Helper function to calculate comprehensive score for an entry
+const calculateEntryScore = (entry: JournalEntry): number => {
+  let totalPoints = 0;
+  let maxPossiblePoints = 40; // Default maximum
+  
+  // Productivity score (1-10 points)
+  totalPoints += entry.productivityScore;
+  
+  // Meeting score (0-10 points)
+  if (entry.hadNoMeetings) {
+    maxPossiblePoints = 30; // Reduce maximum if no meetings
+  } else if (entry.meetingScore !== null) {
+    totalPoints += entry.meetingScore;
+  }
+  
+  // Break points (Yes = 10, No = 0)
+  if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+    totalPoints += 10;
+  }
+  
+  // Focus time points (Yes = 10, Partial = 5, No = 0)
+  if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+    totalPoints += 10;
+  } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+    totalPoints += 5;
+  }
+  
+  // Subtract 2 points for each distraction
+  const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+  totalPoints -= distractionPenalty;
+  
+  // Ensure points don't go below zero
+  totalPoints = Math.max(0, totalPoints);
+  
+  // Calculate percentage
+  return Math.round((totalPoints / maxPossiblePoints) * 100);
+};
+
 const Dashboard: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
@@ -87,14 +125,17 @@ const Dashboard: React.FC = () => {
             padding: '10px 15px',
             border: '1px solid #f5f5f5',
             fontFamily: 'Poppins',
-            minWidth: '150px'
+            minWidth: '200px'
           }}
         >
-          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', mb: 0.5 }}>
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', mb: 1 }}>
             {label}
           </Typography>
-          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#1056F5', fontWeight: 'medium' }}>
-            Productivity: {payload[0].value}%
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#1056F5', fontWeight: 'medium', mb: 0.5 }}>
+            Overall Score: {payload[0].value}%
+          </Typography>
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#666' }}>
+            Productivity: {payload[0].payload.productivity}%
           </Typography>
         </Paper>
       );
@@ -196,8 +237,14 @@ const Dashboard: React.FC = () => {
       
       const journalStreakCount = calculateStreak();
       
+      // Calculate comprehensive scores using the new scoring system
+      const comprehensiveScores = entries.map(entry => calculateEntryScore(entry));
+      const avgComprehensiveScore = Math.round(
+        comprehensiveScores.reduce((sum, score) => sum + score, 0) / entries.length
+      );
+      
       setStats({
-        averageScore: `${Math.round((totalProductivity / entries.length) * 10)}%`,
+        averageScore: `${avgComprehensiveScore}%`,
         avgProductivity: Math.round(totalProductivity / entries.length),
         avgMeetingScore: meetingsEntries.length ? Math.round(totalMeetingScore / meetingsEntries.length) : 0,
         breakRate: `${Math.round((breakRateCount / entries.length) * 100)}%`,
@@ -269,6 +316,7 @@ const Dashboard: React.FC = () => {
       return {
         name: formattedDate,
         productivity: Math.round(entry.productivityScore * 10),
+        comprehensive: calculateEntryScore(entry),
         date: date // Keep the Date object for sorting
       };
     });
@@ -317,6 +365,7 @@ const Dashboard: React.FC = () => {
           Your Dashboard
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* Worksheet button hidden for now 
           <Button 
             variant="outlined"
             onClick={() => navigate('/worksheet')}
@@ -333,6 +382,7 @@ const Dashboard: React.FC = () => {
           >
             Worksheet
           </Button>
+          */}
           <Button 
             variant="contained" 
             startIcon={<AddIcon />}
@@ -536,7 +586,7 @@ const Dashboard: React.FC = () => {
                 
                     <Line 
                       type="monotone" 
-                      dataKey="productivity" 
+                      dataKey="comprehensive" 
                       stroke="#1056F5" 
                       strokeWidth={2}
                       dot={{ 
@@ -596,7 +646,7 @@ const Dashboard: React.FC = () => {
                       <TableHead>
                         <TableRow>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
-                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>Score</TableCell>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>PRODUCTIVITY</TableCell>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>MEETINGS</TableCell>
                           <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>FOCUS TIME</TableCell>
@@ -625,7 +675,7 @@ const Dashboard: React.FC = () => {
                                 fontWeight: 'medium',
                                 color: 'white'
                               }}>
-                                {Math.round(entry.productivityScore * 10)}%
+                                {calculateEntryScore(entry)}%
                               </Box>
                             </TableCell>
                             <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
@@ -1061,7 +1111,7 @@ const Dashboard: React.FC = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Date</TableCell>
-                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Productivity Score</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Score</TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Meeting Score</TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Focus Time</TableCell>
                       <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Breaks Taken</TableCell>
@@ -1089,7 +1139,7 @@ const Dashboard: React.FC = () => {
                             fontWeight: 'medium',
                             color: 'white'
                           }}>
-                            {entry.productivityScore}
+                            {calculateEntryScore(entry)}%
                           </Box>
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
