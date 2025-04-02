@@ -16,7 +16,9 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,6 +47,9 @@ import {
   Cell,
   Legend
 } from 'recharts';
+import StatCard from '../components/StatCard';
+import CalendarView from '../components/CalendarView';
+import { useCalendar } from '../contexts/CalendarContext';
 
 // Dummy data for initial display
 const initialStats = {
@@ -69,12 +74,15 @@ const Dashboard: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
   const { tasks, loading: tasksLoading, error: tasksError, refreshTasks } = useTask();
+  const { events, isConnected, connectCalendar } = useCalendar();
   const navigate = useNavigate();
   const [stats, setStats] = useState(initialStats);
   const [hasData, setHasData] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [distractionData, setDistractionData] = useState<DistractionData[]>([]);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Custom tooltip component for the chart
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -285,16 +293,15 @@ const Dashboard: React.FC = () => {
   };
 
   const handleRefresh = async () => {
-    // Show refreshing state
     setIsRefreshing(true);
-    
     try {
-      // Use refreshEntries from JournalContext and refreshTasks from TaskContext
-      await Promise.all([refreshEntries(), refreshTasks()]);
+      await Promise.all([
+        refreshEntries(),
+        refreshTasks()
+      ]);
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
-      // Hide refreshing state
       setIsRefreshing(false);
     }
   };
@@ -304,6 +311,71 @@ const Dashboard: React.FC = () => {
       navigate(`/entry/${entries[index].id}`);
     } else {
       navigate(`/entry/${index}`);
+    }
+  };
+
+  // Handler for calendar event click
+  const handleCalendarEventClick = (event: any) => {
+    console.log('Calendar event clicked:', event);
+    
+    // Format the event times for display
+    const startTime = new Date(event.start).toLocaleTimeString('en-US', { 
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    const endTime = new Date(event.end).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    const formattedDate = new Date(event.start).toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    // Build the content for the alert
+    let content = `${event.title}\n`;
+    content += `${formattedDate}, ${startTime} - ${endTime}\n`;
+    
+    if (event.location) {
+      content += `Location: ${event.location}\n`;
+    }
+    
+    if (event.description) {
+      content += `\n${event.description}\n`;
+    }
+    
+    // Add note about editing capabilities
+    if (!isConnected) {
+      content += '\n\nNote: This is sample data. Connect to Google Calendar to manage real events.';
+    } else {
+      content += '\n\nEvent editing will be available in the next update.';
+    }
+    
+    // Show the event details
+    alert(content);
+  };
+
+  // Handler for adding new calendar events
+  const handleAddCalendarEvent = () => {
+    if (!isConnected) {
+      // Show connect prompt with explanation
+      const result = window.confirm(
+        "You're currently viewing sample calendar data. Connect to Google Calendar to add real events?"
+      );
+      
+      if (result) {
+        connectCalendar();
+      }
+    } else {
+      console.log('Add new calendar event');
+      // In the future, you would open a modal dialog here to create an event
+      alert('Calendar event creation will be available in the next update!');
+      // You can implement a modal or navigation to add event here
     }
   };
 
@@ -376,75 +448,83 @@ const Dashboard: React.FC = () => {
       ) : (
         <>
           {/* Quick Stats Section */}
-          <Paper sx={{ p: 4, mb: 5, borderRadius: 2 }}>
-            <Typography 
-              variant="h6" 
-              sx={{ mb: 3, fontWeight: 'bold', fontFamily: 'Poppins' }}
-            >
-              Quick Stats
-            </Typography>
-            <Grid container spacing={4}>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Average Score
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.averageScore}
-                  </Typography>
-                </Box>
+          <Paper 
+            sx={{ 
+              p: isMobile ? 2 : 4, 
+              mb: 5, 
+              borderRadius: 2,
+              overflow: 'hidden'  
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography 
+                variant={isMobile ? "subtitle1" : "h6"}
+                sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+              >
+                Quick Stats
+              </Typography>
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
+              >
+                Refresh
+              </Button>
+            </Box>
+            <Grid container spacing={isMobile ? 2 : 4}>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Average Score" 
+                  value={stats.averageScore}
+                  color="#1056F5"
+                />
               </Grid>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Avg Productivity
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.avgProductivity}
-                  </Typography>
-                </Box>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Avg Productivity" 
+                  value={stats.avgProductivity}
+                  color="#071C73"
+                />
               </Grid>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Avg Meeting Score
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.avgMeetingScore}
-                  </Typography>
-                </Box>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Avg Meeting Score" 
+                  value={stats.avgMeetingScore}
+                  color="#016C9E"
+                />
               </Grid>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Break Rate
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.breakRate}
-                  </Typography>
-                </Box>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Break Rate" 
+                  value={stats.breakRate}
+                  color="#F29702"
+                />
               </Grid>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Focus Success
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.focusSuccess}
-                  </Typography>
-                </Box>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Focus Success" 
+                  value={stats.focusSuccess}
+                  color="#49C1E3"
+                />
               </Grid>
-              <Grid item xs={6} sm={4} md={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 1 }}>
-                    Journal Streak
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                    {stats.journalStreak}
-                  </Typography>
-                </Box>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Journal Streak" 
+                  value={stats.journalStreak}
+                  color="#E04330"
+                />
               </Grid>
             </Grid>
+          </Paper>
+
+          {/* Calendar Section - Replace with new CalendarView */}
+          <Paper sx={{ p: 0, mb: 5, borderRadius: 2, overflow: 'hidden' }}>
+            <CalendarView 
+              onEventClick={handleCalendarEventClick}
+              onAddEvent={handleAddCalendarEvent}
+            />
           </Paper>
 
           {/* Progress Graph Section */}

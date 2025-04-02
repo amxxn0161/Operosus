@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paper, Box, Typography } from '@mui/material';
+import { Paper, Box, Typography, useTheme, useMediaQuery } from '@mui/material';
 
 interface StatCardProps {
   title: string;
@@ -16,21 +16,30 @@ const StatCard: React.FC<StatCardProps> = ({
   color = '#1056F5',
   subtitle
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   return (
     <Paper
-      elevation={0}
+      elevation={1}
       sx={{
-        p: 3,
+        p: isMobile ? 2 : 3,
         borderRadius: 2,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
+        borderLeft: `4px solid ${color}`,
+        transition: 'transform 0.2s, box-shadow 0.2s',
+        '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: 3
+        }
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: isMobile ? 1 : 2 }}>
         <Typography
-          variant="subtitle1"
+          variant={isMobile ? "body2" : "subtitle1"}
           sx={{
             fontFamily: 'Poppins',
             color: 'text.secondary',
@@ -48,7 +57,7 @@ const StatCard: React.FC<StatCardProps> = ({
       
       <Box>
         <Typography
-          variant="h4"
+          variant={isMobile ? "h5" : "h4"}
           sx={{
             fontFamily: 'Poppins',
             fontWeight: 'bold',
@@ -65,6 +74,7 @@ const StatCard: React.FC<StatCardProps> = ({
               fontFamily: 'Poppins',
               color: 'text.secondary',
               mt: 1,
+              fontSize: isMobile ? '0.75rem' : '0.875rem',
             }}
           >
             {subtitle}

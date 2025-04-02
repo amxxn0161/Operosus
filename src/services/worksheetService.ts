@@ -1,4 +1,4 @@
-import { checkAuthState } from './authService';
+import { apiRequest } from './apiUtils';
 
 // Define interfaces for API response
 export interface Achievement {
@@ -43,30 +43,12 @@ export interface UserSession {
 
 // Fetch user sessions from the API
 export const fetchUserSessions = async (): Promise<UserSession[]> => {
-  // Get the auth token from localStorage
-  const { token } = checkAuthState();
-  
-  if (!token) {
-    console.error('No auth token available');
-    return [];
-  }
-  
   try {
-    const response = await fetch('https://app2.operosus.com/api/user-sessions', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return data as UserSession[];
+    console.log('Fetching user sessions using apiRequest utility');
+    // Use API path - apiUtils will add the base URL
+    const data = await apiRequest<UserSession[]>('/api/user-sessions');
+    console.log(`API returned ${data.length} sessions`);
+    return data;
   } catch (error) {
     console.error('Failed to fetch user sessions:', error);
     return [];
@@ -75,25 +57,18 @@ export const fetchUserSessions = async (): Promise<UserSession[]> => {
 
 // Save user session to the API - supports both creating new sessions and updating existing ones
 export const saveUserSession = async (session: Partial<UserSession>): Promise<UserSession | null> => {
-  // Get the auth token from localStorage
-  const { token } = checkAuthState();
-  
-  if (!token) {
-    console.error('No auth token available');
-    return null;
-  }
-  
   try {
     // Determine if this is a create or update operation
     const isUpdate = session.id !== undefined && !String(session.id).startsWith('session-');
     
-    let url = 'https://app2.operosus.com/api/user-sessions';
-    let method = 'POST';
+    // Use API path - apiUtils will add the base URL
+    let url = '/api/user-sessions';
+    let method: 'POST' | 'PUT' = 'POST';
     let sessionData: any;
     
     if (isUpdate) {
       // For updates, we use PUT and include ID in URL
-      url = `https://app2.operosus.com/api/user-sessions/${session.id}`;
+      url = `/api/user-sessions/${session.id}`;
       method = 'PUT';
       sessionData = session; // Keep the ID for PUT requests
     } else {
@@ -104,23 +79,13 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
     
     console.log(`⭐️ API REQUEST: Saving session using ${method} to ${url}`, sessionData);
     
-    const response = await fetch(url, {
+    const data = await apiRequest<UserSession>(url, {
       method,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(sessionData)
+      body: sessionData
     });
     
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
     console.log('✅ API RESPONSE SUCCESS:', data);
-    return data as UserSession;
+    return data;
   } catch (error) {
     console.error('❌ Failed to save user session:', error);
     return null;
@@ -129,44 +94,14 @@ export const saveUserSession = async (session: Partial<UserSession>): Promise<Us
 
 // Delete a user session from the API
 export const deleteUserSession = async (sessionId: number): Promise<boolean> => {
-  // Get the auth token from localStorage
-  const { token } = checkAuthState();
-  
-  if (!token) {
-    console.error('No auth token available');
-    return false;
-  }
-  
   try {
-    // Create an AbortController to handle timeouts
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-    
-    const response = await fetch(`https://app2.operosus.com/api/user-sessions/${sessionId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      signal: controller.signal
+    // Use API path - apiUtils will add the base URL
+    await apiRequest(`/api/user-sessions/${sessionId}`, {
+      method: 'DELETE'
     });
-    
-    // Clear the timeout since the request completed
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-    
     return true;
   } catch (error) {
-    // Special handling for abort errors
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error('Session API delete request timed out');
-    } else {
-      console.error('Failed to delete user session:', error);
-    }
+    console.error('Failed to delete user session:', error);
     return false;
   }
 }; 

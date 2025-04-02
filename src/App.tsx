@@ -9,6 +9,7 @@ import '@fontsource/poppins/700.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { TaskProvider } from './contexts/TaskContext';
+import { CalendarProvider } from './contexts/CalendarContext';
 import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -18,6 +19,7 @@ import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
+import Layout from './components/Layout';
 
 // Create a custom theme with mobile-first approach
 let theme = createTheme({
@@ -220,19 +222,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
-// Layout component that conditionally renders the header
-const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const location = window.location.pathname;
-  const isLoginPage = location === '/login';
-  
-  return (
-    <>
-      {!isLoginPage && <Header />}
-      {children}
-    </>
-  );
-};
-
 const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
@@ -240,11 +229,12 @@ const App: React.FC = () => {
       <AuthProvider>
         <JournalProvider>
           <TaskProvider>
-            <Router>
-              <div className="App">
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
+            <CalendarProvider>
+              <Router>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Navigate replace to="/dashboard" />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/journal" element={<Journal />} />
                     <Route path="/tasks" element={
@@ -252,13 +242,6 @@ const App: React.FC = () => {
                         <Tasks />
                       </ProtectedRoute>
                     } />
-                    {/* Worksheet route hidden temporarily
-                    <Route path="/worksheet" element={
-                      <ProtectedRoute>
-                        <Worksheet />
-                      </ProtectedRoute>
-                    } />
-                    */}
                     <Route path="/entry/:entryId" element={
                       <ProtectedRoute>
                         <EntryDetail />
@@ -269,19 +252,16 @@ const App: React.FC = () => {
                         <AllEntries />
                       </ProtectedRoute>
                     } />
-                    {/* Duplicate Worksheet route hidden temporarily
                     <Route path="/worksheet" element={
                       <ProtectedRoute>
                         <Worksheet />
                       </ProtectedRoute>
                     } />
-                    */}
                     <Route path="/diagnostic" element={<DiagnosticPage />} />
-                    <Route path="/login" element={<Login />} />
-                  </Routes>
-                </Layout>
-              </div>
-            </Router>
+                  </Route>
+                </Routes>
+              </Router>
+            </CalendarProvider>
           </TaskProvider>
         </JournalProvider>
       </AuthProvider>
