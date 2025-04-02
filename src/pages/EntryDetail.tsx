@@ -32,16 +32,27 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 
+// Interface for admin journal entries which includes user info
+interface AdminJournalEntry extends JournalEntry {
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+}
+
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, loading, error, deleteEntry, saveEntry } = useJournal();
   const navigate = useNavigate();
   const location = useLocation();
   const { entryId } = useParams<{ entryId: string }>();
-  const [entry, setEntry] = useState<JournalEntry | null>(null);
+  const [entry, setEntry] = useState<AdminJournalEntry | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isAdminEntry, setIsAdminEntry] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
   
   // New state for date editing
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -56,19 +67,82 @@ const EntryDetail: React.FC = () => {
       return;
     }
     
-    // Find the entry in the entries from context
-    if (entries.length > 0 && entryId) {
-      const id = parseInt(entryId);
-      const foundEntry = entries.find(e => e.id === id);
+    const loadEntry = async () => {
+      if (!entryId) return;
       
-      if (foundEntry) {
-        setEntry(foundEntry);
-        setSelectedDate(new Date(foundEntry.date)); // Initialize selected date with entry date
-      } else {
-        // Entry not found, redirect to dashboard
-        navigate('/dashboard');
+      const id = parseInt(entryId);
+      console.log(`Loading entry with ID: ${id}`);
+      
+      // Step 1: Try to find the entry in the entries from context
+      if (entries.length > 0) {
+        const foundEntry = entries.find(e => e.id === id);
+        if (foundEntry) {
+          console.log('Found entry in context:', foundEntry);
+          setEntry(foundEntry);
+          setSelectedDate(new Date(foundEntry.date));
+          setLocalLoading(false);
+          return;
+        }
+        console.log('Entry not found in context, checking localStorage');
       }
-    }
+      
+      // Step 2: Check localStorage for admin entry
+      try {
+        const savedAdminEntry = localStorage.getItem('currentAdminEntry');
+        if (savedAdminEntry) {
+          const parsedEntry = JSON.parse(savedAdminEntry);
+          console.log('Found admin entry in localStorage:', parsedEntry);
+          
+          if (parsedEntry && parsedEntry.id === id) {
+            setEntry(parsedEntry);
+            setSelectedDate(new Date(parsedEntry.date));
+            setIsAdminEntry(true);
+            setLocalLoading(false);
+            return;
+          } else {
+            console.log('Admin entry ID mismatch or invalid entry:', parsedEntry?.id, 'vs', id);
+          }
+        } else {
+          console.log('No admin entry found in localStorage');
+        }
+      } catch (e) {
+        console.error('Error parsing saved admin entry:', e);
+      }
+      
+      // Step 3: Try to fetch admin entry directly
+      console.log('Attempting to fetch admin entry directly');
+      try {
+        setLocalLoading(true);
+        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/entry/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const adminEntry = await response.json();
+          console.log('Successfully fetched admin entry:', adminEntry);
+          setEntry(adminEntry);
+          setSelectedDate(new Date(adminEntry.date));
+          setIsAdminEntry(true);
+          setLocalLoading(false);
+          return;
+        } else {
+          console.error('Failed to fetch admin entry:', response.status);
+        }
+      } catch (err) {
+        console.error('Error fetching admin entry:', err);
+      } finally {
+        setLocalLoading(false);
+      }
+      
+      // If we get here, the entry was not found anywhere
+      console.log('Entry not found anywhere, redirecting to dashboard');
+      navigate('/dashboard');
+    };
+    
+    loadEntry();
   }, [isAuthenticated, navigate, entryId, entries]);
   
   // Format date for display
@@ -87,8 +161,17 @@ const EntryDetail: React.FC = () => {
     return `${score * 10}%`;
   };
   
-  // Handle back button click - check if we came from entries page
+  // Handle back button click - check if we came from admin or entries
   const handleBack = () => {
+    // Clear the admin entry from localStorage when navigating away
+    localStorage.removeItem('currentAdminEntry');
+    
+    // If it's an admin entry, go back to admin page
+    if (isAdminEntry) {
+      navigate('/admin-journal');
+      return;
+    }
+    
     // If navigated from entries page, go back to entries page, otherwise go to dashboard
     const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
     navigate(fromEntriesPage ? '/entries' : '/dashboard');
@@ -110,18 +193,42 @@ const EntryDetail: React.FC = () => {
     setDeleteError(null);
     
     try {
-      // Delete entry using context function
-      const success = await deleteEntry(entry.id);
-      
-      if (success) {
-        // Close the dialog and navigate back
-        setConfirmDeleteOpen(false);
+      // Different delete logic for admin entries
+      if (isAdminEntry) {
+        // Delete admin entry through the admin API
+        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/${entry.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+            'Content-Type': 'application/json',
+          },
+        });
         
-        // Navigate back to the appropriate page
-        const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
-        navigate(fromEntriesPage ? '/entries' : '/dashboard');
+        if (response.ok) {
+          // Clear the entry from localStorage
+          localStorage.removeItem('currentAdminEntry');
+          
+          // Close the dialog and navigate back to admin page
+          setConfirmDeleteOpen(false);
+          navigate('/admin-journal');
+          return;
+        } else {
+          setDeleteError('Failed to delete the admin entry. Please try again.');
+        }
       } else {
-        setDeleteError('Failed to delete the entry. Please try again.');
+        // Delete regular entry using context function
+        const success = await deleteEntry(entry.id);
+        
+        if (success) {
+          // Close the dialog and navigate back
+          setConfirmDeleteOpen(false);
+          
+          // Navigate back to the appropriate page
+          const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
+          navigate(fromEntriesPage ? '/entries' : '/dashboard');
+        } else {
+          setDeleteError('Failed to delete the entry. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error deleting entry:', error);
@@ -181,7 +288,7 @@ const EntryDetail: React.FC = () => {
   };
   
   // If entry is still loading or not found
-  if (loading) {
+  if (loading || localLoading) {
     return (
       <Container sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -227,23 +334,59 @@ const EntryDetail: React.FC = () => {
           >
             Back
           </Button>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
-            Daily Reflection
-          </Typography>
+          <Box>
+            <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
+              {isAdminEntry && entry.user ? `${entry.user.name}'s Reflection` : 'Daily Reflection'}
+            </Typography>
+            {isAdminEntry && (
+              <Chip 
+                label="Admin View" 
+                color="primary" 
+                size="small" 
+                sx={{ ml: 1, mt: 0.5 }}
+              />
+            )}
+          </Box>
         </Box>
         
-        <Button 
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-          variant="outlined"
-          color="error"
-          sx={{ 
-            fontFamily: 'Poppins', 
-            textTransform: 'none',
-          }}
-        >
-          Delete Entry
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {process.env.NODE_ENV === 'development' && (
+            <Button
+              variant="outlined"
+              size="small"
+              color="success"
+              onClick={() => {
+                console.log('Debug Info:');
+                console.log('Entry:', entry);
+                console.log('Is Admin Entry:', isAdminEntry);
+                console.log('LocalStorage:', localStorage.getItem('currentAdminEntry'));
+                
+                // Try setting admin entry directly again
+                if (entry) {
+                  localStorage.setItem('currentAdminEntry', JSON.stringify(entry));
+                  setIsAdminEntry(true);
+                  alert('Admin entry status updated. Check console for details.');
+                }
+              }}
+              sx={{ mr: 1 }}
+            >
+              Debug
+            </Button>
+          )}
+        
+          <Button 
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteClick}
+            variant="outlined"
+            color="error"
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+            }}
+          >
+            Delete Entry
+          </Button>
+        </Box>
       </Box>
 
       {error && (

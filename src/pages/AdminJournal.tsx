@@ -152,6 +152,22 @@ const AdminJournal: React.FC = () => {
     return color;
   };
 
+  // Add function to view entry details
+  const handleViewEntry = (entry: AdminJournalEntry) => {
+    // Store entry in localStorage so EntryDetail can access it immediately
+    try {
+      console.log('Storing admin entry in localStorage:', entry);
+      localStorage.setItem('currentAdminEntry', JSON.stringify(entry));
+      
+      // Navigate to the entry detail page using the entry's ID
+      navigate(`/entry/${entry.id}`);
+    } catch (err) {
+      console.error('Error storing admin entry:', err);
+      // Still try to navigate even if localStorage fails
+      navigate(`/entry/${entry.id}`);
+    }
+  };
+
   // Reset page when entries change
   useEffect(() => {
     setPage(0);
@@ -237,6 +253,7 @@ const AdminJournal: React.FC = () => {
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>BREAKS</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>DISTRACTIONS</TableCell>
+                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -247,14 +264,9 @@ const AdminJournal: React.FC = () => {
                       key={entry.id || index} 
                       hover
                       sx={{ 
-                        cursor: 'pointer',
                         '&:hover': {
                           backgroundColor: 'rgba(0, 0, 0, 0.04)'
                         }
-                      }}
-                      onClick={() => {
-                        // Could add a detail view navigation here in the future
-                        console.log('Clicked entry:', entry);
                       }}
                     >
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
@@ -377,6 +389,26 @@ const AdminJournal: React.FC = () => {
                             </Typography>
                           )}
                         </Box>
+                      </TableCell>
+                      
+                      <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
+                        <Button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewEntry(entry);
+                          }}
+                          size="small"
+                          sx={{ 
+                            fontFamily: 'Poppins', 
+                            textTransform: 'none', 
+                            color: '#1056F5',
+                            fontWeight: 'medium',
+                            minWidth: { xs: '40px', sm: '64px' },
+                            px: { xs: 1, sm: 2 }
+                          }}
+                        >
+                          View
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
