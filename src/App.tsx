@@ -18,6 +18,7 @@ import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
+import AdminJournal from './pages/AdminJournal';
 
 // Create a custom theme
 const theme = createTheme({
@@ -115,9 +116,9 @@ const App: React.FC = () => {
                         <AllEntries />
                       </ProtectedRoute>
                     } />
-                    <Route path="/worksheet" element={
+                    <Route path="/admin-journal" element={
                       <ProtectedRoute>
-                        <Worksheet />
+                        <AdminJournal />
                       </ProtectedRoute>
                     } />
                     <Route path="/diagnostic" element={<DiagnosticPage />} />

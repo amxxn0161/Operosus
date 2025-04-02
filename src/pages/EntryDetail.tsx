@@ -32,16 +32,27 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 
+// Interface for admin journal entries which includes user info
+interface AdminJournalEntry extends JournalEntry {
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+}
+
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, loading, error, deleteEntry, saveEntry } = useJournal();
   const navigate = useNavigate();
   const location = useLocation();
   const { entryId } = useParams<{ entryId: string }>();
-  const [entry, setEntry] = useState<JournalEntry | null>(null);
+  const [entry, setEntry] = useState<AdminJournalEntry | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isAdminEntry, setIsAdminEntry] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
   
   // New state for date editing
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -56,19 +67,83 @@ const EntryDetail: React.FC = () => {
       return;
     }
     
-    // Find the entry in the entries from context
-    if (entries.length > 0 && entryId) {
-      const id = parseInt(entryId);
-      const foundEntry = entries.find(e => e.id === id);
+    const loadEntry = async () => {
+      if (!entryId) return;
       
-      if (foundEntry) {
-        setEntry(foundEntry);
-        setSelectedDate(new Date(foundEntry.date)); // Initialize selected date with entry date
-      } else {
-        // Entry not found, redirect to dashboard
-        navigate('/dashboard');
+      const id = parseInt(entryId);
+      console.log(`Loading entry with ID: ${id}`);
+      
+      // Step 1: Try to find the entry in the entries from context
+      if (entries.length > 0) {
+        const foundEntry = entries.find(e => e.id === id);
+        if (foundEntry) {
+          console.log('Found entry in context:', foundEntry);
+          setEntry(foundEntry);
+          setSelectedDate(new Date(foundEntry.date));
+          setLocalLoading(false);
+          return;
+        }
+        console.log('Entry not found in context, checking localStorage');
       }
-    }
+      
+      // Step 2: Check localStorage for admin entry
+      try {
+        const savedAdminEntry = localStorage.getItem('currentAdminEntry');
+        if (savedAdminEntry) {
+          const parsedEntry = JSON.parse(savedAdminEntry);
+          console.log('Found admin entry in localStorage:', parsedEntry);
+          
+          if (parsedEntry && parsedEntry.id === id) {
+            setEntry(parsedEntry);
+            setSelectedDate(new Date(parsedEntry.date));
+            setIsAdminEntry(true);
+            setLocalLoading(false);
+            return;
+          } else {
+            console.log('Admin entry ID mismatch or invalid entry:', parsedEntry?.id, 'vs', id);
+          }
+        } else {
+          console.log('No admin entry found in localStorage');
+        }
+      } catch (e) {
+        console.error('Error parsing saved admin entry:', e);
+      }
+      
+      // Step 3: Try to fetch admin entry directly
+      console.log('Attempting to fetch admin entry directly');
+      try {
+        setLocalLoading(true);
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/entry/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const adminEntry = await response.json();
+          console.log('Successfully fetched admin entry:', adminEntry);
+          setEntry(adminEntry);
+          setSelectedDate(new Date(adminEntry.date));
+          setIsAdminEntry(true);
+          setLocalLoading(false);
+          return;
+        } else {
+          console.error('Failed to fetch admin entry:', response.status);
+        }
+      } catch (err) {
+        console.error('Error fetching admin entry:', err);
+      } finally {
+        setLocalLoading(false);
+      }
+      
+      // If we get here, the entry was not found anywhere
+      console.log('Entry not found anywhere, redirecting to dashboard');
+      navigate('/dashboard');
+    };
+    
+    loadEntry();
   }, [isAuthenticated, navigate, entryId, entries]);
   
   // Format date for display
@@ -87,8 +162,17 @@ const EntryDetail: React.FC = () => {
     return `${score * 10}%`;
   };
   
-  // Handle back button click - check if we came from entries page
+  // Handle back button click - check if we came from admin or entries
   const handleBack = () => {
+    // Clear the admin entry from localStorage when navigating away
+    localStorage.removeItem('currentAdminEntry');
+    
+    // If it's an admin entry, go back to admin page
+    if (isAdminEntry) {
+      navigate('/admin-journal');
+      return;
+    }
+    
     // If navigated from entries page, go back to entries page, otherwise go to dashboard
     const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
     navigate(fromEntriesPage ? '/entries' : '/dashboard');
@@ -110,18 +194,43 @@ const EntryDetail: React.FC = () => {
     setDeleteError(null);
     
     try {
-      // Delete entry using context function
-      const success = await deleteEntry(entry.id);
-      
-      if (success) {
-        // Close the dialog and navigate back
-        setConfirmDeleteOpen(false);
+      // Different delete logic for admin entries
+      if (isAdminEntry) {
+        // Delete admin entry through the admin API
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/${entry.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
         
-        // Navigate back to the appropriate page
-        const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
-        navigate(fromEntriesPage ? '/entries' : '/dashboard');
+        if (response.ok) {
+          // Clear the entry from localStorage
+          localStorage.removeItem('currentAdminEntry');
+          
+          // Close the dialog and navigate back to admin page
+          setConfirmDeleteOpen(false);
+          navigate('/admin-journal');
+          return;
+        } else {
+          setDeleteError('Failed to delete the admin entry. Please try again.');
+        }
       } else {
-        setDeleteError('Failed to delete the entry. Please try again.');
+        // Delete regular entry using context function
+        const success = await deleteEntry(entry.id);
+        
+        if (success) {
+          // Close the dialog and navigate back
+          setConfirmDeleteOpen(false);
+          
+          // Navigate back to the appropriate page
+          const fromEntriesPage = location.key !== 'default' && document.referrer.includes('/entries');
+          navigate(fromEntriesPage ? '/entries' : '/dashboard');
+        } else {
+          setDeleteError('Failed to delete the entry. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error deleting entry:', error);
@@ -181,7 +290,7 @@ const EntryDetail: React.FC = () => {
   };
   
   // If entry is still loading or not found
-  if (loading) {
+  if (loading || localLoading) {
     return (
       <Container sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -191,7 +300,7 @@ const EntryDetail: React.FC = () => {
     );
   }
 
-  if (!entry && !loading) {
+  if (!entry && !loading && !localLoading) {
     return (
       <Container sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column' }}>
@@ -213,100 +322,144 @@ const EntryDetail: React.FC = () => {
 
   return (
     <Container maxWidth="md" sx={{ py: 4, bgcolor: '#f5f5f5' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Button 
-            startIcon={<ArrowBackIcon />}
-            onClick={handleBack}
-            sx={{ 
-              mr: 2,
-              fontFamily: 'Poppins', 
-              textTransform: 'none',
-              color: '#1056F5'
-            }}
-          >
-            Back
-          </Button>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
-            Daily Reflection
-          </Typography>
-        </Box>
-        
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+          Journal Entry Details
+        </Typography>
         <Button 
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
           variant="outlined"
-          color="error"
-          sx={{ 
-            fontFamily: 'Poppins', 
-            textTransform: 'none',
-          }}
+          onClick={handleBack}
+          startIcon={<ArrowBackIcon />}
+          sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
         >
-          Delete Entry
+          Back
         </Button>
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
+      {/* Admin entry alert banner */}
+      {isAdminEntry && entry?.user && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mb: 3, 
+            fontFamily: 'Poppins',
+            alignItems: 'center',
+            '& .MuiAlert-message': {
+              width: '100%'
+            }
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+              You are viewing {entry.user.name}'s journal entry as an admin
+            </Typography>
+          </Box>
         </Alert>
       )}
-      
-      <Paper sx={{ p: 4, borderRadius: 2 }}>
-        {/* Header with date and scores */}
-        <Box sx={{ mb: 4 }}>
-          {isEditingDate ? (
-            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <DatePicker
-                  label="Select Date"
-                  value={selectedDate}
-                  onChange={(newDate: Date | null) => setSelectedDate(newDate)}
-                  disableFuture
-                  slotProps={{ 
-                    textField: { 
-                      fullWidth: true,
-                      sx: { fontFamily: 'Poppins' }
-                    } 
-                  }}
-                />
-              </LocalizationProvider>
-              <IconButton 
-                color="primary" 
-                onClick={handleSaveDate}
-                disabled={isSavingDate}
-              >
-                <SaveIcon />
-              </IconButton>
-              <IconButton 
-                color="default" 
-                onClick={handleCancelEditDate}
-                disabled={isSavingDate}
-              >
-                <CloseIcon />
-              </IconButton>
-              {isSavingDate && <CircularProgress size={24} />}
-            </Box>
-          ) : (
-            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
-              <Typography 
-                variant="h5" 
-                sx={{ fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
-              >
-                {formatDate(entry.date)}
+
+      <Paper sx={{ p: 4 }}>
+        {/* Entry Date Section */}
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 3,
+          pb: 2,
+          borderBottom: '1px solid #e0e0e0'
+        }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontFamily: 'Poppins', fontWeight: 'bold', mb: 1 }}>
+              {entry && formatDate(entry.date)}
+            </Typography>
+
+            {isAdminEntry && entry?.user && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                Submitted by: {entry.user.name}
               </Typography>
-              <Tooltip title="Edit Date">
-                <IconButton 
-                  color="primary" 
-                  onClick={handleEditDate}
-                  sx={{ ml: 1 }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+            )}
+
+            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+              Created: {entry && new Date(entry.created_at).toLocaleString()}
+            </Typography>
+          </Box>
+
+          {/* Only show edit date option for non-admin entries */}
+          {!isAdminEntry && (
+            <Box>
+              {isEditingDate ? (
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <DatePicker 
+                      value={selectedDate}
+                      onChange={(newDate) => setSelectedDate(newDate)}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          sx: { mr: 1 }
+                        }
+                      }}
+                    />
+                  </LocalizationProvider>
+                  <IconButton onClick={handleSaveDate} disabled={isSavingDate} color="primary" sx={{ mr: 0.5 }}>
+                    <SaveIcon />
+                  </IconButton>
+                  <IconButton onClick={handleCancelEditDate} disabled={isSavingDate}>
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              ) : (
+                <Tooltip title="Edit date">
+                  <IconButton onClick={handleEditDate} color="primary">
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           )}
-          
+        </Box>
+
+        {/* Action/Score Section */}
+        <Box sx={{ 
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          mb: 3
+        }}>
+          <Chip 
+            label={`Productivity Score: ${entry?.productivityScore}/10`}
+            sx={{ 
+              fontSize: '1rem',
+              height: '32px',
+              fontWeight: 'bold',
+              bgcolor: '#1056F5',
+              color: 'white',
+              mb: { xs: 1, md: 0 },
+              mr: { xs: 0, md: 1 }
+            }}
+          />
+
+          {!isAdminEntry && (
+            <Button 
+              startIcon={<DeleteIcon />}
+              variant="outlined"
+              color="error"
+              onClick={handleDeleteClick}
+              sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+            >
+              Delete Entry
+            </Button>
+          )}
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+        
+        {/* Header with date and scores */}
+        <Box sx={{ mb: 4 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} sm={4}>
               <Box sx={{ 
@@ -420,19 +573,19 @@ const EntryDetail: React.FC = () => {
             Support Needed
           </Typography>
           
-          <Paper 
-            variant="outlined" 
+          <Box
             sx={{ 
               p: 2, 
               borderRadius: 2, 
               borderColor: '#e0e0e0',
-              bgcolor: '#fafafa'
+              bgcolor: '#fafafa',
+              border: '1px solid #e0e0e0'
             }}
           >
             <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
               {entry.supportNeeded || 'No support needs were recorded for this entry.'}
             </Typography>
-          </Paper>
+          </Box>
         </Box>
         
         {/* Improvement Plans Section */}
@@ -444,19 +597,19 @@ const EntryDetail: React.FC = () => {
             Improvement Plans
           </Typography>
           
-          <Paper 
-            variant="outlined" 
+          <Box
             sx={{ 
               p: 2, 
               borderRadius: 2, 
               borderColor: '#e0e0e0',
-              bgcolor: '#fafafa'
+              bgcolor: '#fafafa',
+              border: '1px solid #e0e0e0'
             }}
           >
             <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
               {entry.improvementPlans || 'No improvement plans were recorded for this entry.'}
             </Typography>
-          </Paper>
+          </Box>
         </Box>
       </Paper>
 
