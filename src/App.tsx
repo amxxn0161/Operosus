@@ -20,6 +20,7 @@ import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
 import Layout from './components/Layout';
+import MockDataToggle from './components/MockDataToggle';
 
 // Create a custom theme with mobile-first approach
 let theme = createTheme({
@@ -258,6 +259,7 @@ const App: React.FC = () => {
                       </ProtectedRoute>
                     } />
                     <Route path="/diagnostic" element={<DiagnosticPage />} />
+                    <Route path="/dev/data-settings" element={<MockDataToggle />} />
                   </Route>
                 </Routes>
               </Router>

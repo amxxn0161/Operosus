@@ -23,13 +23,15 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
+  Chip,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { format } from 'date-fns';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import { Task } from '../services/taskService';
+import { Task, useMockData, setUseMockData } from '../services/taskService';
 import { useTaskOperations } from '../hooks/useTaskOperations';
+import SyncIcon from '@mui/icons-material/Sync';
 
 const Tasks: React.FC = () => {
   const { 
@@ -115,6 +117,31 @@ const Tasks: React.FC = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={clearOperationError}>
           {error}
+        </Alert>
+      )}
+
+      {useMockData && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mb: 2, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between' 
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body2">
+              Viewing sample task data. Connect to your backend to see actual tasks.
+            </Typography>
+          </Box>
+          <Chip 
+            label="Using Sample Data" 
+            color="primary" 
+            size="small" 
+            variant="outlined" 
+            sx={{ ml: 2 }}
+          />
         </Alert>
       )}
 

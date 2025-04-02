@@ -19,6 +19,15 @@ export interface CalendarList {
   colorId?: string;
 }
 
+// Flag to control whether mock data should be used
+// This should be controlled via environment variable in a real app
+export let useMockData = true;
+
+// Function to set whether mock data should be used
+export const setUseMockData = (value: boolean) => {
+  useMockData = value;
+};
+
 // Function to connect to Google Calendar
 export const connectGoogleCalendar = async (): Promise<boolean> => {
   try {
@@ -132,6 +141,11 @@ export const deleteCalendarEvent = async (
 
 // Check if the user has connected their Google Calendar
 export const isGoogleCalendarConnected = async (): Promise<boolean> => {
+  // If useMockData is true, always return false to show mock data
+  if (useMockData) {
+    return false;
+  }
+  
   try {
     const response = await apiRequest<{ connected: boolean }>('/api/calendar/status', {
       method: 'GET'

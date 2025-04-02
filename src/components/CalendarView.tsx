@@ -12,15 +12,19 @@ import {
   CircularProgress,
   ToggleButtonGroup,
   ToggleButton,
-  styled
+  styled,
+  Chip
 } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
 import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import { useCalendar } from '../contexts/CalendarContext';
-import { CalendarEvent } from '../services/calendarService';
+import { useTask } from '../contexts/TaskContext';
+import { CalendarEvent, useMockData as useCalendarMockData } from '../services/calendarService';
+import { useMockData as useTaskMockData } from '../services/taskService';
 
 // Event card styles
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -68,6 +72,10 @@ const colorMap: ColorMap = {
   'manager': '#E53935',  // Manager 1:1
   'review': '#4CAF50',   // Project Review
   'default': '#1056F5',  // Default blue
+  // Task priority colors
+  'task-low': '#8BC34A',     // Light green
+  'task-medium': '#FF9800',  // Orange
+  'task-high': '#F44336',    // Red
 };
 
 // Function to get event color
@@ -283,6 +291,40 @@ const generateMockEvents = (baseDate: Date): CalendarEvent[] => {
   return mockEvents;
 };
 
+// Function to convert tasks to calendar event format
+const convertTasksToEvents = (tasks: any[]): CalendarEvent[] => {
+  return tasks
+    .filter(task => task.dueDate) // Only include tasks with due dates
+    .map(task => {
+      // Create a calendar event from the task
+      const dueDate = new Date(task.dueDate);
+      const startTime = new Date(dueDate);
+      // Make task events 1 hour long
+      const endTime = new Date(dueDate);
+      endTime.setHours(endTime.getHours() + 1);
+      
+      // Priority-based coloring
+      let colorId = 'task-medium';
+      if (task.priority === 'high') {
+        colorId = 'task-high';
+      } else if (task.priority === 'low') {
+        colorId = 'task-low';
+      }
+      
+      return {
+        id: `task-${task.id}`,
+        title: `📋 ${task.title}`,
+        start: startTime.toISOString(),
+        end: endTime.toISOString(),
+        description: task.description,
+        colorId: colorId,
+        isTask: true as const,  // Make TypeScript happy with literal type
+        completed: task.completed === 1,
+        taskId: task.id
+      };
+    });
+};
+
 interface CalendarViewProps {
   onEventClick?: (event: CalendarEvent) => void;
   onAddEvent?: () => void;
@@ -300,15 +342,26 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     viewMode,
     setSelectedDate,
     setViewMode,
-    isLoading,
-    error,
+    isLoading: calendarLoading,
+    error: calendarError,
     isConnected,
     connectCalendar,
     refreshCalendarData
   } = useCalendar();
+  
+  // Get tasks from context
+  const {
+    tasks,
+    loading: tasksLoading,
+    error: tasksError,
+    refreshTasks
+  } = useTask();
 
   // Generate mock events based on the selected date
   const [mockEvents, setMockEvents] = useState<CalendarEvent[]>([]);
+  
+  // Convert tasks to events
+  const taskEvents = convertTasksToEvents(tasks);
   
   // Update mock events when the selected date changes
   useEffect(() => {
@@ -318,7 +371,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   }, [selectedDate, isConnected]);
   
   // Use real events if connected, otherwise use mock events
-  const events = isConnected ? realEvents : mockEvents;
+  const calendarEvents = isConnected ? realEvents : mockEvents;
+  
+  // Combine calendar events and task events
+  const allEvents = [...calendarEvents, ...taskEvents];
+  
+  // Loading state combines calendar and tasks loading
+  const isLoading = calendarLoading || tasksLoading;
+  
+  // Error state combines calendar and tasks errors
+  const error = calendarError || tasksError;
+
+  // Function to refresh all data
+  const refreshAllData = async () => {
+    refreshCalendarData();
+    refreshTasks();
+  };
 
   // Function to navigate to today
   const goToToday = () => {
@@ -387,7 +455,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const month = date.getMonth();
     const year = date.getFullYear();
     
-    return events.filter(event => {
+    return allEvents.filter(event => {
       const eventDate = new Date(event.start);
       return eventDate.getDate() === day && 
              eventDate.getMonth() === month && 
@@ -462,33 +530,72 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         
         {todayEvents.length > 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {todayEvents.map((event) => (
-              <Paper
-                key={event.id}
-                elevation={1}
-                sx={{ 
-                  p: 2, 
-                  borderLeft: `4px solid ${getEventColor(event)}`,
-                  cursor: 'pointer',
-                  '&:hover': {
-                    boxShadow: 3
-                  }
-                }}
-                onClick={() => onEventClick && onEventClick(event)}
-              >
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                  {event.title}
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins' }}>
-                  {extractTime(event.start)} - {extractTime(event.end)}
-                </Typography>
-                {event.location && (
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
-                    Location: {event.location}
+            {todayEvents.map((event) => {
+              // Type guard to check if event is a task
+              const isTask = 'isTask' in event && event.isTask === true;
+              const isCompleted = isTask && 'completed' in event && event.completed === true;
+              
+              return (
+                <Paper
+                  key={event.id}
+                  elevation={1}
+                  sx={{ 
+                    p: 2, 
+                    borderLeft: `4px solid ${getEventColor(event)}`,
+                    cursor: 'pointer',
+                    '&:hover': {
+                      boxShadow: 3
+                    },
+                    opacity: isCompleted ? 0.7 : 1,
+                    textDecoration: isCompleted ? 'line-through' : 'none',
+                  }}
+                  onClick={() => onEventClick && onEventClick(event)}
+                >
+                  <Box sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    mb: 1
+                  }}>
+                    {isTask && (
+                      <AssignmentIcon fontSize="small" sx={{ mr: 1, color: getEventColor(event) }} />
+                    )}
+                    <Typography variant="subtitle1" sx={{ 
+                      fontWeight: 'bold', 
+                      fontFamily: 'Poppins'
+                    }}>
+                      {event.title}
+                    </Typography>
+                  </Box>
+                  
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins' }}>
+                    {extractTime(event.start)} - {extractTime(event.end)}
                   </Typography>
-                )}
-              </Paper>
-            ))}
+                  
+                  {event.location && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
+                      Location: {event.location}
+                    </Typography>
+                  )}
+                  
+                  {event.description && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
+                      {event.description}
+                    </Typography>
+                  )}
+                  
+                  {isTask && (
+                    <Typography variant="caption" sx={{ 
+                      display: 'block', 
+                      mt: 1, 
+                      color: isCompleted ? 'success.main' : 'text.secondary',
+                      fontStyle: 'italic'
+                    }}>
+                      {isCompleted ? 'Completed' : 'Not completed'}
+                    </Typography>
+                  )}
+                </Paper>
+              );
+            })}
           </Box>
         ) : (
           <Box sx={{ 
@@ -580,20 +687,43 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   overflowY: 'auto',
                   px: 0.5
                 }}>
-                  {dayEvents.map((event) => (
-                    <EventCard 
-                      key={event.id}
-                      bgcolor={getEventColor(event)}
-                      onClick={() => onEventClick && onEventClick(event)}
-                    >
-                      <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {event.title}
-                      </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>
-                        {formatTime(event.start)} - {formatTime(event.end)}
-                      </Typography>
-                    </EventCard>
-                  ))}
+                  {dayEvents.map((event) => {
+                    // Type guard to check if event is a task
+                    const isTask = 'isTask' in event && event.isTask === true;
+                    const isCompleted = isTask && 'completed' in event && event.completed === true;
+                    
+                    return (
+                      <EventCard 
+                        key={event.id}
+                        bgcolor={getEventColor(event)}
+                        onClick={() => onEventClick && onEventClick(event)}
+                        sx={{
+                          opacity: isCompleted ? 0.7 : 1,
+                          textDecoration: isCompleted ? 'line-through' : 'none',
+                        }}
+                      >
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center',
+                          whiteSpace: 'nowrap', 
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis'
+                        }}>
+                          <Typography variant="caption" sx={{ 
+                            fontWeight: 'bold',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {event.title}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          {formatTime(event.start)} - {formatTime(event.end)}
+                        </Typography>
+                      </EventCard>
+                    );
+                  })}
                 </Box>
               </Grid>
             );
@@ -687,22 +817,38 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     borderRadius: '2px'
                   }
                 }}>
-                  {dayEvents.slice(0, 3).map((event) => (
-                    <EventCard 
-                      key={event.id}
-                      bgcolor={getEventColor(event)}
-                      onClick={() => onEventClick && onEventClick(event)}
-                      sx={{ 
-                        p: '2px 4px',
-                        mb: 0.25,
-                        fontSize: '0.65rem'
-                      }}
-                    >
-                      <Typography variant="caption" sx={{ fontSize: '0.6rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {event.title}
-                      </Typography>
-                    </EventCard>
-                  ))}
+                  {dayEvents.slice(0, 3).map((event) => {
+                    // Type guard to check if event is a task
+                    const isTask = 'isTask' in event && event.isTask === true;
+                    const isCompleted = isTask && 'completed' in event && event.completed === true;
+                    
+                    return (
+                      <EventCard 
+                        key={event.id}
+                        bgcolor={getEventColor(event)}
+                        onClick={() => onEventClick && onEventClick(event)}
+                        sx={{ 
+                          p: '2px 4px',
+                          mb: 0.25,
+                          fontSize: '0.65rem',
+                          opacity: isCompleted ? 0.7 : 1,
+                          textDecoration: isCompleted ? 'line-through' : 'none',
+                        }}
+                      >
+                        <Box sx={{
+                          whiteSpace: 'nowrap', 
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis'
+                        }}>
+                          <Typography variant="caption" sx={{ 
+                            fontSize: '0.6rem'
+                          }}>
+                            {event.title}
+                          </Typography>
+                        </Box>
+                      </EventCard>
+                    );
+                  })}
                   
                   {dayEvents.length > 3 && (
                     <Typography 
@@ -750,19 +896,39 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         borderColor: 'divider',
         backgroundColor: 'rgba(16, 86, 245, 0.02)'
       }}>
-        <Typography 
-          variant="h6" 
-          sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
-        >
-          Calendar
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography 
+            variant="h6" 
+            sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+          >
+            Calendar
+          </Typography>
+          {useCalendarMockData && (
+            <Chip 
+              label="Sample Data" 
+              size="small" 
+              color="primary" 
+              variant="outlined" 
+              sx={{ fontSize: '0.7rem', ml: 2 }}
+            />
+          )}
+          {useTaskMockData && taskEvents.length > 0 && (
+            <Chip 
+              label="Sample Tasks" 
+              size="small" 
+              color="secondary" 
+              variant="outlined" 
+              sx={{ fontSize: '0.7rem', ml: 1 }}
+            />
+          )}
+        </Box>
         
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           {isLoading ? (
             <CircularProgress size={24} sx={{ mr: 1 }} />
           ) : (
             <Tooltip title="Refresh">
-              <IconButton onClick={refreshCalendarData} size="small">
+              <IconButton onClick={refreshAllData} size="small">
                 <SyncIcon />
               </IconButton>
             </Tooltip>
@@ -780,6 +946,67 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </Tooltip>
         </Box>
       </Box>
+      
+      {/* Legend for task and event types */}
+      <Box sx={{ 
+        px: 2, 
+        py: 1,
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 1,
+        borderBottom: 1,
+        borderColor: 'divider',
+        bgcolor: 'rgba(0,0,0,0.02)'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-high'], mr: 0.5 }} />
+          <Typography variant="caption">High Priority Task</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-medium'], mr: 0.5 }} />
+          <Typography variant="caption">Medium Priority Task</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-low'], mr: 0.5 }} />
+          <Typography variant="caption">Low Priority Task</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['default'], mr: 0.5 }} />
+          <Typography variant="caption">Calendar Event</Typography>
+        </Box>
+      </Box>
+      
+      {/* Mock data banner - show only when not connected */}
+      {!isConnected && (
+        <Box sx={{ 
+          px: 2, 
+          py: 1, 
+          backgroundColor: 'rgba(16, 86, 245, 0.1)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontFamily: 'Poppins',
+              fontStyle: 'italic',
+              color: 'text.secondary'
+            }}
+          >
+            Viewing sample calendar data. Connect your Google Calendar to see your actual events.
+          </Typography>
+          <Button 
+            variant="outlined" 
+            size="small"
+            onClick={connectCalendar}
+            disabled={isLoading}
+            sx={{ ml: 2, minWidth: 'auto' }}
+          >
+            Connect
+          </Button>
+        </Box>
+      )}
       
       {/* Navigation bar */}
       <Box sx={{ 
@@ -844,38 +1071,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </Box>
       </Box>
       
-      {/* Mock data banner - show only when not connected */}
-      {!isConnected && (
-        <Box sx={{ 
-          px: 2, 
-          py: 1, 
-          backgroundColor: 'rgba(16, 86, 245, 0.1)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              fontFamily: 'Poppins',
-              fontStyle: 'italic',
-              color: 'text.secondary'
-            }}
-          >
-            Viewing sample calendar data. Connect your Google Calendar to see your actual events.
-          </Typography>
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={connectCalendar}
-            disabled={isLoading}
-            sx={{ ml: 2, minWidth: 'auto' }}
-          >
-            Connect
-          </Button>
-        </Box>
-      )}
-      
       {/* Calendar content */}
       <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
         {error ? (
@@ -896,7 +1091,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             </Typography>
             <Button 
               variant="outlined" 
-              onClick={refreshCalendarData}
+              onClick={refreshAllData}
               disabled={isLoading}
             >
               {isLoading ? 'Refreshing...' : 'Try Again'}

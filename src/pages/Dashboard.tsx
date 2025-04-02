@@ -18,12 +18,14 @@ import {
   ListItemIcon,
   ListItemText,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Chip
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
 import { useTask } from '../contexts/TaskContext';
+import { useMockData as useTaskMockData } from '../services/taskService';
 import { JournalEntry } from '../services/journalService';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -892,8 +894,8 @@ const Dashboard: React.FC = () => {
                   </Paper>
                 </Grid>
  
-                {/* Task Progress section hidden for now 
-                <Grid item xs={12}>
+                {/* Task Progress section - hidden for now */}
+                {/* <Grid item xs={12}>
                   <Paper
                     sx={{
                       p: 4,
@@ -909,6 +911,15 @@ const Dashboard: React.FC = () => {
                       <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
                         Task Progress
                       </Typography>
+                      {useTaskMockData && (
+                        <Chip 
+                          label="Sample Data" 
+                          size="small" 
+                          color="primary" 
+                          variant="outlined" 
+                          sx={{ fontSize: '0.7rem', ml: 2 }}
+                        />
+                      )}
                     </Box>
                     {tasksLoading ? (
                       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
@@ -1024,7 +1035,7 @@ const Dashboard: React.FC = () => {
                           )}
                         </Box>
                       </>
-                    ) :
+                    ) : (
                       <>
                         <Box sx={{ 
                           display: 'flex', 
@@ -1136,8 +1147,7 @@ const Dashboard: React.FC = () => {
                       </>
                     )}
                   </Paper>
-                </Grid>
-                */}
+                </Grid> */}
               </Grid>
             </Grid>
           </Grid>
