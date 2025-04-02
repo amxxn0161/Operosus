@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AppBar, 
   Toolbar, 
@@ -25,6 +25,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import HomeIcon from '@mui/icons-material/Home';
 import BookIcon from '@mui/icons-material/Book';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 
@@ -34,9 +35,48 @@ const Header: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [forceUpdate, setForceUpdate] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
   
-  // Debug log to see user data
-  console.log('Header rendering with user:', user);
+  // Check admin access by calling the API endpoint
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      if (!isAuthenticated) {
+        setIsAdmin(false);
+        return;
+      }
+      
+      try {
+        const token = localStorage.getItem('authToken');
+        console.log('Checking admin access with token:', token ? 'exists' : 'missing');
+        
+        const response = await fetch('https://app2.operosus.com/api/productivity/admin', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // If we get a 200 response, user is an admin
+        if (response.ok) {
+          console.log('User has admin access');
+          setIsAdmin(true);
+        } else {
+          console.log('User does not have admin access:', response.status);
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin access:', error);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkAdminAccess();
+  }, [isAuthenticated, forceUpdate]); // Also check when forceUpdate changes
+  
+  // Debug log to see user data and admin status
+  console.log('Header rendering with user:', user, 'isAdmin:', isAdmin, 'userEmail:', localStorage.getItem('userEmail'));
   
   // State for dropdown menu
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -61,6 +101,9 @@ const Header: React.FC = () => {
   const handleLogout = () => {
     handleClose();
     setDrawerOpen(false);
+    // Immediately clear admin status before logout is called
+    setIsAdmin(false);
+    console.log('Logout initiated, admin status cleared');
     logout();
   };
   
@@ -159,6 +202,27 @@ const Header: React.FC = () => {
             }}
           />
         </ListItemButton>
+        
+        {/* Admin Journal Button - only shown for admins */}
+        {isAdmin && (
+          <ListItemButton 
+            onClick={() => handleNavigation('/admin-journal')}
+            selected={isActive('/admin-journal')}
+            sx={{ 
+              py: 1.5,
+              bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+            }}
+          >
+            <AdminPanelSettingsIcon sx={{ mr: 2, color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary' }} />
+            <ListItemText 
+              primary="Admin Journal" 
+              primaryTypographyProps={{
+                fontWeight: 'bold',
+                color: isActive('/admin-journal') ? 'primary.main' : 'text.primary'
+              }}
+            />
+          </ListItemButton>
+        )}
         
         {/* Worksheet option hidden temporarily
         <ListItemButton 
@@ -309,6 +373,23 @@ const Header: React.FC = () => {
                 >
                   Daily Journal
                 </Button>
+                {/* Admin Journal Button - only shown to admin users */}
+                {isAdmin && (
+                  <Button 
+                    component={Link}
+                    to="/admin-journal"
+                    sx={{ 
+                      fontFamily: 'Poppins',
+                      textTransform: 'none',
+                      color: '#333',
+                      fontSize: '1rem',
+                      mx: 1,
+                      fontWeight: isActive('/admin-journal') ? 'bold' : 'normal'
+                    }}
+                  >
+                    Admin Journal
+                  </Button>
+                )}
                 {/* Worksheet option hidden temporarily
                 <Button 
                   component={Link}

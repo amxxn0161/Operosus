@@ -85,6 +85,7 @@ const Dashboard: React.FC = () => {
   const [distractionData, setDistractionData] = useState<DistractionData[]>([]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Custom tooltip component for the chart
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -97,14 +98,17 @@ const Dashboard: React.FC = () => {
             padding: '10px 15px',
             border: '1px solid #f5f5f5',
             fontFamily: 'Poppins',
-            minWidth: '150px'
+            minWidth: '200px'
           }}
         >
-          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', mb: 0.5 }}>
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', mb: 1 }}>
             {label}
           </Typography>
-          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#1056F5', fontWeight: 'medium' }}>
-            Productivity: {payload[0].value}%
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#1056F5', fontWeight: 'medium', mb: 0.5 }}>
+            Overall Score: {payload[0].value}%
+          </Typography>
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#666' }}>
+            Productivity: {payload[0].payload.productivity}%
           </Typography>
         </Paper>
       );
@@ -147,7 +151,18 @@ const Dashboard: React.FC = () => {
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
       navigate('/login');
+      return;
     }
+    
+    // For simplicity, we'll check if the user is an admin based on their email
+    // In a real app, this would come from the user's role/permissions in the auth context
+    const userEmail = localStorage.getItem('userEmail');
+    // Only grant admin access to specific email addresses
+    const isAdminUser = Boolean(userEmail && (
+      userEmail === 'dc@operosus.com' || 
+      userEmail === 'as@operosus.com'
+    ));
+    setIsAdmin(isAdminUser);
   }, [isAuthenticated, navigate]);
 
   // Process journal entries when they change
@@ -206,9 +221,57 @@ const Dashboard: React.FC = () => {
       
       const journalStreakCount = calculateStreak();
       
+      // Calculate a comprehensive score that follows the specified point system
+      const comprehensiveScores = entries.map(entry => {
+        let totalPoints = 0;
+        let maxPossiblePoints = 40; // Default maximum
+        
+        // Productivity score (1-10 points)
+        totalPoints += entry.productivityScore;
+        
+        // Meeting score (0-10 points)
+        if (entry.hadNoMeetings) {
+          maxPossiblePoints = 30; // Reduce maximum if no meetings
+        } else if (entry.meetingScore !== null) {
+          totalPoints += entry.meetingScore;
+        }
+        
+        // Break points (Yes = 10, No = 0)
+        if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+          totalPoints += 10;
+        }
+        
+        // Focus time points (Yes = 10, Partial = 5, No = 0)
+        if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+          totalPoints += 10;
+        } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+          totalPoints += 5;
+        }
+        
+        // Subtract 2 points for each distraction
+        const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+        totalPoints -= distractionPenalty;
+        
+        // Ensure points don't go below zero
+        totalPoints = Math.max(0, totalPoints);
+        
+        // Calculate percentage
+        const scorePercentage = Math.round((totalPoints / maxPossiblePoints) * 100);
+        
+        return {
+          points: totalPoints,
+          maxPoints: maxPossiblePoints,
+          percentage: scorePercentage
+        };
+      });
+      
+      // Calculate average comprehensive score
+      const totalPercentage = comprehensiveScores.reduce((sum, score) => sum + score.percentage, 0);
+      const avgComprehensiveScore = Math.round(totalPercentage / entries.length);
+      
       setStats({
-        averageScore: `${Math.round((totalProductivity / entries.length) * 10)}%`,
-        avgProductivity: Math.round(totalProductivity / entries.length),
+        averageScore: `${avgComprehensiveScore}%`,
+        avgProductivity: Math.round((totalProductivity / entries.length) * 10),
         avgMeetingScore: meetingsEntries.length ? Math.round(totalMeetingScore / meetingsEntries.length) : 0,
         breakRate: `${Math.round((breakRateCount / entries.length) * 100)}%`,
         focusSuccess: `${Math.round((focusSuccessCount / entries.length) * 100)}%`,
@@ -277,9 +340,46 @@ const Dashboard: React.FC = () => {
         hour12: true 
       })}`;
       
+      // Calculate comprehensive score for this entry
+      let totalPoints = 0;
+      let maxPossiblePoints = 40; // Default maximum
+      
+      // Productivity score (1-10 points)
+      totalPoints += entry.productivityScore;
+      
+      // Meeting score (0-10 points)
+      if (entry.hadNoMeetings) {
+        maxPossiblePoints = 30; // Reduce maximum if no meetings
+      } else if (entry.meetingScore !== null) {
+        totalPoints += entry.meetingScore;
+      }
+      
+      // Break points (Yes = 10, No = 0)
+      if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+        totalPoints += 10;
+      }
+      
+      // Focus time points (Yes = 10, Partial = 5, No = 0)
+      if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+        totalPoints += 10;
+      } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+        totalPoints += 5;
+      }
+      
+      // Subtract 2 points for each distraction
+      const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+      totalPoints -= distractionPenalty;
+      
+      // Ensure points don't go below zero
+      totalPoints = Math.max(0, totalPoints);
+      
+      // Calculate percentage
+      const scorePercentage = Math.round((totalPoints / maxPossiblePoints) * 100);
+      
       return {
         name: formattedDate,
         productivity: Math.round(entry.productivityScore * 10),
+        comprehensive: scorePercentage,
         date: date // Keep the Date object for sorting
       };
     });
@@ -288,6 +388,44 @@ const Dashboard: React.FC = () => {
     processedData.sort((a, b) => a.date.getTime() - b.date.getTime());
     
     setChartData(processedData);
+  };
+
+  // Helper function to calculate comprehensive score for an entry
+  const calculateEntryScore = (entry: JournalEntry): number => {
+    let totalPoints = 0;
+    let maxPossiblePoints = 40; // Default maximum
+    
+    // Productivity score (1-10 points)
+    totalPoints += entry.productivityScore;
+    
+    // Meeting score (0-10 points)
+    if (entry.hadNoMeetings) {
+      maxPossiblePoints = 30; // Reduce maximum if no meetings
+    } else if (entry.meetingScore !== null) {
+      totalPoints += entry.meetingScore;
+    }
+    
+    // Break points (Yes = 10, No = 0)
+    if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+      totalPoints += 10;
+    }
+    
+    // Focus time points (Yes = 10, Partial = 5, No = 0)
+    if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+      totalPoints += 10;
+    } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+      totalPoints += 5;
+    }
+    
+    // Subtract 2 points for each distraction
+    const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+    totalPoints -= distractionPenalty;
+    
+    // Ensure points don't go below zero
+    totalPoints = Math.max(0, totalPoints);
+    
+    // Calculate percentage
+    return Math.round((totalPoints / maxPossiblePoints) * 100);
   };
 
   const handleNewEntry = () => {
@@ -481,6 +619,7 @@ const Dashboard: React.FC = () => {
                   title="Average Score" 
                   value={stats.averageScore}
                   color="#1056F5"
+                  subtitle="Comprehensive rating of all factors"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -488,6 +627,7 @@ const Dashboard: React.FC = () => {
                   title="Avg Productivity" 
                   value={stats.avgProductivity}
                   color="#071C73"
+                  subtitle="Based on productivity ratings only"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -495,6 +635,7 @@ const Dashboard: React.FC = () => {
                   title="Avg Meeting Score" 
                   value={stats.avgMeetingScore}
                   color="#016C9E"
+                  subtitle="Average meeting effectiveness"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -502,6 +643,7 @@ const Dashboard: React.FC = () => {
                   title="Break Rate" 
                   value={stats.breakRate}
                   color="#F29702"
+                  subtitle="How often you took breaks"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -509,6 +651,7 @@ const Dashboard: React.FC = () => {
                   title="Focus Success" 
                   value={stats.focusSuccess}
                   color="#49C1E3"
+                  subtitle="Focus time achievement rate"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={4} lg={2}>
@@ -516,6 +659,7 @@ const Dashboard: React.FC = () => {
                   title="Journal Streak" 
                   value={stats.journalStreak}
                   color="#E04330"
+                  subtitle="Consecutive days with entries"
                 />
               </Grid>
             </Grid>
@@ -621,7 +765,7 @@ const Dashboard: React.FC = () => {
                 
                     <Line 
                       type="monotone" 
-                      dataKey="productivity" 
+                      dataKey="comprehensive" 
                       stroke="#1056F5" 
                       strokeWidth={2}
                       dot={{ 
@@ -663,7 +807,7 @@ const Dashboard: React.FC = () => {
                     Recent Entries
                   </Typography>
                   <Button 
-                    onClick={() => navigate('/entries')}
+                    onClick={() => navigate('/all-entries')}
                     sx={{ 
                       fontFamily: 'Poppins', 
                       textTransform: 'none',
@@ -720,7 +864,7 @@ const Dashboard: React.FC = () => {
                                 color: 'white',
                                 fontSize: { xs: '0.75rem', sm: '0.875rem' }
                               }}>
-                                {Math.round(entry.productivityScore * 10)}%
+                                {calculateEntryScore(entry)}%
                               </Box>
                             </TableCell>
                             <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
@@ -733,7 +877,7 @@ const Dashboard: React.FC = () => {
                                 fontWeight: 'medium',
                                 color: 'white'
                               }}>
-                                {entry.productivityScore}
+                                {Math.round(entry.productivityScore * 10)}
                               </Box>
                             </TableCell>
                             <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
@@ -839,7 +983,7 @@ const Dashboard: React.FC = () => {
                     </Typography>
                     
                     {entries && entries.length > 0 ? (
-                      <Box sx={{ height: 350, width: '100%' }}>  {/* Increased height for better visualization */}
+                      <Box sx={{ height: 500, width: '100%' }}>  {/* Increased height for better visualization */}
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
@@ -847,7 +991,7 @@ const Dashboard: React.FC = () => {
                               cx="50%"
                               cy="45%"
                               labelLine={false}
-                              outerRadius={90}  // Increased outer radius for better visualization
+                              outerRadius={120}  // Increased outer radius for better visualization
                               fill="#8884d8"
                               dataKey="value"
                             >
@@ -868,9 +1012,10 @@ const Dashboard: React.FC = () => {
                                 return value;
                               }}
                               wrapperStyle={{
-                                fontSize: '0.9rem',  // Increased font size
-                                lineHeight: '1.5',   // Increased line height
-                                paddingTop: '20px'   // Increased padding
+                                fontSize: '1rem',  // Increased font size
+                                lineHeight: '1.8',   // Increased line height
+                                paddingTop: '30px',   // Increased padding
+                                fontWeight: 'medium'
                               }}
                               layout="horizontal"
                               align="center"
@@ -881,7 +1026,7 @@ const Dashboard: React.FC = () => {
                       </Box>
                     ) : (
                       <Box sx={{ 
-                        height: 350,  // Increased height to match the chart height
+                        height: 500,  // Increased height to match the chart height
                         display: 'flex', 
                         alignItems: 'center', 
                         justifyContent: 'center'
@@ -1207,7 +1352,7 @@ const Dashboard: React.FC = () => {
                             color: 'white',
                             fontSize: { xs: '0.75rem', sm: '0.875rem' }
                           }}>
-                            {entry.productivityScore}
+                            {calculateEntryScore(entry)}%
                           </Box>
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>

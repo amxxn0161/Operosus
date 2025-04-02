@@ -19,6 +19,7 @@ import Worksheet from './pages/Worksheet';
 import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
+import AdminJournal from './pages/AdminJournal';
 import Layout from './components/Layout';
 import MockDataToggle from './components/MockDataToggle';
 
@@ -248,20 +249,27 @@ const App: React.FC = () => {
                         <EntryDetail />
                       </ProtectedRoute>
                     } />
-                    <Route path="/entries" element={
-                      <ProtectedRoute>
-                        <AllEntries />
-                      </ProtectedRoute>
-                    } />
                     <Route path="/worksheet" element={
                       <ProtectedRoute>
                         <Worksheet />
                       </ProtectedRoute>
                     } />
+                    <Route path="/all-entries" element={
+                      <ProtectedRoute>
+                        <AllEntries />
+                      </ProtectedRoute>
+                    } />
                     <Route path="/diagnostic" element={<DiagnosticPage />} />
-                    <Route path="/dev/data-settings" element={<MockDataToggle />} />
+                    <Route path="/admin-journal" element={
+                      <ProtectedRoute>
+                        <AdminJournal />
+                      </ProtectedRoute>
+                    } />
                   </Route>
                 </Routes>
+
+                {/* Commenting out the debug tools to hide the Data Source Settings panel */}
+                {/* {process.env.NODE_ENV === 'development' && <MockDataToggle />} */}
               </Router>
             </CalendarProvider>
           </TaskProvider>
