@@ -52,6 +52,8 @@ import {
 import StatCard from '../components/StatCard';
 import CalendarView from '../components/CalendarView';
 import { useCalendar } from '../contexts/CalendarContext';
+import AIWelcomeNotification from '../components/AIWelcomeNotification';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
 
 // Dummy data for initial display
 const initialStats = {
@@ -77,6 +79,7 @@ const Dashboard: React.FC = () => {
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
   const { tasks, loading: tasksLoading, error: tasksError, refreshTasks } = useTask();
   const { events, isConnected, connectCalendar } = useCalendar();
+  const { updateScreenContext } = useAIAssistant();
   const navigate = useNavigate();
   const [stats, setStats] = useState(initialStats);
   const [hasData, setHasData] = useState(false);
@@ -219,7 +222,7 @@ const Dashboard: React.FC = () => {
         return streak;
       };
       
-      const journalStreakCount = calculateStreak();
+      const streak = calculateStreak();
       
       // Calculate a comprehensive score that follows the specified point system
       const comprehensiveScores = entries.map(entry => {
@@ -269,22 +272,58 @@ const Dashboard: React.FC = () => {
       const totalPercentage = comprehensiveScores.reduce((sum, score) => sum + score.percentage, 0);
       const avgComprehensiveScore = Math.round(totalPercentage / entries.length);
       
-      setStats({
-        averageScore: `${avgComprehensiveScore}%`,
-        avgProductivity: Math.round((totalProductivity / entries.length) * 10),
-        avgMeetingScore: meetingsEntries.length ? Math.round(totalMeetingScore / meetingsEntries.length) : 0,
-        breakRate: `${Math.round((breakRateCount / entries.length) * 100)}%`,
-        focusSuccess: `${Math.round((focusSuccessCount / entries.length) * 100)}%`,
-        journalStreak: `${journalStreakCount} day${journalStreakCount !== 1 ? 's' : ''}`
-      });
-
+      // Set calculated stats to state
+      if (entries.length > 0) {
+        setStats({
+          averageScore: `${avgComprehensiveScore}%`,
+          avgProductivity: +(totalProductivity / entries.length).toFixed(1),
+          avgMeetingScore: meetingsEntries.length > 0 ? 
+            +(totalMeetingScore / meetingsEntries.length).toFixed(1) : 0,
+          breakRate: `${Math.round((breakRateCount / entries.length) * 100)}%`,
+          focusSuccess: `${Math.round((focusSuccessCount / entries.length) * 100)}%`,
+          journalStreak: `${streak} day${streak !== 1 ? 's' : ''}`
+        });
+      }
+      
       // Process data for chart
       prepareChartData(entries);
       
       // Process distraction data
       processDistractionData(entries);
+      
+      // Update context for AI Assistant with dashboard data
+      const dashboardData = {
+        metricsOverview: {
+          totalEntries: entries.length,
+          avgProductivity: +(totalProductivity / entries.length).toFixed(1),
+          avgMeetingScore: meetingsEntries.length > 0 ? 
+            +(totalMeetingScore / meetingsEntries.length).toFixed(1) : 0,
+          breakRate: Math.round((breakRateCount / entries.length) * 100),
+          focusSuccess: Math.round((focusSuccessCount / entries.length) * 100),
+          journalStreak: streak
+        },
+        recentEntries: entries.slice(0, 3).map(entry => ({
+          date: entry.date,
+          productivityScore: entry.productivityScore
+        })),
+        pendingTasks: tasks ? tasks.filter(task => !task.completed).length : 0
+      };
+      
+      updateScreenContext({
+        currentComponent: 'Dashboard',
+        currentData: dashboardData,
+        journalEntries: entries
+      });
+    } else {
+      setHasData(false);
+      
+      // Update context even with no data
+      updateScreenContext({
+        currentComponent: 'Dashboard',
+        currentData: { noData: true, suggestJournalEntry: true }
+      });
     }
-  }, [entries]);
+  }, [entries, tasks, updateScreenContext]);
 
   const processDistractionData = (journalEntries: JournalEntry[]) => {
     // Create a counter for distractions
@@ -520,7 +559,10 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <Container sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+      {/* Include the AI Welcome Notification */}
+      <AIWelcomeNotification />
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography 
           variant="h4" 

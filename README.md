@@ -1,76 +1,70 @@
-<<<<<<< HEAD
-# Operosus
-=======
-# Productivity Pulse
+# Productivity Pulse with AI Assistant
 
-A daily reflection journal application to track your productivity journey, identify distractions, and measure progress over time.
+Productivity Pulse is a productivity management application that helps you track your work habits, manage tasks, and stay focused. The latest feature added to the application is an AI Assistant powered by OpenAI's API.
 
-## Features
+## AI Assistant Feature
 
-- Google authentication
-- Daily journal entries with:
-  - Overall productivity score
-  - Meeting effectiveness score
-  - Break tracking
-  - Focus time completion
-  - Distraction identification
-  - Support needs identification
-  - Improvement plans
-- Dashboard with productivity statistics
-- Progress visualization
-- Distraction analysis
+The AI Assistant is a chat interface that allows you to:
+- Ask questions about productivity techniques
+- Get help with using the application
+- Receive tips for time management and focus
+- Chat with a helpful AI to boost your productivity
 
-## Technology Stack
+### Features
 
-- React
-- TypeScript
-- Material UI
-- React Router
-- Chart.js
+1. **Global Accessibility**: The AI Assistant is available throughout the application via a floating button in the bottom right corner.
 
-## Getting Started
+2. **Welcome Notification**: A welcome notification appears occasionally on the dashboard to remind you about the assistant.
 
-### Prerequisites
+3. **Chatbot Interface**: A clean, modern chat interface allows you to interact with the AI.
 
-- Node.js (v14 or later)
-- npm or yarn
+4. **OpenAI Integration**: Powered by OpenAI's GPT-4o model for intelligent, context-aware responses.
 
-### Installation
+5. **Context Awareness**: The AI Assistant is aware of your current location in the app and can provide relevant help specific to what you're doing:
+   - On the Dashboard, it can explain your productivity metrics
+   - On the Journal page, it can guide you through creating a new entry
+   - On the Tasks page, it can help you manage your tasks effectively
 
-1. Clone the repository
-   ```bash
-   git clone https://github.com/yourusername/productivity-pulse.git
-   cd productivity-pulse
+## Setup
+
+To use the AI Assistant, you need to set up your OpenAI API key:
+
+1. Create an account on [OpenAI](https://openai.com/) if you don't have one.
+2. Generate an API key in your OpenAI dashboard.
+3. Create a `.env.local` file based on `.env.example` and add your API key:
    ```
-
-2. Install dependencies
-   ```bash
-   npm install
-   # or
-   yarn install
+   REACT_APP_OPENAI_API_KEY=your_openai_api_key_here
    ```
-
-3. Start the development server
-   ```bash
-   npm start
-   # or
-   yarn start
-   ```
-
-4. Open http://localhost:3000 in your browser
+4. Restart the application.
 
 ## Usage
 
-1. Sign in with your Google account
-2. Navigate to the Daily Journal to submit your daily reflection
-3. View your progress and statistics on the Dashboard
-4. Review past entries and identify patterns
+1. **Access the AI Assistant**: Click the robot icon button in the bottom right corner of the screen.
+2. **Ask Questions**: Type your question in the text field and press Enter or click the send button.
+3. **View Responses**: The AI will respond with helpful information.
+4. **Context-Specific Help**: Try asking about features related to your current page. For example:
+   - On the Journal page: "How do I create a new journal entry?"
+   - On the Dashboard: "What does my productivity score mean?"
+   - On the Tasks page: "How do I add a high-priority task?"
+5. **Dismiss Welcome Notification**: When the welcome notification appears, you can click "Yes" to open the AI Assistant or "No" to dismiss.
 
-## Authentication
+## Implementation Details
 
-Authentication is handled using the Google OAuth 2.0 flow, with redirection to the app2.operosus.com/auth/google endpoint.
+The AI Assistant is implemented using:
+- React for the UI components
+- Material-UI for styling
+- React Context API for state management
+- OpenAI API for the chat functionality
+- Screen context tracking to provide page-aware assistance
 
-## License
+## Privacy Notice
 
-This project is licensed under the MIT License. 
->>>>>>> 7f344de79 (Initial commit)
+Your conversations with the AI Assistant are processed by OpenAI. Make sure not to share sensitive personal information in your chats.
+
+## Extending the Assistant
+
+To extend the AI Assistant's capabilities, you can:
+1. Modify the system prompt in `AIAssistantContext.tsx`
+2. Add more UI features to the `AIAssistant.tsx` component
+3. Create specialized AI tools for specific productivity features
+4. Add more detailed context about user activities in relevant components

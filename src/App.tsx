@@ -10,6 +10,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
 import { TaskProvider } from './contexts/TaskContext';
 import { CalendarProvider } from './contexts/CalendarContext';
+import { AIAssistantProvider } from './contexts/AIAssistantContext';
 import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -22,6 +23,7 @@ import DiagnosticPage from './pages/DiagnosticPage';
 import AdminJournal from './pages/AdminJournal';
 import Layout from './components/Layout';
 import MockDataToggle from './components/MockDataToggle';
+import AIAssistant from './components/AIAssistant';
 
 // Create a custom theme with mobile-first approach
 let theme = createTheme({
@@ -232,45 +234,46 @@ const App: React.FC = () => {
         <JournalProvider>
           <TaskProvider>
             <CalendarProvider>
-              <Router>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/" element={<Layout />}>
-                    <Route index element={<Navigate replace to="/dashboard" />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/journal" element={<Journal />} />
-                    <Route path="/tasks" element={
-                      <ProtectedRoute>
-                        <Tasks />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/entry/:entryId" element={
-                      <ProtectedRoute>
-                        <EntryDetail />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/worksheet" element={
-                      <ProtectedRoute>
-                        <Worksheet />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/all-entries" element={
-                      <ProtectedRoute>
-                        <AllEntries />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/diagnostic" element={<DiagnosticPage />} />
-                    <Route path="/admin-journal" element={
-                      <ProtectedRoute>
-                        <AdminJournal />
-                      </ProtectedRoute>
-                    } />
-                  </Route>
-                </Routes>
-
-                {/* Commenting out the debug tools to hide the Data Source Settings panel */}
-                {/* {process.env.NODE_ENV === 'development' && <MockDataToggle />} */}
-              </Router>
+              <AIAssistantProvider>
+                <Router>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/" element={<Layout />}>
+                      <Route index element={<Navigate replace to="/dashboard" />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/journal" element={<Journal />} />
+                      <Route path="/tasks" element={
+                        <ProtectedRoute>
+                          <Tasks />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/entry/:entryId" element={
+                        <ProtectedRoute>
+                          <EntryDetail />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/worksheet" element={
+                        <ProtectedRoute>
+                          <Worksheet />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/all-entries" element={
+                        <ProtectedRoute>
+                          <AllEntries />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/diagnostic" element={<DiagnosticPage />} />
+                      <Route path="/admin-journal" element={
+                        <ProtectedRoute>
+                          <AdminJournal />
+                        </ProtectedRoute>
+                      } />
+                    </Route>
+                  </Routes>
+                  {/* AI Assistant is available globally */}
+                  <AIAssistant />
+                </Router>
+              </AIAssistantProvider>
             </CalendarProvider>
           </TaskProvider>
         </JournalProvider>

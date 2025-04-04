@@ -1,31 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
-import { useAuth } from '../contexts/AuthContext';
+import { Box } from '@mui/material';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
 
 const Layout: React.FC = () => {
   const location = useLocation();
-  const isLoginPage = location.pathname === '/login';
-  const { isAuthenticated } = useAuth();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const { updateScreenContext } = useAIAssistant();
   
-  // Update userEmail whenever auth changes
+  // Update screen context when location changes
   useEffect(() => {
-    if (isAuthenticated) {
-      const email = localStorage.getItem('userEmail');
-      setUserEmail(email);
-    } else {
-      setUserEmail(null);
-    }
-  }, [isAuthenticated]);
+    // Map paths to component names
+    const pathToComponent: {[key: string]: string} = {
+      '/dashboard': 'Dashboard',
+      '/journal': 'Journal',
+      '/tasks': 'Tasks',
+      '/all-entries': 'All Entries',
+      '/entry': 'Entry Detail',
+      '/worksheet': 'Worksheet',
+      '/diagnostic': 'Diagnostic',
+      '/admin-journal': 'Admin Journal',
+    };
+    
+    // Get the base path (e.g., '/entry/123' becomes '/entry')
+    const basePath = '/' + location.pathname.split('/')[1];
+    
+    // Find the corresponding component name or use the path if not found
+    const componentName = pathToComponent[basePath] || basePath.slice(1);
+    
+    // Update context with current location information
+    updateScreenContext({
+      currentPath: location.pathname,
+      currentComponent: componentName,
+    });
+  }, [location, updateScreenContext]);
   
   return (
-    <>
-      {!isLoginPage && <Header key={`header-${userEmail || 'guest'}`} />}
-      <main>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Header />
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 } }}>
         <Outlet />
-      </main>
-    </>
+      </Box>
+    </Box>
   );
 };
 

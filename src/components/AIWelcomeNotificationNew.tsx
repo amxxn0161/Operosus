@@ -1,0 +1,133 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogActions,
+  Button,
+  Typography,
+  Box,
+  IconButton,
+  useTheme,
+  Slide
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
+import { TransitionProps } from '@mui/material/transitions';
+
+// Slide transition component for Dialog
+const SlideTransition = React.forwardRef(function Transition(
+  props: TransitionProps & {
+    children: React.ReactElement;
+  },
+  ref: React.Ref<unknown>,
+) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
+
+const AIWelcomeNotificationNew: React.FC = () => {
+  const [open, setOpen] = useState(false);
+  const { openAssistant } = useAIAssistant();
+  const theme = useTheme();
+
+  // Show notification after a delay when component mounts
+  useEffect(() => {
+    // Check if notification has been shown recently (in the last 24 hours)
+    const lastShown = localStorage.getItem('aiWelcomeLastShown');
+    const shouldShow = !lastShown || (Date.now() - parseInt(lastShown)) > 24 * 60 * 60 * 1000;
+    
+    if (shouldShow) {
+      const timer = setTimeout(() => {
+        setOpen(true);
+      }, 3000); // Show after 3 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleClose = () => {
+    setOpen(false);
+    // Record that notification was shown
+    localStorage.setItem('aiWelcomeLastShown', Date.now().toString());
+  };
+
+  const handleYes = () => {
+    handleClose();
+    openAssistant();
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      TransitionComponent={SlideTransition}
+      PaperProps={{
+        sx: {
+          borderRadius: 4,
+          padding: 0,
+          maxWidth: '500px',
+          background: 'linear-gradient(135deg, rgba(16,86,245,0.9) 0%, rgba(75,127,247,0.9) 100%)',
+          color: 'white',
+          backdropFilter: 'blur(10px)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+        }
+      }}
+    >
+      <Box position="relative" p={3}>
+        <IconButton
+          aria-label="close"
+          onClick={handleClose}
+          sx={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            color: 'white'
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
+        
+        <Box display="flex" alignItems="center" mb={2}>
+          <AutoAwesomeIcon sx={{ mr: 1.5, fontSize: '1.5rem' }} />
+          <Typography variant="h6" component="div">
+            Looks like you don't have that many meetings today. Shall I play some Hans Zimmer essentials to help you get into your Flow State?
+          </Typography>
+        </Box>
+        
+        <DialogActions sx={{ justifyContent: 'space-between', padding: 0, mt: 2 }}>
+          <Button
+            onClick={handleYes}
+            variant="contained"
+            sx={{
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              '&:hover': {
+                bgcolor: 'rgba(255, 255, 255, 0.3)',
+              },
+              borderRadius: '24px',
+              px: 4
+            }}
+          >
+            Yes
+          </Button>
+          <Button
+            onClick={handleClose}
+            variant="contained"
+            sx={{
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              '&:hover': {
+                bgcolor: 'rgba(255, 255, 255, 0.3)',
+              },
+              borderRadius: '24px',
+              px: 4
+            }}
+          >
+            No
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  );
+};
+
+export default AIWelcomeNotificationNew;
