@@ -35,20 +35,86 @@ const formatMessageContent = (content: string): JSX.Element => {
   // Split by line breaks
   const lines = content.split('\n');
   
+  // Function to convert URLs to links in a text
+  const convertUrlsToLinks = (text: string): JSX.Element[] => {
+    // If no content, return empty
+    if (!text) return [];
+    
+    // More precise pattern for URL detection that won't include trailing punctuation
+    const urlPattern = /https?:\/\/[-A-Za-z0-9+&@#/%?=~_|!:,.;]*[-A-Za-z0-9+&@#/%=~_|]/g;
+    
+    // Find all URLs in the text
+    const matches = Array.from(text.matchAll(urlPattern));
+    
+    // If no URLs found, return the plain text
+    if (matches.length === 0) {
+      return [<span key="text">{text}</span>];
+    }
+    
+    // Build result with proper links
+    const result: JSX.Element[] = [];
+    let lastIndex = 0;
+    
+    matches.forEach((match, i) => {
+      const url = match[0];
+      const startIndex = match.index!;
+      
+      // Add text before the URL
+      if (startIndex > lastIndex) {
+        result.push(
+          <span key={`text-${i}`}>
+            {text.substring(lastIndex, startIndex)}
+          </span>
+        );
+      }
+      
+      // Add the URL as a link
+      result.push(
+        <a 
+          key={`url-${i}`} 
+          href={url} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ 
+            color: '#1056F5', 
+            textDecoration: 'underline',
+            wordBreak: 'break-all'
+          }}
+        >
+          {url}
+        </a>
+      );
+      
+      // Update the last index to after this URL
+      lastIndex = startIndex + url.length;
+    });
+    
+    // Add any remaining text after the last URL
+    if (lastIndex < text.length) {
+      result.push(
+        <span key={`text-last`}>
+          {text.substring(lastIndex)}
+        </span>
+      );
+    }
+    
+    return result;
+  };
+  
   return (
     <>
       {lines.map((line, i) => {
         // Check if line is a header (starts with #)
         if (line.startsWith('# ')) {
-          return <Typography key={i} variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>{line.substring(2)}</Typography>;
+          return <Typography key={i} variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>{convertUrlsToLinks(line.substring(2))}</Typography>;
         }
         // Check if line is a subheader (starts with ##)
         else if (line.startsWith('## ')) {
-          return <Typography key={i} variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>{line.substring(3)}</Typography>;
+          return <Typography key={i} variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>{convertUrlsToLinks(line.substring(3))}</Typography>;
         }
         // Check if line is a list item (starts with - or *)
         else if (line.match(/^[\-\*] /)) {
-          return <Typography key={i} component="div" sx={{ ml: 2, mb: 0.5 }}>• {line.substring(2)}</Typography>;
+          return <Typography key={i} component="div" sx={{ ml: 2, mb: 0.5 }}>• {convertUrlsToLinks(line.substring(2))}</Typography>;
         }
         // Check if line is empty (for spacing)
         else if (line.trim() === '') {
@@ -56,7 +122,7 @@ const formatMessageContent = (content: string): JSX.Element => {
         }
         // Regular paragraph
         else {
-          return <Typography key={i} paragraph sx={{ mb: 1 }}>{line}</Typography>;
+          return <Typography key={i} paragraph sx={{ mb: 1 }}>{convertUrlsToLinks(line)}</Typography>;
         }
       })}
     </>

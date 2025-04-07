@@ -13,316 +13,231 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   styled,
-  Chip
+  Chip,
+  Divider
 } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
 import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 import { useCalendar } from '../contexts/CalendarContext';
-import { useTask } from '../contexts/TaskContext';
-import { CalendarEvent, useMockData as useCalendarMockData } from '../services/calendarService';
-import { useMockData as useTaskMockData } from '../services/taskService';
+import { CalendarEvent } from '../services/calendarService';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isWithinInterval, addDays } from 'date-fns';
 
-// Event card styles
+// Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
-  backgroundColor: bgcolor || '#1056F5',
-  color: 'white',
-  borderRadius: '6px',
+  backgroundColor: bgcolor,
+  borderRadius: theme.shape.borderRadius,
   padding: theme.spacing(1),
-  fontSize: '0.75rem',
-  marginBottom: theme.spacing(0.5),
+  marginBottom: theme.spacing(1),
+  cursor: 'pointer',
+  overflow: 'hidden',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
+  transition: 'all 0.3s cubic-bezier(.25,.8,.25,1)',
+  '&:hover': {
+    boxShadow: '0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)',
+  }
+}));
+
+const MonthEventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
+  backgroundColor: bgcolor,
+  borderRadius: theme.shape.borderRadius,
+  padding: '3px 6px',
+  margin: '2px 0',
+  height: '22px',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
   cursor: 'pointer',
-  boxShadow: '0px 1px 3px rgba(0,0,0,0.2)',
+  transition: 'all 0.2s ease',
+  display: 'flex',
+  alignItems: 'center',
   '&:hover': {
-    opacity: 0.9,
-    transform: 'translateY(-1px)',
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.3)',
+    filter: 'brightness(0.95)',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+    transform: 'scale(1.01)',
+    zIndex: 100
   },
-  transition: 'all 0.2s'
+  '&:active, &:focus': {
+    zIndex: 100
+  }
+}));
+
+// Update the WeekEventCard styled component for better title visibility
+const WeekEventCard = styled(Box, {
+  shouldForwardProp: (prop) => 
+    prop !== 'bgcolor' && 
+    prop !== 'top' && 
+    prop !== 'height' && 
+    prop !== 'width' && 
+    prop !== 'left'
+})<{ 
+  bgcolor: string;
+  top: number;
+  height: number;
+  width: string;
+  left: string;
+}>(({ theme, bgcolor, top, height, width, left }) => ({
+  backgroundColor: bgcolor,
+  borderRadius: theme.shape.borderRadius,
+  padding: '4px 6px', // Maintain padding
+  cursor: 'pointer',
+  overflow: 'hidden',
+  position: 'absolute',
+  top: `${top}px`,
+  height: `${height}px`,
+  width: width,
+  left: left,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+  transition: 'all 0.2s cubic-bezier(.25,.8,.25,1), transform 0.1s',
+  transformOrigin: 'center center',
+  zIndex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  '&:hover': {
+    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+    zIndex: 100,
+    transform: 'scale(1.02)'
+  },
+  '&:active, &:focus': {
+    zIndex: 100,
+    transform: 'scale(1.02)'
+  }
+}));
+
+// Add a styled component for the current time indicator
+const CurrentTimeIndicator = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  height: '2px',
+  backgroundColor: '#ff5252',
+  zIndex: 5,
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    left: '-8px',
+    top: '-4px',
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: '#ff5252'
+  }
 }));
 
 // Type for color mapping
 interface ColorMap {
-  [key: string]: string;
+  [key: string]: {
+    background: string;
+    text: string;
+  };
 }
 
-// Color mapping for different events based on colorId
+// Define color map for different event types
 const colorMap: ColorMap = {
-  '1': '#7986CB', // Lavender
-  '2': '#33B679', // Sage
-  '3': '#8E24AA', // Grape
-  '4': '#E67C73', // Flamingo
-  '5': '#F6BF26', // Banana
-  '6': '#F4511E', // Tangerine
-  '7': '#039BE5', // Peacock
-  '8': '#616161', // Graphite
-  '9': '#3F51B5', // Blueberry
-  '10': '#0B8043', // Basil
-  '11': '#D50000', // Tomato
-  // Default colors for events without colorId
-  'team': '#4285F4',     // Team Meeting
-  'client': '#9C27B0',   // Client Call
-  'focus': '#F9A825',    // Focus Time
-  'manager': '#E53935',  // Manager 1:1
-  'review': '#4CAF50',   // Project Review
-  'default': '#1056F5',  // Default blue
-  // Task priority colors
-  'task-low': '#8BC34A',     // Light green
-  'task-medium': '#FF9800',  // Orange
-  'task-high': '#F44336',    // Red
+  default: { background: '#C6E8F2', text: '#071C73' },  // Light Blue
+  team: { background: '#1056F5', text: '#FFFFFF' },     // Main Blue
+  client: { background: '#016C9E', text: '#FFFFFF' },   // Rice Blue
+  focus: { background: '#F29702', text: '#FFFFFF' },    // Orange
+  manager: { background: '#E04330', text: '#FFFFFF' },  // Red
+  review: { background: '#49C1E3', text: '#071C73' },   // Aero
+  1: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
+  2: { background: '#071C73', text: '#FFFFFF' },        // Dark Blue
+  3: { background: '#016C9E', text: '#FFFFFF' },        // Rice Blue
+  4: { background: '#C6E8F2', text: '#071C73' },        // Light Blue
+  5: { background: '#F29702', text: '#FFFFFF' },        // Orange
+  6: { background: '#E04330', text: '#FFFFFF' },        // Red
+  7: { background: '#49C1E3', text: '#071C73' },        // Aero
+  8: { background: '#C6E8F2', text: '#071C73' },        // Light Blue
+  9: { background: '#F29702', text: '#FFFFFF' },        // Orange
+  10: { background: '#E04330', text: '#FFFFFF' }        // Red
 };
 
-// Function to get event color
+// Get color for event based on type
 const getEventColor = (event: CalendarEvent): string => {
-  if (event.colorId && colorMap[event.colorId]) {
-    return colorMap[event.colorId];
+  // Get color based on colorId
+  if (event.colorId) {
+    // If event has a specific colorId, use that from the color map
+    if (colorMap[event.colorId]) {
+      return colorMap[event.colorId].background;
+    }
   }
   
-  // Check title for keywords and assign colors
-  const title = event.title.toLowerCase();
-  if (title.includes('team') || title.includes('meeting')) {
-    return colorMap.team;
-  } else if (title.includes('client') || title.includes('call')) {
-    return colorMap.client;
-  } else if (title.includes('focus')) {
-    return colorMap.focus;
-  } else if (title.includes('1:1') || title.includes('manager')) {
-    return colorMap.manager;
-  } else if (title.includes('review') || title.includes('project')) {
-    return colorMap.review;
-  }
+  // Default colors based on event types
+  const typeColors: Record<string, string> = {
+    'default': '#C6E8F2',   // Light Blue
+    'call': '#016C9E',      // Rice Blue
+    'meeting': '#016C9E',   // Bice Blue
+    'task': '#F29702',      // Orange
+    'reminder': '#49C1E3',  // Aero
+    'appointment': '#071C73', // Dark Blue
+    'travel': '#49C1E3',    // Aero
+    'holiday': '#E04330',   // Red
+    'personal': '#F29702',  // Orange
+    'work': '#016C9E',      // Bice Blue
+    'standup': '#1056F5',   // Main Blue - for standup meetings
+    'tech': '#1056F5',      // Main Blue - for tech related events
+    'develop': '#1056F5'    // Main Blue - for development tasks
+  };
   
-  return colorMap.default;
+  // Try to extract event type from title or description
+  let eventType = 'default';
+  
+  if (event.title) {
+    eventType = extractEventType(event.title);
+  } else if (event.description) {
+    eventType = extractEventType(event.description);
+  }
+    
+  return typeColors[eventType.toLowerCase()] || '#C6E8F2'; // default light blue shade
 };
 
-// Function to format time (24h -> 12h)
-const formatTime = (timeString: string): string => {
-  const date = new Date(timeString);
-  return date.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
+// Extract event type from event summary or title
+const extractEventType = (text: string): string => {
+  text = text.toLowerCase();
+  if (text.includes('meeting') || text.includes('sync')) return 'meeting';
+  if (text.includes('call') || text.includes('phone')) return 'call';
+  if (text.includes('reminder')) return 'reminder';
+  if (text.includes('travel') || text.includes('flight')) return 'travel';
+  if (text.includes('appointment')) return 'appointment';
+  if (text.includes('holiday') || text.includes('vacation')) return 'holiday';
+  if (text.includes('personal')) return 'personal';
+  if (text.includes('work')) return 'work';
+  if (text.includes('stand') || text.includes('standup')) return 'standup';
+  if (text.includes('tech') || text.includes('deploy')) return 'tech';
+  if (text.includes('develop') || text.includes('dev')) return 'develop';
+  return 'default';
+};
+
+// Get text color for event based on background color
+const getEventTextColor = (bgColor: string): string => {
+  // Check if the background color is a darker shade requiring white text
+  const darkColors = ['#1056F5', '#071C73', '#016C9E', '#F29702', '#E04330'];
+  if (darkColors.includes(bgColor)) {
+    return '#FFFFFF';
+  }
+  
+  // For lighter colors, use the dark blue for better contrast
+  return '#071C73';
+};
+
+// Format time from Date object with more compact display
+const formatTime = (time: string): string => {
+  const date = new Date(time);
+  return date.toLocaleString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true 
-  });
+    hour12: true
+  }).replace(/\s/g, ''); // Remove spaces for more compact display
 };
 
-// Function to extract time from ISO string
-const extractTime = (timeString: string): string => {
-  const date = new Date(timeString);
-  return date.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
-    minute: '2-digit',
-    hour12: true 
-  });
-};
-
-// Generate mock calendar data
-const generateMockEvents = (baseDate: Date): CalendarEvent[] => {
-  const mockEvents: CalendarEvent[] = [];
-  const today = new Date(baseDate);
-  
-  // Set to the beginning of the month for consistent generation
-  const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-  
-  // Generate events for team meetings (weekly on Mondays)
-  for (let i = 0; i < 4; i++) {
-    const meetingDate = new Date(startDate);
-    // Find the next Monday
-    while (meetingDate.getDay() !== 1) {
-      meetingDate.setDate(meetingDate.getDate() + 1);
-    }
-    // Add i weeks
-    meetingDate.setDate(meetingDate.getDate() + (i * 7));
-    
-    if (meetingDate.getMonth() === startDate.getMonth()) {
-      const startTime = new Date(meetingDate);
-      startTime.setHours(10, 0, 0);
-      const endTime = new Date(meetingDate);
-      endTime.setHours(11, 0, 0);
-      
-      mockEvents.push({
-        id: `team-meeting-${i}`,
-        title: 'Team Meeting',
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
-        location: 'Conference Room A'
-      });
-    }
+// Format event time for display
+const formatEventTime = (event: CalendarEvent): string => {
+  if (event.isAllDay) {
+    return 'All day';
   }
-  
-  // Generate events for client calls (bi-weekly on Wednesdays)
-  for (let i = 0; i < 2; i++) {
-    const callDate = new Date(startDate);
-    // Find the first Wednesday
-    while (callDate.getDay() !== 3) {
-      callDate.setDate(callDate.getDate() + 1);
-    }
-    // Add i * 2 weeks
-    callDate.setDate(callDate.getDate() + (i * 14));
-    
-    if (callDate.getMonth() === startDate.getMonth()) {
-      const startTime = new Date(callDate);
-      startTime.setHours(11, 0, 0);
-      const endTime = new Date(callDate);
-      endTime.setHours(12, 0, 0);
-      
-      mockEvents.push({
-        id: `client-call-${i}`,
-        title: 'Client Call',
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
-        description: 'Quarterly review with client'
-      });
-    }
-  }
-  
-  // Generate focused work time (3 days a week)
-  const focusDays = [2, 4]; // Tuesday and Thursday
-  for (let week = 0; week < 4; week++) {
-    for (const day of focusDays) {
-      const focusDate = new Date(startDate);
-      // Find the first occurrence of this day
-      while (focusDate.getDay() !== day) {
-        focusDate.setDate(focusDate.getDate() + 1);
-      }
-      // Add weeks
-      focusDate.setDate(focusDate.getDate() + (week * 7));
-      
-      if (focusDate.getMonth() === startDate.getMonth()) {
-        const startTime = new Date(focusDate);
-        startTime.setHours(9, 0, 0);
-        const endTime = new Date(focusDate);
-        endTime.setHours(12, 0, 0);
-        
-        mockEvents.push({
-          id: `focus-time-${week}-${day}`,
-          title: 'Focus Time',
-          start: startTime.toISOString(),
-          end: endTime.toISOString(),
-          colorId: '5' // Yellow
-        });
-      }
-    }
-  }
-  
-  // Generate 1:1 with manager (bi-weekly on Friday)
-  for (let i = 0; i < 2; i++) {
-    const oneOnOneDate = new Date(startDate);
-    // Find the first Friday
-    while (oneOnOneDate.getDay() !== 5) {
-      oneOnOneDate.setDate(oneOnOneDate.getDate() + 1);
-    }
-    // Add i * 2 weeks
-    oneOnOneDate.setDate(oneOnOneDate.getDate() + (i * 14));
-    
-    if (oneOnOneDate.getMonth() === startDate.getMonth()) {
-      const startTime = new Date(oneOnOneDate);
-      startTime.setHours(15, 0, 0);
-      const endTime = new Date(oneOnOneDate);
-      endTime.setHours(16, 0, 0);
-      
-      mockEvents.push({
-        id: `one-on-one-${i}`,
-        title: '1:1 with Manager',
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
-        location: 'Manager\'s Office'
-      });
-    }
-  }
-  
-  // Generate project review meetings (monthly)
-  const reviewDate = new Date(startDate);
-  reviewDate.setDate(15); // Mid-month review
-  
-  const reviewStartTime = new Date(reviewDate);
-  reviewStartTime.setHours(14, 0, 0);
-  const reviewEndTime = new Date(reviewDate);
-  reviewEndTime.setHours(15, 30, 0);
-  
-  mockEvents.push({
-    id: 'project-review',
-    title: 'Project Review',
-    start: reviewStartTime.toISOString(),
-    end: reviewEndTime.toISOString(),
-    location: 'Project Room',
-    description: 'Monthly project status review'
-  });
-  
-  // Add a few random events
-  const eventTitles = [
-    'Coffee with Team', 
-    'Brainstorming Session', 
-    'Client Proposal Preparation', 
-    'Training Workshop',
-    'Code Review'
-  ];
-  
-  for (let i = 0; i < 3; i++) {
-    const randomDay = Math.floor(Math.random() * 28) + 1; // Random day of month
-    const randomDate = new Date(startDate.getFullYear(), startDate.getMonth(), randomDay);
-    
-    // Skip weekends
-    if (randomDate.getDay() === 0 || randomDate.getDay() === 6) {
-      continue;
-    }
-    
-    const startHour = 9 + Math.floor(Math.random() * 7); // Between 9 AM and 4 PM
-    const durationHours = 1 + Math.floor(Math.random() * 2); // 1-2 hours
-    
-    const randomStartTime = new Date(randomDate);
-    randomStartTime.setHours(startHour, 0, 0);
-    const randomEndTime = new Date(randomDate);
-    randomEndTime.setHours(startHour + durationHours, 0, 0);
-    
-    mockEvents.push({
-      id: `random-event-${i}`,
-      title: eventTitles[Math.floor(Math.random() * eventTitles.length)],
-      start: randomStartTime.toISOString(),
-      end: randomEndTime.toISOString()
-    });
-  }
-  
-  return mockEvents;
-};
-
-// Function to convert tasks to calendar event format
-const convertTasksToEvents = (tasks: any[]): CalendarEvent[] => {
-  return tasks
-    .filter(task => task.dueDate) // Only include tasks with due dates
-    .map(task => {
-      // Create a calendar event from the task
-      const dueDate = new Date(task.dueDate);
-      const startTime = new Date(dueDate);
-      // Make task events 1 hour long
-      const endTime = new Date(dueDate);
-      endTime.setHours(endTime.getHours() + 1);
-      
-      // Priority-based coloring
-      let colorId = 'task-medium';
-      if (task.priority === 'high') {
-        colorId = 'task-high';
-      } else if (task.priority === 'low') {
-        colorId = 'task-low';
-      }
-      
-      return {
-        id: `task-${task.id}`,
-        title: `📋 ${task.title}`,
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
-        description: task.description,
-        colorId: colorId,
-        isTask: true as const,  // Make TypeScript happy with literal type
-        completed: task.completed === 1,
-        taskId: task.id
-      };
-    });
+  return `${formatTime(event.start)} - ${formatTime(event.end)}`;
 };
 
 interface CalendarViewProps {
@@ -337,7 +252,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { 
-    events: realEvents, 
+    events, 
     selectedDate,
     viewMode,
     setSelectedDate,
@@ -349,43 +264,50 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     refreshCalendarData
   } = useCalendar();
   
-  // Get tasks from context
-  const {
-    tasks,
-    loading: tasksLoading,
-    error: tasksError,
-    refreshTasks
-  } = useTask();
-
-  // Generate mock events based on the selected date
-  const [mockEvents, setMockEvents] = useState<CalendarEvent[]>([]);
-  
-  // Convert tasks to events
-  const taskEvents = convertTasksToEvents(tasks);
-  
-  // Update mock events when the selected date changes
+  // Make sure we're loading the data when the component mounts
   useEffect(() => {
-    if (!isConnected) {
-      setMockEvents(generateMockEvents(selectedDate));
+    console.log('Initial calendar refresh from CalendarView');
+    refreshCalendarData();
+    
+    // Log current events if available
+    if (events.length > 0) {
+      console.log(`Calendar has ${events.length} events from context`);
+      console.log('First event:', events[0]);
+    } else {
+      console.log('No events in calendar context yet');
     }
-  }, [selectedDate, isConnected]);
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
-  // Use real events if connected, otherwise use mock events
-  const calendarEvents = isConnected ? realEvents : mockEvents;
+  // Add effect to log events when they change
+  useEffect(() => {
+    console.log(`Events updated: ${events.length} events available`);
+    if (events.length > 0) {
+      console.log('Sample event titles:', events.slice(0, 3).map(e => e.title).join(', '));
+      console.log('Current view mode:', viewMode);
+      
+      // Log events for current view
+      const now = new Date();
+      const currentDayEvents = getEventsForDay(now);
+      console.log(`Events for today (${now.toDateString()}):`, currentDayEvents.length);
+    }
+  }, [events, viewMode]);
   
-  // Combine calendar events and task events
-  const allEvents = [...calendarEvents, ...taskEvents];
+  // Use events directly from calendar context, no task conversion
+  const allEvents = events;
+  console.log(`Total events in calendar: ${allEvents.length} events`);
   
-  // Loading state combines calendar and tasks loading
-  const isLoading = calendarLoading || tasksLoading;
+  // Loading state is only from calendar
+  const isLoading = calendarLoading;
   
-  // Error state combines calendar and tasks errors
-  const error = calendarError || tasksError;
+  // Error state is only from calendar
+  const error = calendarError;
 
   // Function to refresh all data
   const refreshAllData = async () => {
+    console.log('Refreshing calendar data...');
     refreshCalendarData();
-    refreshTasks();
   };
 
   // Function to navigate to today
@@ -420,7 +342,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   // Function to handle view mode change
-  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | null) => {
+  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | 'all' | null) => {
     if (newMode !== null) {
       setViewMode(newMode);
     }
@@ -444,22 +366,37 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       const formattedEnd = endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       
       return `${formattedStart} - ${formattedEnd}`;
-    } else {
+    } else if (viewMode === 'month') {
       return selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } else {
+      // "All" view
+      return 'All Events';
     }
   };
 
-  // Function to get events for a specific day
+  // Helper functions for getting events
   const getEventsForDay = (date: Date): CalendarEvent[] => {
-    const day = date.getDate();
-    const month = date.getMonth();
-    const year = date.getFullYear();
-    
-    return allEvents.filter(event => {
-      const eventDate = new Date(event.start);
-      return eventDate.getDate() === day && 
-             eventDate.getMonth() === month && 
-             eventDate.getFullYear() === year;
+    return events.filter(event => {
+      const eventStart = new Date(event.start);
+      const eventEnd = new Date(event.end);
+      return isSameDay(date, eventStart) || 
+             (isWithinInterval(date, { start: eventStart, end: eventEnd }) && 
+              !isSameDay(date, eventStart));
+    });
+  };
+
+  const getEventsForDateRange = (start: Date, end: Date): CalendarEvent[] => {
+    return events.filter(event => {
+      const eventStart = new Date(event.start);
+      const eventEnd = new Date(event.end);
+      return (
+        // Event starts within the range
+        (eventStart >= start && eventStart <= end) ||
+        // Event ends within the range
+        (eventEnd >= start && eventEnd <= end) ||
+        // Event spans the entire range
+        (eventStart <= start && eventEnd >= end)
+      );
     });
   };
 
@@ -518,97 +455,318 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     return days;
   };
 
+  // Helper function to convert time to pixels for positioning
+  const timeToPixels = (time: Date): number => {
+    const hours = time.getHours();
+    const minutes = time.getMinutes();
+    return (hours * 60 + minutes) * (HOUR_HEIGHT / 60);
+  };
+
+  // Update the calculateEventPositions function to allow for more natural overlap
+  const calculateEventPositions = (events: CalendarEvent[]): {
+    event: CalendarEvent;
+    column: number;
+    columnsInSlot: number;
+    zIndex?: number;
+  }[] => {
+    // First, identify events that should have higher z-index
+    const priorityEventTypes = ['standup', 'meeting', 'call', 'appointment'];
+    
+    // Sort events by priority (standup events on top), then by duration (shorter events on top)
+    const sortedEvents = [...events].sort((a, b) => {
+      // First prioritize by event type
+      const aType = a.title ? extractEventType(a.title.toLowerCase()) : '';
+      const bType = b.title ? extractEventType(b.title.toLowerCase()) : '';
+      
+      const aIsPriority = priorityEventTypes.includes(aType);
+      const bIsPriority = priorityEventTypes.includes(bType);
+      
+      if (aIsPriority && !bIsPriority) return 1; // Priority events later in the array (higher z-index)
+      if (!aIsPriority && bIsPriority) return -1;
+      
+      // Then sort by duration (shorter events later in array)
+      const aDuration = new Date(a.end).getTime() - new Date(a.start).getTime();
+      const bDuration = new Date(b.end).getTime() - new Date(b.start).getTime();
+      
+      return aDuration - bDuration; // Shorter duration events come later (higher z-index)
+    });
+
+    // Track overlapping groups
+    const eventPositions: {
+      event: CalendarEvent;
+      column: number;
+      columnsInSlot: number;
+      zIndex?: number;
+    }[] = [];
+
+    // Track which columns are occupied
+    const columnEndTimes: number[] = [];
+
+    // For simplicity in the reference image style, set most events to take full width
+    // except for specific overlapping cases
+    sortedEvents.forEach((event, index) => {
+      const startTime = new Date(event.start).getTime();
+      const endTime = new Date(event.end).getTime();
+      
+      const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
+      const isSpecialEvent = priorityEventTypes.includes(eventType);
+      
+      // For events like "Stand Up", use a specific column position
+      if (isSpecialEvent) {
+        // These events should appear on top with a specific width
+        eventPositions.push({
+          event,
+          column: 0, // Start aligned left
+          columnsInSlot: 1, // Take partial width
+          zIndex: 2 // Higher z-index to appear on top
+        });
+      } else {
+        // For regular events like "Focus time", take full width
+        eventPositions.push({
+          event,
+          column: 0, // Start aligned left
+          columnsInSlot: 1, // Full width
+          zIndex: 1 // Lower z-index to appear behind
+        });
+      }
+    });
+    
+    return eventPositions;
+  };
+
+  // Constants for time grid
+  const HOUR_HEIGHT = 60; // Height in pixels for one hour
+  const DAY_START_HOUR = 7; // Start the day view at 7 AM
+  const DAY_END_HOUR = 19; // End the day view at 7 PM
+  const TIME_LABELS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i);
+
+  // Update the renderWeekView and renderDayView event rendering to improve title visibility
+  // Inside the renderWeekView function, update the event rendering:
+  const renderEventContent = (event: CalendarEvent, eventColor: string, textColor: string, height: number) => {
+    const isBlueEvent = ['#1056F5', '#016C9E'].includes(eventColor);
+    
+    // For very small events, skip the time display
+    if (height < 30) {
+      return (
+        <Box sx={{ 
+          height: '100%', 
+          display: 'flex', 
+          alignItems: 'center',
+          overflow: 'hidden',
+          width: '100%'
+        }}>
+          <Typography 
+            variant="subtitle2" 
+            sx={{
+              color: textColor,
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontSize: '0.8rem', // Standard size for all events
+              lineHeight: 1.2,
+              pl: 0.5,
+              width: '100%'
+            }}
+          >
+            {event.title}
+          </Typography>
+        </Box>
+      );
+    }
+    
+    // For normal sized events, show the title and time
+    return (
+      <Box sx={{ 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column',
+        overflow: 'hidden',
+        width: '100%'
+      }}>
+        {/* Title and time in a horizontal layout */}
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          width: '100%',
+          mb: 0.2
+        }}>
+          <Typography 
+            variant="subtitle2" 
+            sx={{
+              color: textColor,
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontSize: '0.8rem', // Standard size for all events
+              lineHeight: 1.2,
+              pl: 0.5,
+              flexGrow: 1,
+              mr: 1 // Add margin to separate from time
+            }}
+          >
+            {event.title}
+          </Typography>
+          
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              fontSize: '0.65rem', 
+              fontWeight: 'medium',
+              whiteSpace: 'nowrap',
+              color: textColor,
+              opacity: 0.85,
+              flexShrink: 0,
+              pr: 0.5
+            }}
+          >
+            {formatTime(event.start)}-{formatTime(event.end)}
+          </Typography>
+        </Box>
+        
+        {/* Only show location if there's enough height */}
+        {height > 45 && event.location && (
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              fontSize: '0.65rem',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              color: textColor,
+              mt: 0.2,
+              pl: 0.5
+            }}
+          >
+            📍 {event.location}
+          </Typography>
+        )}
+      </Box>
+    );
+  };
+
   // Render day view
   const renderDayView = () => {
-    const todayEvents = getEventsForDay(selectedDate);
+    const dayEvents = getEventsForDay(selectedDate);
+    const now = new Date();
+    const currentTimePosition = timeToPixels(now) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+    const isCurrentTimeVisible = now.getHours() >= DAY_START_HOUR && now.getHours() <= DAY_END_HOUR;
+    const eventPositions = calculateEventPositions(dayEvents);
     
     return (
-      <Box sx={{ p: 2 }}>
-        <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins', fontWeight: 'bold' }}>
-          {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+      <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
+        <Typography variant="h6" gutterBottom>
+          {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Typography>
         
-        {todayEvents.length > 0 ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {todayEvents.map((event) => {
-              // Type guard to check if event is a task
-              const isTask = 'isTask' in event && event.isTask === true;
-              const isCompleted = isTask && 'completed' in event && event.completed === true;
-              
-              return (
-                <Paper
-                  key={event.id}
-                  elevation={1}
+        <Divider sx={{ my: 2 }} />
+        
+        {/* Time grid with current time indicator */}
+        <Box sx={{ position: 'relative', mt: 2, ml: 6 }}>
+          {/* Time labels */}
+          <Box sx={{ position: 'absolute', left: -60, top: 0, width: 50 }}>
+            {TIME_LABELS.map((hour, index) => (
+              <Box 
+                key={hour} 
                   sx={{ 
-                    p: 2, 
-                    borderLeft: `4px solid ${getEventColor(event)}`,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      boxShadow: 3
-                    },
-                    opacity: isCompleted ? 0.7 : 1,
-                    textDecoration: isCompleted ? 'line-through' : 'none',
-                  }}
-                  onClick={() => onEventClick && onEventClick(event)}
-                >
-                  <Box sx={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    mb: 1
-                  }}>
-                    {isTask && (
-                      <AssignmentIcon fontSize="small" sx={{ mr: 1, color: getEventColor(event) }} />
-                    )}
-                    <Typography variant="subtitle1" sx={{ 
-                      fontWeight: 'bold', 
-                      fontFamily: 'Poppins'
-                    }}>
-                      {event.title}
+                  height: HOUR_HEIGHT, 
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-end',
+                  pr: 1,
+                  pt: 1
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
                     </Typography>
+              </Box>
+            ))}
                   </Box>
                   
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins' }}>
-                    {extractTime(event.start)} - {extractTime(event.end)}
-                  </Typography>
-                  
-                  {event.location && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
-                      Location: {event.location}
+          {/* Hour grid lines */}
+          <Box sx={{ position: 'relative', borderLeft: 1, borderColor: 'divider', ml: 1 }}>
+            {TIME_LABELS.map((hour, index) => (
+              <Box 
+                key={index} 
+                sx={{ 
+                  position: 'absolute',
+                  top: index * HOUR_HEIGHT,
+                  left: 0,
+                  right: 0,
+                  height: HOUR_HEIGHT,
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  zIndex: 0
+                }}
+              />
+            ))}
+            
+            {/* Current time indicator */}
+            {isCurrentTimeVisible && (
+              <CurrentTimeIndicator 
+                sx={{ 
+                  top: currentTimePosition
+                }}
+              />
+            )}
+            
+            {/* Events */}
+            {dayEvents.length === 0 ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
+                <Typography variant="body1" color="text.secondary">
+                  No events scheduled for this day
                     </Typography>
-                  )}
+              </Box>
+            ) : (
+              <Box sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
+                {eventPositions.map(({ event, column, columnsInSlot, zIndex }, index) => {
+                  const start = new Date(event.start);
+                  const end = new Date(event.end);
                   
-                  {event.description && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
-                      {event.description}
-                    </Typography>
-                  )}
+                  // Calculate position and size
+                  const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+                  const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+                  const height = Math.max(endPx - startPx, 30);
                   
-                  {isTask && (
-                    <Typography variant="caption" sx={{ 
-                      display: 'block', 
-                      mt: 1, 
-                      color: isCompleted ? 'success.main' : 'text.secondary',
-                      fontStyle: 'italic'
-                    }}>
-                      {isCompleted ? 'Completed' : 'Not completed'}
-                    </Typography>
-                  )}
-                </Paper>
-              );
-            })}
+                  // Special sizing for different event types
+                  const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
+                  
+                  // Width calculation based on event type
+                  let width = '85%'; // Default width
+                  let left = '7.5%'; // Default left position
+                  
+                  // For special events like "Stand Up", "Meeting", etc.
+                  if (['standup', 'meeting', 'call', 'appointment'].includes(eventType)) {
+                    width = event.title?.toLowerCase().includes('stand up') ? '70%' : '60%';
+                    left = '20%'; // Align a bit to the right to overlap with focus time
+                  }
+                  
+                  const eventColor = getEventColor(event);
+                  const textColor = getEventTextColor(eventColor);
+                  
+                  return (
+                    <WeekEventCard
+                      key={event.id}
+                      bgcolor={eventColor}
+                      top={startPx}
+                      height={height}
+                      width={width}
+                      left={left}
+                      onClick={() => onEventClick && onEventClick(event)}
+                      sx={{ zIndex: zIndex || 1 }}
+                    >
+                      {renderEventContent(event, eventColor, textColor, height)}
+                    </WeekEventCard>
+                  );
+                })}
+              </Box>
+            )}
           </Box>
-        ) : (
-          <Box sx={{ 
-            height: 100, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center'
-          }}>
-            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-              No events scheduled for today
-            </Typography>
-          </Box>
-        )}
+        </Box>
       </Box>
     );
   };
@@ -617,22 +775,64 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const renderWeekView = () => {
     const weekDays = generateWeekDays();
     const today = new Date();
+    const now = new Date();
+    
+    // Calculate current time indicator position
+    const currentTimePosition = timeToPixels(now) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+    const isCurrentTimeVisible = now.getHours() >= DAY_START_HOUR && now.getHours() <= DAY_END_HOUR;
     
     return (
-      <Grid container sx={{ minHeight: 300 }}>
+      <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
+        {/* Time labels column */}
+        <Grid item xs={1} sx={{ 
+          borderRight: 1, 
+          borderColor: 'divider',
+          position: 'sticky',
+          left: 0,
+          backgroundColor: 'background.paper',
+          zIndex: 2
+        }}>
+          {TIME_LABELS.map((hour) => (
+            <Box 
+              key={hour} 
+              sx={{ 
+                height: HOUR_HEIGHT, 
+                borderBottom: 1, 
+                borderColor: 'divider',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'flex-end',
+                pr: 1,
+                pt: 1
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
+              </Typography>
+            </Box>
+          ))}
+        </Grid>
+        
+        {/* Day columns */}
+        <Grid item xs={11}>
+          <Grid container>
         {/* Days header */}
         <Grid container>
           {weekDays.map((date, index) => (
             <Grid 
               item 
               key={index} 
-              xs={12/7}
               sx={{ 
+                    width: `${100 / 7}%`,
                 p: 1, 
                 textAlign: 'center',
                 fontWeight: 'medium',
                 borderBottom: 1,
-                borderColor: 'divider'
+                    borderRight: 1,
+                    borderColor: 'divider',
+                    backgroundColor: date.getDate() === today.getDate() && 
+                                  date.getMonth() === today.getMonth() && 
+                                  date.getFullYear() === today.getFullYear() ? 'rgba(1, 108, 158, 0.05)' : 'transparent'
               }}
             >
               <Typography 
@@ -651,7 +851,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   fontWeight: 'bold',
                   color: date.getDate() === today.getDate() && 
                          date.getMonth() === today.getMonth() && 
-                         date.getFullYear() === today.getFullYear() ? 'primary.main' : 'inherit'
+                            date.getFullYear() === today.getFullYear() ? '#016C9E' : 'inherit'
                 }}
               >
                 {date.getDate()}
@@ -660,74 +860,100 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           ))}
         </Grid>
         
-        {/* Events grid */}
-        <Grid container sx={{ flexGrow: 1 }}>
-          {weekDays.map((date, index) => {
+            {/* Days content */}
+            <Grid container>
+              {weekDays.map((date, dayIndex) => {
             const dayEvents = getEventsForDay(date);
-            const isCurrentMonth = date.getMonth() === selectedDate.getMonth();
+                const eventPositions = calculateEventPositions(dayEvents);
+                const isToday = date.getDate() === today.getDate() && 
+                              date.getMonth() === today.getMonth() && 
+                              date.getFullYear() === today.getFullYear();
             
             return (
               <Grid 
                 item 
-                key={index} 
-                xs={12/7}
+                    key={dayIndex}
                 sx={{ 
-                  height: '100%',
-                  p: 1,
-                  borderRight: index < 6 ? 1 : 0,
+                      width: `${100 / 7}%`,
+                      position: 'relative',
+                      borderRight: 1,
                   borderColor: 'divider',
-                  backgroundColor: date.getDate() === today.getDate() && 
-                                  date.getMonth() === today.getMonth() && 
-                                  date.getFullYear() === today.getFullYear() ? 'rgba(16, 86, 245, 0.05)' : 'transparent'
-                }}
-              >
-                <Box sx={{ 
-                  height: '100%',
-                  minHeight: 150,
-                  overflowY: 'auto',
-                  px: 0.5
-                }}>
-                  {dayEvents.map((event) => {
-                    // Type guard to check if event is a task
-                    const isTask = 'isTask' in event && event.isTask === true;
-                    const isCompleted = isTask && 'completed' in event && event.completed === true;
+                      minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT,
+                      backgroundColor: isToday ? 'rgba(1, 108, 158, 0.05)' : 'transparent'
+                    }}
+                  >
+                    {/* Time grid lines */}
+                    {TIME_LABELS.map((hour, hourIndex) => (
+                      <Box 
+                        key={hourIndex} 
+                        sx={{ 
+                          position: 'absolute',
+                          top: hourIndex * HOUR_HEIGHT,
+                          left: 0,
+                          right: 0,
+                          height: HOUR_HEIGHT,
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          zIndex: 0
+                        }}
+                      />
+                    ))}
+                    
+                    {/* Current time indicator */}
+                    {isToday && isCurrentTimeVisible && (
+                      <CurrentTimeIndicator 
+                        sx={{ 
+                          top: currentTimePosition
+                        }}
+                      />
+                    )}
+                    
+                    {/* Events */}
+                    {eventPositions.map(({ event, column, columnsInSlot, zIndex }, index) => {
+                      const start = new Date(event.start);
+                      const end = new Date(event.end);
+                      
+                      // Calculate position and size
+                      const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+                      const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+                      const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
+                      
+                      // Special sizing for different event types
+                      const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
+                      
+                      // Width calculation based on event type
+                      let width = '95%'; // Default width (almost full width)
+                      let left = '2.5%'; // Default left position (centered)
+                      
+                      // For special events like "Stand Up", "Meeting", etc.
+                      if (['standup', 'meeting', 'call', 'appointment'].includes(eventType)) {
+                        width = event.title?.toLowerCase().includes('stand up') ? '75%' : '60%';
+                        left = '20%'; // Align a bit to the right to overlap with focus time
+                      }
+                      
+                      const eventColor = getEventColor(event);
+                      const textColor = getEventTextColor(eventColor);
                     
                     return (
-                      <EventCard 
+                        <WeekEventCard
                         key={event.id}
-                        bgcolor={getEventColor(event)}
+                          bgcolor={eventColor}
+                          top={startPx}
+                          height={height}
+                          width={width}
+                          left={left}
                         onClick={() => onEventClick && onEventClick(event)}
-                        sx={{
-                          opacity: isCompleted ? 0.7 : 1,
-                          textDecoration: isCompleted ? 'line-through' : 'none',
-                        }}
-                      >
-                        <Box sx={{ 
-                          display: 'flex', 
-                          alignItems: 'center',
-                          whiteSpace: 'nowrap', 
-                          overflow: 'hidden', 
-                          textOverflow: 'ellipsis'
-                        }}>
-                          <Typography variant="caption" sx={{ 
-                            fontWeight: 'bold',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>
-                            {event.title}
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          {formatTime(event.start)} - {formatTime(event.end)}
-                        </Typography>
-                      </EventCard>
+                        sx={{ zIndex: zIndex || 1 }}
+                        >
+                          {renderEventContent(event, eventColor, textColor, height)}
+                        </WeekEventCard>
                     );
                   })}
-                </Box>
               </Grid>
             );
           })}
+            </Grid>
+          </Grid>
         </Grid>
       </Grid>
     );
@@ -735,144 +961,345 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Render month view
   const renderMonthView = () => {
-    const monthDays = generateMonthDays();
+    const monthStart = startOfMonth(selectedDate);
+    const monthEnd = endOfMonth(selectedDate);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
     const today = new Date();
     
-    return (
-      <Grid container sx={{ minHeight: 300 }}>
-        {/* Day names header */}
-        <Grid container>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+    // Get all events for the month view date range
+    const monthViewEvents = getEventsForDateRange(startDate, endDate);
+    
+    // Function to get events for a specific day
+    const getDayEvents = (date: Date): CalendarEvent[] => {
+      return monthViewEvents.filter(event => {
+        const eventStart = new Date(event.start);
+        const eventEnd = new Date(event.end);
+        return isSameDay(date, eventStart) || 
+               (isWithinInterval(date, { start: eventStart, end: eventEnd }) && 
+                !isSameDay(date, eventStart));
+      });
+    };
+    
+    // Maximum events to show per day cell
+    const MAX_EVENTS_PER_DAY = 2;
+    
+    // Generate week rows
+    const generateCalendarGrid = () => {
+      let weeks = [];
+      let days = [];
+      let day = startDate;
+      
+      while (day <= endDate) {
+        for (let i = 0; i < 7; i++) {
+          const currentDay = new Date(day);
+          const isCurrentMonth = isSameMonth(day, monthStart);
+          const isToday = isSameDay(day, today);
+          const dayEvents = getDayEvents(currentDay);
+          
+          // Determine how many events to show and if there are more
+          const eventsToShow = dayEvents.slice(0, MAX_EVENTS_PER_DAY);
+          const hasMoreEvents = dayEvents.length > MAX_EVENTS_PER_DAY;
+          const moreEventsCount = dayEvents.length - MAX_EVENTS_PER_DAY;
+          
+          days.push(
             <Grid 
               item 
-              key={index} 
+              key={format(currentDay, 'yyyy-MM-dd')} 
               xs={12/7}
               sx={{ 
-                p: 1, 
+                p: 0.5,
+                border: 1,
+                borderColor: 'divider',
+                opacity: isCurrentMonth ? 1 : 0.4,
+                backgroundColor: isToday ? 'rgba(1, 108, 158, 0.08)' : 'transparent',
+                minHeight: '100px',
+                display: 'flex',
+                flexDirection: 'column',
+                '&:hover': {
+                  backgroundColor: isToday ? 'rgba(1, 108, 158, 0.12)' : 'rgba(1, 108, 158, 0.05)'
+                },
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onClick={() => {
+                setSelectedDate(new Date(currentDay));
+                setViewMode('day');
+              }}
+            >
+              {/* Date number in circle for today */}
+              <Box 
+                sx={{ 
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  mb: 0.5
+                }}
+              >
+                <Box 
+                  sx={{
+                    width: 24,
+                    height: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    backgroundColor: isToday ? '#016C9E' : 'transparent',
+                    transition: 'background-color 0.2s'
+                  }}
+                >
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
                 textAlign: 'center',
+                      fontWeight: isToday ? 'bold' : 'medium',
+                      color: isToday ? 'white' : 'inherit',
+                      fontFamily: 'Poppins',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    {format(currentDay, 'd')}
+                  </Typography>
+                </Box>
+              </Box>
+              
+              {/* Events container */}
+              <Box sx={{ 
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                pb: 0.5,
+                gap: 0.5
+              }}>
+                {/* Display limited events with improved spacing */}
+                {eventsToShow.map((event) => (
+                  <MonthEventCard 
+                    key={event.id}
+                    bgcolor={getEventColor(event)}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering the day cell click
+                      onEventClick && onEventClick(event);
+                    }}
+                  >
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontSize: '0.75rem', 
                 fontWeight: 'medium',
-                borderBottom: 1,
-                borderColor: 'divider'
+                        color: getEventTextColor(getEventColor(event)),
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        width: '100%',
+                        display: 'block',
+                        paddingLeft: '3px'
+                      }}
+                    >
+                      {event.title}
+                    </Typography>
+                  </MonthEventCard>
+                ))}
+                
+                {/* Show more indicator with improved styling */}
+                {hasMoreEvents && (
+                  <Box
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering the day cell click
+                      // Change to day view for this date when clicking on "more"
+                      setSelectedDate(new Date(currentDay));
+                      setViewMode('day');
+                    }}
+                    sx={{
+                      backgroundColor: 'rgba(1, 108, 158, 0.08)',
+                      borderRadius: '4px',
+                      p: '2px 4px',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      '&:hover': {
+                        backgroundColor: 'rgba(1, 108, 158, 0.15)',
+                      }
               }}
             >
               <Typography 
-                variant="subtitle2" 
+                      variant="caption" 
                 sx={{ 
+                        color: '#071C73',
+                        fontSize: '0.65rem',
+                        fontWeight: 'medium',
                   fontFamily: 'Poppins'
                 }}
               >
-                {day}
+                      +{moreEventsCount} more
               </Typography>
+                  </Box>
+                )}
+              </Box>
             </Grid>
-          ))}
-        </Grid>
+          );
+          
+          day = addDays(day, 1);
+        }
         
-        {/* Calendar grid */}
-        <Grid container>
-          {monthDays.map((date, index) => {
-            const dayEvents = getEventsForDay(date);
-            const isCurrentMonth = date.getMonth() === selectedDate.getMonth();
+        weeks.push(
+          <Grid container key={`week-${format(day, 'yyyy-MM-dd')}`}>
+            {days}
+        </Grid>
+        );
+        
+        days = [];
+      }
+      
+      return weeks;
+    };
             
             return (
+      <Grid container direction="column" sx={{ minHeight: 300 }}>
+        {/* Day names header */}
+        <Grid container>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
               <Grid 
                 item 
                 key={index} 
                 xs={12/7}
                 sx={{ 
-                  p: 0.5,
-                  borderBottom: Math.floor(index / 7) < Math.floor(monthDays.length / 7) - 1 ? 1 : 0,
-                  borderRight: index % 7 < 6 ? 1 : 0,
-                  borderColor: 'divider',
-                  opacity: isCurrentMonth ? 1 : 0.4,
-                  backgroundColor: date.getDate() === today.getDate() && 
-                                  date.getMonth() === today.getMonth() && 
-                                  date.getFullYear() === today.getFullYear() ? 'rgba(16, 86, 245, 0.05)' : 'transparent',
-                  minHeight: '100px'
+                p: 1, 
+                textAlign: 'center',
+                fontWeight: 'medium',
+                borderBottom: 1,
+                borderColor: 'divider'
                 }}
               >
                 <Typography 
-                  variant="body2" 
+                variant="subtitle2" 
                   sx={{ 
-                    p: 0.5,
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    color: date.getDate() === today.getDate() && 
-                           date.getMonth() === today.getMonth() && 
-                           date.getFullYear() === today.getFullYear() ? 'primary.main' : 'inherit',
                     fontFamily: 'Poppins'
                   }}
                 >
-                  {date.getDate()}
+                {day}
                 </Typography>
-                
-                <Box sx={{ 
-                  maxHeight: '80px',
-                  overflowY: 'auto',
-                  pb: 0.5,
-                  '&::-webkit-scrollbar': {
-                    width: '4px'
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: 'rgba(0,0,0,0.2)',
-                    borderRadius: '2px'
-                  }
-                }}>
-                  {dayEvents.slice(0, 3).map((event) => {
-                    // Type guard to check if event is a task
-                    const isTask = 'isTask' in event && event.isTask === true;
-                    const isCompleted = isTask && 'completed' in event && event.completed === true;
+            </Grid>
+          ))}
+        </Grid>
+        
+        {/* Calendar grid */}
+        {generateCalendarGrid()}
+      </Grid>
+    );
+  };
+
+  // Render all events view
+  const renderAllEventsView = () => {
+    // Sort events by start date
+    const sortedEvents = [...allEvents].sort((a, b) => {
+      return new Date(a.start).getTime() - new Date(b.start).getTime();
+    });
                     
                     return (
-                      <EventCard 
+      <Box sx={{ p: 2 }}>
+        <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins', fontWeight: 'bold' }}>
+          All Events
+        </Typography>
+        
+        {sortedEvents.length > 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {sortedEvents.map((event: CalendarEvent) => {
+              // Format the event date
+              const eventDate = new Date(event.start);
+              const formattedDate = eventDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric' 
+              });
+              
+              return (
+                <Paper
                         key={event.id}
-                        bgcolor={getEventColor(event)}
-                        onClick={() => onEventClick && onEventClick(event)}
+                  elevation={1}
                         sx={{ 
-                          p: '2px 4px',
-                          mb: 0.25,
-                          fontSize: '0.65rem',
-                          opacity: isCompleted ? 0.7 : 1,
-                          textDecoration: isCompleted ? 'line-through' : 'none',
-                        }}
+                    p: 2, 
+                    borderLeft: `4px solid ${getEventColor(event)}`,
+                    cursor: 'pointer',
+                    '&:hover': {
+                      boxShadow: 3,
+                      transform: 'scale(1.01)',
+                      zIndex: 100
+                    }
+                  }}
+                  onClick={() => onEventClick && onEventClick(event)}
                       >
                         <Box sx={{
-                          whiteSpace: 'nowrap', 
-                          overflow: 'hidden', 
-                          textOverflow: 'ellipsis'
-                        }}>
-                          <Typography variant="caption" sx={{ 
-                            fontSize: '0.6rem'
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 1
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Typography variant="subtitle1" sx={{ 
+                        fontWeight: 'bold', 
+                        fontFamily: 'Poppins'
                           }}>
                             {event.title}
                           </Typography>
                         </Box>
-                      </EventCard>
-                    );
-                  })}
+                    <Typography variant="caption" sx={{ 
+                      color: 'text.secondary', 
+                      fontFamily: 'Poppins',
+                      fontWeight: 'medium'
+                    }}>
+                      {formattedDate}
+                    </Typography>
+                  </Box>
                   
-                  {dayEvents.length > 3 && (
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        display: 'block', 
-                        textAlign: 'center',
-                        color: 'text.secondary',
-                        fontSize: '0.65rem',
-                        mt: 0.5,
-                        fontFamily: 'Poppins'
-                      }}
-                    >
-                      +{dayEvents.length - 3} more
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins' }}>
+                    {formatEventTime(event)}
+                  </Typography>
+                  
+                  {event.location && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
+                      Location: {event.location}
                     </Typography>
                   )}
+                  
+                  {event.description && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
+                      {event.description}
+                    </Typography>
+                  )}
+                </Paper>
+                    );
+                  })}
+          </Box>
+        ) : (
+          <Box sx={{ 
+            height: 100, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center'
+          }}>
+            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+              No events found
+                    </Typography>
+          </Box>
+                  )}
                 </Box>
-              </Grid>
-            );
-          })}
-        </Grid>
-      </Grid>
     );
   };
+
+  // Add effect to refresh data when view mode changes
+  useEffect(() => {
+    console.log(`View mode changed to: ${viewMode}`);
+    refreshCalendarData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+  
+  // Add effect to refresh data when selected date changes
+  useEffect(() => {
+    console.log(`Selected date changed to: ${selectedDate.toDateString()}`);
+    refreshCalendarData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   return (
     <Paper 
@@ -894,41 +1321,38 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         alignItems: 'center',
         borderBottom: 1,
         borderColor: 'divider',
-        backgroundColor: 'rgba(16, 86, 245, 0.02)'
+        backgroundColor: 'rgba(198, 232, 242, 0.3)'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Typography 
             variant="h6" 
-            sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+            sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#071C73' }}
           >
             Calendar
           </Typography>
-          {useCalendarMockData && (
             <Chip 
-              label="Sample Data" 
+            label="API Connected"
               size="small" 
-              color="primary" 
-              variant="outlined" 
-              sx={{ fontSize: '0.7rem', ml: 2 }}
-            />
-          )}
-          {useTaskMockData && taskEvents.length > 0 && (
-            <Chip 
-              label="Sample Tasks" 
-              size="small" 
-              color="secondary" 
-              variant="outlined" 
-              sx={{ fontSize: '0.7rem', ml: 1 }}
-            />
-          )}
+            sx={{ 
+              ml: 1, 
+              fontSize: '0.7rem', 
+              bgcolor: '#49C1E3',
+              color: '#071C73',
+              fontWeight: 'medium'
+            }}
+          />
         </Box>
         
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           {isLoading ? (
-            <CircularProgress size={24} sx={{ mr: 1 }} />
+            <CircularProgress size={24} sx={{ mr: 1, color: '#016C9E' }} />
           ) : (
             <Tooltip title="Refresh">
-              <IconButton onClick={refreshAllData} size="small">
+              <IconButton 
+                onClick={refreshAllData} 
+                size="small"
+                sx={{ color: '#016C9E' }}
+              >
                 <SyncIcon />
               </IconButton>
             </Tooltip>
@@ -938,7 +1362,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             <IconButton 
               onClick={onAddEvent} 
               size="small" 
-              sx={{ ml: 1 }}
+              sx={{ ml: 1, color: '#016C9E' }}
               disabled={!isConnected && onAddEvent !== undefined}
             >
               <AddIcon />
@@ -946,67 +1370,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </Tooltip>
         </Box>
       </Box>
-      
-      {/* Legend for task and event types */}
-      <Box sx={{ 
-        px: 2, 
-        py: 1,
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 1,
-        borderBottom: 1,
-        borderColor: 'divider',
-        bgcolor: 'rgba(0,0,0,0.02)'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-high'], mr: 0.5 }} />
-          <Typography variant="caption">High Priority Task</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-medium'], mr: 0.5 }} />
-          <Typography variant="caption">Medium Priority Task</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['task-low'], mr: 0.5 }} />
-          <Typography variant="caption">Low Priority Task</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: colorMap['default'], mr: 0.5 }} />
-          <Typography variant="caption">Calendar Event</Typography>
-        </Box>
-      </Box>
-      
-      {/* Mock data banner - show only when not connected */}
-      {!isConnected && (
-        <Box sx={{ 
-          px: 2, 
-          py: 1, 
-          backgroundColor: 'rgba(16, 86, 245, 0.1)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              fontFamily: 'Poppins',
-              fontStyle: 'italic',
-              color: 'text.secondary'
-            }}
-          >
-            Viewing sample calendar data. Connect your Google Calendar to see your actual events.
-          </Typography>
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={connectCalendar}
-            disabled={isLoading}
-            sx={{ ml: 2, minWidth: 'auto' }}
-          >
-            Connect
-          </Button>
-        </Box>
-      )}
       
       {/* Navigation bar */}
       <Box sx={{ 
@@ -1016,10 +1379,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         justifyContent: 'space-between', 
         alignItems: 'center',
         borderBottom: 1,
-        borderColor: 'divider'
+        borderColor: 'divider',
+        backgroundColor: 'rgba(198, 232, 242, 0.15)'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <IconButton onClick={goToPrevious} size="small">
+          <IconButton 
+            onClick={goToPrevious} 
+            size="small"
+            disabled={viewMode === 'all'}
+            sx={{ 
+              opacity: viewMode === 'all' ? 0.5 : 1,
+              color: '#016C9E'
+            }}
+          >
             <NavigateBeforeIcon />
           </IconButton>
           
@@ -1028,13 +1400,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             sx={{ 
               px: 2, 
               fontWeight: 'medium',
-              fontFamily: 'Poppins'
+              fontFamily: 'Poppins',
+              color: '#071C73'
             }}
           >
             {formatDateRange()}
           </Typography>
           
-          <IconButton onClick={goToNext} size="small">
+          <IconButton 
+            onClick={goToNext} 
+            size="small"
+            disabled={viewMode === 'all'}
+            sx={{ 
+              opacity: viewMode === 'all' ? 0.5 : 1,
+              color: '#016C9E'
+            }}
+          >
             <NavigateNextIcon />
           </IconButton>
         </Box>
@@ -1046,8 +1427,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             startIcon={<TodayIcon />}
             sx={{ 
               mr: 2,
-              display: { xs: 'none', sm: 'flex' }
+              display: { xs: 'none', sm: 'flex' },
+              color: '#016C9E',
+              '&:hover': {
+                backgroundColor: 'rgba(1, 108, 158, 0.08)'
+              }
             }}
+            disabled={viewMode === 'all'}
           >
             Today
           </Button>
@@ -1057,6 +1443,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             exclusive
             onChange={handleViewModeChange}
             size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                color: '#071C73',
+                '&.Mui-selected': {
+                  backgroundColor: 'rgba(1, 108, 158, 0.15)',
+                  color: '#016C9E',
+                  fontWeight: 'bold'
+                },
+                '&:hover': {
+                  backgroundColor: 'rgba(1, 108, 158, 0.08)'
+                }
+              }
+            }}
           >
             <ToggleButton value="day">
               Day
@@ -1066,6 +1465,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             </ToggleButton>
             <ToggleButton value="month">
               Month
+            </ToggleButton>
+            <ToggleButton value="all">
+              All
             </ToggleButton>
           </ToggleButtonGroup>
         </Box>
@@ -1112,6 +1514,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             {viewMode === 'day' && renderDayView()}
             {viewMode === 'week' && renderWeekView()}
             {viewMode === 'month' && renderMonthView()}
+            {viewMode === 'all' && renderAllEventsView()}
           </>
         )}
       </Box>

@@ -1,9 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { 
   getCalendarEvents, 
-  getCalendarList, 
   CalendarEvent, 
-  CalendarList,
   connectGoogleCalendar,
   isGoogleCalendarConnected,
   createCalendarEvent,
@@ -14,16 +12,15 @@ import { useAuth } from './AuthContext';
 
 interface CalendarContextType {
   events: CalendarEvent[];
-  calendars: CalendarList[];
   selectedDate: Date;
-  viewMode: 'day' | 'week' | 'month';
+  viewMode: 'day' | 'week' | 'month' | 'all';
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
   connectCalendar: () => Promise<boolean>;
-  fetchEvents: (startDate: Date, endDate: Date) => Promise<void>;
+  fetchEvents: () => Promise<void>;
   setSelectedDate: (date: Date) => void;
-  setViewMode: (mode: 'day' | 'week' | 'month') => void;
+  setViewMode: (mode: 'day' | 'week' | 'month' | 'all') => void;
   addEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<CalendarEvent>;
   updateEvent: (eventId: string, event: Partial<Omit<CalendarEvent, 'id'>>) => Promise<CalendarEvent>;
   removeEvent: (eventId: string) => Promise<boolean>;
@@ -35,42 +32,11 @@ const CalendarContext = createContext<CalendarContextType | undefined>(undefined
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [calendars, setCalendars] = useState<CalendarList[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'all'>('week');
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Function to get start and end dates based on selected date and view mode
-  const getDateRange = useCallback((date: Date, mode: 'day' | 'week' | 'month'): [Date, Date] => {
-    const start = new Date(date);
-    const end = new Date(date);
-    
-    if (mode === 'day') {
-      // For day view, use the current day
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-    } else if (mode === 'week') {
-      // For week view, start from Sunday and end on Saturday
-      const day = start.getDay();
-      start.setDate(start.getDate() - day); // Go to the beginning of the week (Sunday)
-      start.setHours(0, 0, 0, 0);
-      
-      end.setDate(end.getDate() + (6 - day)); // Go to the end of the week (Saturday)
-      end.setHours(23, 59, 59, 999);
-    } else if (mode === 'month') {
-      // For month view, start from the first day of the month and end on the last day
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      
-      end.setMonth(end.getMonth() + 1);
-      end.setDate(0); // Last day of the current month
-      end.setHours(23, 59, 59, 999);
-    }
-    
-    return [start, end];
-  }, []);
 
   // Check connection status on mount
   useEffect(() => {
@@ -81,23 +47,17 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // When the view mode or selected date changes, fetch events
   useEffect(() => {
-    if (isAuthenticated && isConnected) {
-      const [startDate, endDate] = getDateRange(selectedDate, viewMode);
-      fetchEventsForRange(startDate, endDate);
+    if (isAuthenticated) {
+      console.log(`View mode or date changed. View: ${viewMode}, Date: ${selectedDate.toDateString()}`);
+      fetchEventsForViewMode();
     }
-  }, [isAuthenticated, isConnected, selectedDate, viewMode, getDateRange]);
+  }, [isAuthenticated, selectedDate, viewMode]);
 
   // Check if Google Calendar is connected
   const checkConnectionStatus = async () => {
     try {
       const connected = await isGoogleCalendarConnected();
       setIsConnected(connected);
-      
-      if (connected) {
-        // If connected, fetch calendar list
-        const calendarList = await getCalendarList();
-        setCalendars(calendarList);
-      }
     } catch (error) {
       console.error('Error checking calendar connection status:', error);
       setError('Failed to check calendar connection status');
@@ -113,9 +73,6 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const success = await connectGoogleCalendar();
       if (success) {
         setIsConnected(true);
-        // Fetch calendars after successful connection
-        const calendarList = await getCalendarList();
-        setCalendars(calendarList);
       }
       return success;
     } catch (error) {
@@ -127,37 +84,40 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Fetch events for a specific date range
-  const fetchEventsForRange = async (startDate: Date, endDate: Date) => {
-    if (!isConnected) return;
-    
+  // Fetch events based on current view mode and selected date
+  const fetchEventsForViewMode = async () => {
     setIsLoading(true);
     setError(null);
     
     try {
-      // Format dates for API
-      const formattedStartDate = startDate.toISOString();
-      const formattedEndDate = endDate.toISOString();
+      console.log(`Fetching events for ${viewMode} view with selected date ${selectedDate.toISOString()}`);
       
-      // Fetch events from the primary calendar
-      const fetchedEvents = await getCalendarEvents(
-        'primary',
-        formattedStartDate,
-        formattedEndDate
-      );
+      // Fetch events using the updated getCalendarEvents function
+      const fetchedEvents = await getCalendarEvents(viewMode, selectedDate);
       
+      console.log(`Successfully fetched ${fetchedEvents.length} calendar events`);
+      
+      // Check if we got any events back
+      if (fetchedEvents.length === 0) {
+        console.log('No events returned from API, but this might be expected based on date range');
+      } else {
+        console.log(`First event title: ${fetchedEvents[0].title}, start: ${fetchedEvents[0].start}`);
+      }
+      
+      // Update state with the fetched events
       setEvents(fetchedEvents);
     } catch (error) {
       console.error('Error fetching calendar events:', error);
       setError('Failed to fetch calendar events');
+      // Don't clear existing events on error to prevent UI disruption
     } finally {
       setIsLoading(false);
     }
   };
 
   // Public method to fetch events (used in components)
-  const fetchEvents = async (startDate: Date, endDate: Date) => {
-    await fetchEventsForRange(startDate, endDate);
+  const fetchEvents = async () => {
+    await fetchEventsForViewMode();
   };
 
   // Add a new event
@@ -227,13 +187,11 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Refresh all calendar data
   const refreshCalendarData = async () => {
     await checkConnectionStatus();
-    const [startDate, endDate] = getDateRange(selectedDate, viewMode);
-    await fetchEventsForRange(startDate, endDate);
+    await fetchEventsForViewMode();
   };
 
   const value: CalendarContextType = {
     events,
-    calendars,
     selectedDate,
     viewMode,
     isConnected,

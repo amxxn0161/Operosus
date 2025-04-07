@@ -1036,7 +1036,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           // Use our new service to send the query to OpenAI
           const responseContent = await sendOpenAIQuery(
             openaiMessages,
-            'gpt-4o', // model
+            'gpt-4o-mini', // model - updated to use the smaller, faster model
             0.7, // temperature
             1000 // maxTokens
           );
