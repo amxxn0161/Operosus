@@ -556,30 +556,34 @@ export const updateCalendarEvent = async (
       requestBody.location = updatedFields.location;
     }
     
-    // Format start and end times if provided
+    // SIMPLIFIED APPROACH: Instead of using nested objects for start/end which may cause issues
+    // with PHP type conversion, use flattened properties that match exactly what the backend expects
+    
     if (updatedFields.start) {
       const startDate = new Date(updatedFields.start);
+      
       if (updatedFields.isAllDay) {
-        requestBody.start = {
-          date: startDate.toISOString().split('T')[0] // Just the date part for all-day events
-        };
+        // For all-day events, just send the date as a string in YYYY-MM-DD format
+        requestBody.start_date = startDate.toISOString().split('T')[0];
+        requestBody.is_all_day = true;
       } else {
-        requestBody.start = {
-          dateTime: startDate.toISOString()
-        };
+        // For regular events, send the full ISO string
+        requestBody.start_datetime = startDate.toISOString();
+        // Send timezone as a separate field, not nested
+        requestBody.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       }
     }
     
     if (updatedFields.end) {
       const endDate = new Date(updatedFields.end);
+      
       if (updatedFields.isAllDay) {
-        requestBody.end = {
-          date: endDate.toISOString().split('T')[0] // Just the date part for all-day events
-        };
+        // For all-day events, just send the date as a string in YYYY-MM-DD format
+        requestBody.end_date = endDate.toISOString().split('T')[0];
       } else {
-        requestBody.end = {
-          dateTime: endDate.toISOString()
-        };
+        // For regular events, send the full ISO string
+        requestBody.end_datetime = endDate.toISOString();
+        // We already sent timezone above, no need to repeat
       }
     }
     

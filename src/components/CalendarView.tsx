@@ -224,6 +224,11 @@ const extractEventType = (text: string): string => {
 
 // Get text color for event based on background color
 const getEventTextColor = (bgColor: string): string => {
+  // Always return white for better visibility on all event backgrounds
+  return '#FFFFFF';
+  
+  // Previous code commented out for reference
+  /*
   // Check if the background color is a darker shade requiring white text
   const darkColors = ['#1056F5', '#071C73', '#016C9E', '#F29702', '#E04330'];
   if (darkColors.includes(bgColor)) {
@@ -232,6 +237,7 @@ const getEventTextColor = (bgColor: string): string => {
   
   // For lighter colors, use the dark blue for better contrast
   return '#071C73';
+  */
 };
 
 // Format time from Date object with more compact display
@@ -873,11 +879,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             variant="subtitle2" 
             sx={{
               color: textColor,
-                      fontWeight: 'bold', 
+                      fontWeight: isNested ? 'bold' : 'medium', 
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: isNested ? '0.85rem' : '0.8rem', // Larger font for nested events
+              fontSize: isNested ? '0.9rem' : '0.8rem', // Larger font for nested events
               lineHeight: 1.2,
               pl: 0.5,
               flexGrow: 1,
@@ -1246,20 +1252,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       onClick={(e) => handleEventClick(event, e)}
                       sx={{ 
                         zIndex: isActive ? 100 : (zIndex || 1), // Bring to front when clicked
-                        border: isNested ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
+                        border: isNested || columnsInSlot > 1 ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
                         boxShadow: isActive 
                           ? '0 4px 12px rgba(0,0,0,0.3)' 
-                          : (isNested ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
+                          : (isNested || columnsInSlot > 1 ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
                         transform: isActive ? 'scale(1.02)' : 'none',
                         filter: isActive ? 'brightness(1.05)' : 'none',
                         // No hover effects that change z-index
                       }}
                     >
-                      {renderEventContent(event, eventColor, textColor, height, isNested)}
+                      {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
                     </WeekEventCard>
-              );
-            })}
-          </Box>
+                  );
+                })}
+              </Box>
             )}
           </Box>
         </Box>
@@ -1450,14 +1456,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         onClick={(e) => handleEventClick(event, e)}
                         sx={{
                             zIndex: (activeEventId === event.id) ? 100 : (zIndex || 1), // Bring to front when clicked
-                            border: isNested ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
-                            boxShadow: (activeEventId === event.id) ? '0 4px 12px rgba(0,0,0,0.3)' : (isNested ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
+                            border: isNested || columnsInSlot > 1 ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
+                            boxShadow: (activeEventId === event.id) ? '0 4px 12px rgba(0,0,0,0.3)' : (isNested || columnsInSlot > 1 ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
                             transform: (activeEventId === event.id) ? 'scale(1.02)' : 'none',
                             filter: (activeEventId === event.id) ? 'brightness(1.05)' : 'none',
                             // No hover effects that change z-index
                           }}
                         >
-                          {renderEventContent(event, eventColor, textColor, height, isNested)}
+                          {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
                         </WeekEventCard>
                       );
                     })}
