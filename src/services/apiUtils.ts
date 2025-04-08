@@ -52,6 +52,9 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
     }
     
     console.log(`Making API request to ${fullUrl} with method ${fetchOptions.method}`);
+    if (options.body) {
+      console.log('Request payload:', JSON.stringify(options.body, null, 2));
+    }
     
     // Make the request
     const response = await fetch(fullUrl, fetchOptions);
@@ -59,16 +62,61 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
     // Clear timeout
     clearTimeout(timeoutId);
     
+    // Try to parse the response even if it's an error
+    let data;
+    let responseText = '';
+    
+    try {
+      // Try to get text first for better error messages
+      responseText = await response.text();
+      
+      // Try to parse as JSON if possible
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.log('Response is not valid JSON, using text response instead');
+          data = { message: responseText };
+        }
+      }
+    } catch (responseError) {
+      console.error('Error reading response:', responseError);
+      data = { message: 'Unable to read response' };
+    }
+    
     // Handle error responses
     if (!response.ok) {
       console.error(`API request failed: ${response.status} ${response.statusText}`);
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      console.error('Error response data:', data);
+      
+      // Create a custom error object with more details
+      const error: any = new Error(data?.message || `API request failed: ${response.status} ${response.statusText}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.data = data;
+      
+      // For 500 Internal Server errors, add more context
+      if (response.status === 500) {
+        error.message = data?.message || 'Internal Server Error: The server encountered an unexpected condition';
+        console.error('Server Error Details:', {
+          url: fullUrl,
+          method: options.method || 'GET',
+          requestBody: options.body ? JSON.stringify(options.body) : 'None',
+          responseData: data
+        });
+      }
+      
+      throw error;
     }
     
-    // Parse and return the data
-    const data = await response.json();
-    console.log(`API response successful for ${fullUrl}`);
-    return data as T;
+    // Return the parsed data or what we already parsed
+    if (data) {
+      console.log(`API response successful for ${fullUrl}`);
+      return data as T;
+    } else {
+      console.log(`API response successful for ${fullUrl}, parsing response`);
+      return {} as T;
+    }
   } catch (error) {
     // Clear timeout if there was an error
     clearTimeout(timeoutId);
@@ -82,7 +130,14 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
     // Log the full error
     console.error('API request error:', error);
     
-    // Re-throw the error
-    throw error;
+    // If the error already has status and we've enhanced it, just rethrow
+    if ((error as any).status) {
+      throw error;
+    }
+    
+    // Otherwise create a more detailed error
+    const enhancedError: any = new Error(error instanceof Error ? error.message : 'Unknown API error');
+    enhancedError.originalError = error;
+    throw enhancedError;
   }
 }

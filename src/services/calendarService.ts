@@ -9,6 +9,7 @@ export interface CalendarEvent {
   description?: string;
   colorId?: string;
   isAllDay?: boolean;
+  eventType?: string;
   
   // API-specific fields that we pass through
   summary?: string;
@@ -34,7 +35,6 @@ export interface CalendarEvent {
   status?: string;
   visibility?: string | null;
   recurringEventId?: string;
-  eventType?: string;
 }
 
 export interface CalendarList {
@@ -348,16 +348,16 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
 const getColorIdFromEventType = (eventType: string | undefined): string | undefined => {
   if (!eventType) return undefined;
   
-  // Map event types to color IDs
+  // Map event types to color IDs - using more distinct colors
   switch (eventType) {
     case 'focusTime':
       return '5'; // Yellow
     case 'outOfOffice':
       return '11'; // Red
     case 'workingLocation':
-      return '7'; // Blue
+      return '2'; // Bright green
     case 'default':
-      return '1'; // Lavender
+      return '9'; // Dark blue
     default:
       return undefined;
   }
@@ -366,7 +366,12 @@ const getColorIdFromEventType = (eventType: string | undefined): string | undefi
 // Create a new calendar event
 export const createCalendarEvent = async (
   calendarId: string = 'primary',
-  event: Omit<CalendarEvent, 'id'>
+  event: Omit<CalendarEvent, 'id'> & { 
+    eventType?: string;
+    outOfOfficeProperties?: any;
+    focusTimeProperties?: any;
+    workingLocationProperties?: any;
+  }
 ): Promise<CalendarEvent> => {
   try {
     console.log('Creating new calendar event:', event);
@@ -388,26 +393,83 @@ export const createCalendarEvent = async (
     };
     
     // Map our event model to the format expected by the backend
-    const requestBody = {
+    const requestBody: any = {
       summary: event.title, // Map 'title' to required 'summary' field
       start: formatDateTime(event.start, event.isAllDay),
       end: formatDateTime(event.end, event.isAllDay),
-      description: event.description,
-      location: event.location,
-      colorId: event.colorId,
-      calendarId
     };
     
-    console.log('Sending event request with body:', requestBody);
+    // Only add these fields if they are defined
+    if (event.description) requestBody.description = event.description;
+    if (event.location) requestBody.location = event.location;
+    if (event.colorId) requestBody.colorId = event.colorId;
+    
+    // Handle special event types
+    if (event.eventType) {
+      requestBody.eventType = event.eventType;
+      
+      // Add special properties based on event type
+      if (event.eventType === 'outOfOffice') {
+        // For Out of Office events, exactly match the format expected by the backend
+        if (event.isAllDay !== false) {
+          // Ensure it's an all-day event
+          requestBody.start = {
+            date: new Date(event.start).toISOString().split('T')[0]
+          };
+          requestBody.end = {
+            date: new Date(event.end).toISOString().split('T')[0]
+          };
+        }
+        
+        // Define outOfOfficeProperties using the correct enum value for autoDeclineMode
+        requestBody.outOfOfficeProperties = {
+          autoDeclineMode: "DECLINE_ALL"
+        };
+        
+        // Set decline message if description exists
+        if (event.description) {
+          requestBody.outOfOfficeProperties.declineMessage = event.description;
+        }
+      } 
+      else if (event.eventType === 'focusTime') {
+        // Define focusTimeProperties with correct enum values
+        requestBody.focusTimeProperties = {
+          autoDeclineMode: "DECLINE_WHEN_BUSY"
+        };
+        
+        // Set decline message if description exists
+        if (event.description) {
+          requestBody.focusTimeProperties.declineMessage = event.description;
+        }
+      }
+      else if (event.eventType === 'workingLocation') {
+        // Define workingLocationProperties
+        requestBody.workingLocationProperties = {
+          type: 'custom'
+        };
+        
+        // Set custom location if available
+        if (event.location) {
+          requestBody.workingLocationProperties.customLocation = event.location;
+        }
+      }
+    }
+    
+    // Log the actual request being sent
+    console.log('Sending event request with body:', JSON.stringify(requestBody, null, 2));
     
     // Use the direct endpoint as specified
     const response = await apiRequest<any>(
       'https://app2.operosus.com/api/calendar/events', 
       {
-      method: 'POST',
+        method: 'POST',
         body: requestBody
       }
-    );
+    ).catch(error => {
+      console.error('API request failed with error:', error);
+      console.error('Request body that caused the error:', JSON.stringify(requestBody, null, 2));
+      throw error;
+    });
     
     console.log('Event creation response:', response);
     
@@ -422,7 +484,8 @@ export const createCalendarEvent = async (
         location: event.location,
         description: event.description,
         colorId: event.colorId,
-        isAllDay: event.isAllDay
+        isAllDay: event.isAllDay,
+        eventType: event.eventType // Include event type in the created event
       };
     } else if (response.data) {
       // If the response.data contains the event data directly
@@ -434,7 +497,8 @@ export const createCalendarEvent = async (
         location: event.location,
         description: event.description,
         colorId: event.colorId,
-        isAllDay: event.isAllDay
+        isAllDay: event.isAllDay,
+        eventType: event.eventType // Include event type in the created event
       };
     } else {
       // If no event data is returned, create a temporary event object
@@ -447,7 +511,8 @@ export const createCalendarEvent = async (
         location: event.location,
         description: event.description,
         colorId: event.colorId,
-        isAllDay: event.isAllDay
+        isAllDay: event.isAllDay,
+        eventType: event.eventType // Include event type in the created event
       };
       console.warn('Could not find event in API response. Created temporary event:', createdEvent);
     }
@@ -715,5 +780,42 @@ export const getCalendarEventById = async (eventId: string): Promise<CalendarEve
   } catch (error) {
     console.error(`Error fetching calendar event with ID ${eventId}:`, error);
     return null;
+  }
+};
+
+// Respond to a calendar event invitation (accept, decline, or tentative)
+export const respondToEventInvitation = async (
+  eventId: string,
+  response: 'accepted' | 'declined' | 'tentative'
+): Promise<boolean> => {
+  try {
+    console.log(`Responding to event ${eventId} with response: ${response}`);
+    
+    // URL for responding to an event invitation
+    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}/respond`;
+    console.log(`Using response URL: ${url}`);
+    
+    // Make the API request - using PUT method as required by the endpoint
+    const apiResponse = await apiRequest<any>(url, {
+      method: 'PUT',
+      body: { response }
+    }).catch(error => {
+      console.error('API request failed with error:', error);
+      throw error;
+    });
+    
+    console.log('Event response API response:', apiResponse);
+    
+    // Check if the response was successful
+    if (apiResponse.status === 'success') {
+      console.log('Event response updated successfully');
+      return true;
+    } else {
+      console.error('Failed to update event response:', apiResponse);
+      return false;
+    }
+  } catch (error) {
+    console.error(`Error responding to event invitation ${eventId}:`, error);
+    return false;
   }
 }; 

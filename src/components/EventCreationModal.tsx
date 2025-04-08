@@ -132,22 +132,98 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       const startDateTime = new Date(`${startDate}T${isAllDay ? '00:00:00' : startTime}`);
       const endDateTime = new Date(`${endDate}T${isAllDay ? '23:59:59' : endTime}`);
       
-      // Create event object
-      const newEvent: Omit<CalendarEvent, 'id'> = {
+      // Create base event object
+      const newEvent: any = {
         title,
+        summary: title, // Ensure summary is set for Google Calendar
         start: startDateTime.toISOString(),
         end: endDateTime.toISOString(),
-        description: description || undefined,
-        location: location || undefined,
-        colorId: eventType, // Map event type to colorId
-        isAllDay
       };
       
-      // Add event using context function (which handles API call)
-      await addEvent(newEvent);
+      // Only add optional fields if they have values
+      if (description) newEvent.description = description;
+      if (location) newEvent.location = location;
       
-      // Close modal and reset form
-      handleClose();
+      // For all events, explicitly set isAllDay property
+      newEvent.isAllDay = isAllDay;
+      
+      // Handle special event types
+      if (eventType === 'outOfOffice') {
+        // Force Out of Office events to be all-day
+        newEvent.isAllDay = true;
+        
+        // Set the eventType field to outOfOffice
+        newEvent.eventType = 'outOfOffice';
+        
+        // Set out of office properties with correct enum value
+        newEvent.outOfOfficeProperties = {
+          autoDeclineMode: "DECLINE_ALL",
+        };
+        
+        // Only add declineMessage if description exists
+        if (description) {
+          newEvent.outOfOfficeProperties.declineMessage = description;
+        }
+        
+        // Remove transparency property - it's set automatically by the backend
+      } else if (eventType === 'focusTime') {
+        // Set the eventType field to focusTime
+        newEvent.eventType = 'focusTime';
+        
+        // Add focus time properties with correct enum value
+        newEvent.focusTimeProperties = {
+          autoDeclineMode: "DECLINE_WHEN_BUSY",
+        };
+        
+        // Only add declineMessage if description exists
+        if (description) {
+          newEvent.focusTimeProperties.declineMessage = description;
+        }
+      } else if (eventType === 'workingLocation') {
+        // Set the eventType field to workingLocation
+        newEvent.eventType = 'workingLocation';
+        
+        // Add working location properties
+        newEvent.workingLocationProperties = {
+          type: 'custom',
+        };
+        
+        // Only add customLocation if location exists
+        if (location) {
+          newEvent.workingLocationProperties.customLocation = location;
+        }
+      } else {
+        // For regular events, just set the colorId
+        newEvent.colorId = eventType;
+      }
+      
+      console.log('Creating new event with properties:', JSON.stringify(newEvent, null, 2));
+      
+      // Add event using context function (which handles API call)
+      try {
+        await addEvent(newEvent);
+        // Close modal and reset form
+        handleClose();
+      } catch (apiError: any) {
+        console.error('API Error creating event:', apiError);
+        // Get more detailed error message
+        let errorMessage = 'Failed to create event. Please try again.';
+        
+        if (apiError.message) {
+          errorMessage = apiError.message;
+        }
+        
+        // Special handling for 500 errors
+        if (apiError.status === 500 || errorMessage.includes('500')) {
+          if (eventType === 'outOfOffice') {
+            errorMessage = 'Server error creating Out of Office event. The Google Calendar API may be unavailable or the event format is incorrect.';
+          } else {
+            errorMessage = 'Server error creating event. The calendar API may be temporarily unavailable.';
+          }
+        }
+        
+        setApiError(errorMessage);
+      }
     } catch (error) {
       console.error('Error creating event:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to create event. Please try again.');
@@ -168,6 +244,56 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     
     // Call onClose prop
     onClose();
+  };
+
+  // Handle automatic all-day selection for Out of Office
+  const handleEventTypeChange = (newType: string) => {
+    setEventType(newType);
+    
+    // When selecting Out of Office
+    if (newType === 'outOfOffice') {
+      // Automatically check the All Day box
+      setIsAllDay(true);
+      
+      // Auto-fill the title with "Out of Office"
+      setTitle('Out of Office');
+      
+      // If no description is set, provide a default decline message
+      if (!description) {
+        setDescription('I am out of office');
+      }
+    }
+  };
+  
+  // For Out of Office events, show a clearer explanation
+  const renderEventTypeDescription = () => {
+    if (eventType === 'outOfOffice') {
+      return (
+        <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
+          Out of Office events will automatically decline meeting invitations while you're away.
+          The message above will be sent to anyone whose invitation is declined.
+          <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+            Uses DECLINE_ALL mode to reject all meeting invitations.
+          </Typography>
+        </Alert>
+      );
+    } else if (eventType === 'focusTime') {
+      return (
+        <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
+          Focus Time events help you block time for deep work without interruptions.
+          <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+            Uses DECLINE_WHEN_BUSY mode to reject invitations that conflict with this event.
+          </Typography>
+        </Alert>
+      );
+    } else if (eventType === 'workingLocation') {
+      return (
+        <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
+          Working Location events help you indicate where you're working from.
+        </Alert>
+      );
+    }
+    return null;
   };
 
   return (
@@ -265,6 +391,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 <Checkbox 
                   checked={isAllDay} 
                   onChange={(e) => setIsAllDay(e.target.checked)} 
+                  disabled={eventType === 'outOfOffice'} // Disable checkbox for Out of Office
                 />
               }
               label="All Day"
@@ -276,14 +403,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
               <Select
                 value={eventType}
                 label="Event Type"
-                onChange={(e) => setEventType(e.target.value)}
+                onChange={(e) => handleEventTypeChange(e.target.value)}
               >
                 <MenuItem value="default">Default</MenuItem>
-                <MenuItem value="focus">Focus Time</MenuItem>
-                <MenuItem value="1">Team Meeting</MenuItem>
-                <MenuItem value="client">Client Meeting</MenuItem>
-                <MenuItem value="manager">Manager 1-on-1</MenuItem>
-                <MenuItem value="review">Code Review</MenuItem>
+                <MenuItem value="outOfOffice">Out of Office</MenuItem>
+                <MenuItem value="focusTime">Focus Time</MenuItem>
+                <MenuItem value="workingLocation">Working Location</MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -410,7 +535,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           />
           
           <TextField
-            label="Description"
+            label={eventType === 'outOfOffice' ? 'Auto-decline Message' : 'Description'}
             fullWidth
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -418,7 +543,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             multiline
             rows={3}
             InputLabelProps={{ shrink: true }}
+            placeholder={eventType === 'outOfOffice' ? 'I am out of office' : 'Add details about this event'}
           />
+          
+          {renderEventTypeDescription()}
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
             <Typography component="span" color="error" sx={{ fontWeight: 'bold' }}>*</Typography> Required fields

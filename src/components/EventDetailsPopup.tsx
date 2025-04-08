@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -13,7 +13,9 @@ import {
   ToggleButton,
   Link,
   Menu,
-  MenuItem
+  MenuItem,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -26,7 +28,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import PeopleIcon from '@mui/icons-material/People';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import { CalendarEvent } from '../services/calendarService';
+import { CalendarEvent, respondToEventInvitation } from '../services/calendarService';
 import { format } from 'date-fns';
 import EventEditForm from './EventEditForm';
 import { useCalendar } from '../contexts/CalendarContext';
@@ -60,6 +62,9 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [rsvpStatus, setRsvpStatus] = useState<string>('Yes');
   const [isEditFormOpen, setIsEditFormOpen] = useState<boolean>(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -92,6 +97,77 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     fetchEvents();
   };
 
+  // Map UI response values to API values
+  const mapRsvpToApiResponse = (status: string): 'accepted' | 'declined' | 'tentative' => {
+    switch (status) {
+      case 'Yes':
+        return 'accepted';
+      case 'No':
+        return 'declined';
+      case 'Maybe':
+        return 'tentative';
+      default:
+        return 'accepted';
+    }
+  };
+  
+  // Handle RSVP UI selection change
+  const handleRsvpChange = (
+    _event: React.MouseEvent<HTMLElement> | null,
+    newStatus: string,
+  ) => {
+    if (newStatus !== null) {
+      setRsvpStatus(newStatus);
+    }
+  };
+  
+  // Handle RSVP update submission
+  const handleRsvp = async () => {
+    if (!event || !event.id) {
+      console.error('Cannot RSVP to event: No event ID available');
+      setSnackbarMessage('Failed to update RSVP status: Missing event ID');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    try {
+      const apiResponse = mapRsvpToApiResponse(rsvpStatus);
+      await respondToEventInvitation(event.id, apiResponse);
+      setSnackbarMessage('RSVP status updated successfully');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+      fetchEvents();
+    } catch (error) {
+      console.error('Error updating RSVP status:', error);
+      setSnackbarMessage('Failed to update RSVP status');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+
+  // Initialize RSVP status based on current user's response
+  useEffect(() => {
+    if (event && event.attendees) {
+      const selfAttendee = event.attendees.find(attendee => attendee.self);
+      if (selfAttendee && selfAttendee.responseStatus) {
+        switch (selfAttendee.responseStatus.toLowerCase()) {
+          case 'accepted':
+            setRsvpStatus('Yes');
+            break;
+          case 'declined':
+            setRsvpStatus('No');
+            break;
+          case 'tentative':
+            setRsvpStatus('Maybe');
+            break;
+          default:
+            setRsvpStatus('Yes');
+        }
+      }
+    }
+  }, [event]);
+
   if (!event) return null;
   
   // Log the event data for debugging
@@ -122,15 +198,6 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       return 'Weekly on ' + format(eventStart, 'EEEE');
     }
     return '';
-  };
-
-  const handleRsvpChange = (
-    e: React.MouseEvent<HTMLElement>,
-    newStatus: string,
-  ) => {
-    if (newStatus !== null) {
-      setRsvpStatus(newStatus);
-    }
   };
 
   // Get meeting link from htmlLink or description
@@ -616,39 +683,54 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* RSVP section */}
           <Divider />
-          <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography 
               variant="body2" 
               sx={{ 
                 mr: 2, 
-                mt: 0.5,
                 fontSize: '0.85rem'
               }}
             >
               Going?
             </Typography>
-            <ToggleButtonGroup
-              value={rsvpStatus}
-              exclusive
-              onChange={handleRsvpChange}
-              size="small"
-              sx={{
-                '& .MuiToggleButton-root': {
-                  px: 2,
-                  textTransform: 'none',
-                  fontSize: '0.85rem',
-                  '&.Mui-selected': {
-                    bgcolor: '#E8F0FE',
-                    color: '#1A73E8',
-                    '&:hover': { bgcolor: '#D2E3FC' }
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <ToggleButtonGroup
+                value={rsvpStatus}
+                exclusive
+                onChange={handleRsvpChange}
+                size="small"
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    px: 2,
+                    textTransform: 'none',
+                    fontSize: '0.85rem',
+                    '&.Mui-selected': {
+                      bgcolor: '#E8F0FE',
+                      color: '#1A73E8',
+                      '&:hover': { bgcolor: '#D2E3FC' }
+                    }
                   }
-                }
-              }}
-            >
-              <ToggleButton value="Yes">Yes</ToggleButton>
-              <ToggleButton value="No">No</ToggleButton>
-              <ToggleButton value="Maybe">Maybe</ToggleButton>
-            </ToggleButtonGroup>
+                }}
+              >
+                <ToggleButton value="Yes">Yes</ToggleButton>
+                <ToggleButton value="No">No</ToggleButton>
+                <ToggleButton value="Maybe">Maybe</ToggleButton>
+              </ToggleButtonGroup>
+              <Button 
+                variant="contained" 
+                size="small" 
+                onClick={handleRsvp}
+                sx={{ 
+                  ml: 1, 
+                  bgcolor: '#1A73E8', 
+                  '&:hover': { bgcolor: '#1557b0' },
+                  fontSize: '0.8rem',
+                  textTransform: 'none'
+                }}
+              >
+                Update
+              </Button>
+            </Box>
           </Box>
         </Paper>
       </Popover>
@@ -660,6 +742,21 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         onClose={handleEditFormClose}
         onSave={handleEditFormSave}
       />
+      
+      {/* Notification snackbar */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+      >
+        <Alert 
+          onClose={() => setSnackbarOpen(false)} 
+          severity={snackbarSeverity}
+          sx={{ width: '100%' }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </>
   );
 };

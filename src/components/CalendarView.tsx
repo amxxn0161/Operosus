@@ -155,6 +155,19 @@ const colorMap: ColorMap = {
 
 // Get color for event based on type
 const getEventColor = (event: CalendarEvent): string => {
+  // Check for special event types first
+  if (event.eventType) {
+    if (event.eventType === 'outOfOffice') {
+      return '#E8EAED'; // Light gray for Out of Office
+    }
+    if (event.eventType === 'focusTime') {
+      return '#4285F4'; // Blue for Focus Time 
+    }
+    if (event.eventType === 'workingLocation') {
+      return '#34A853'; // Green for Working Location
+    }
+  }
+
   // Get color based on colorId
   if (event.colorId) {
     // If event has a specific colorId, use that from the color map
@@ -763,7 +776,50 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Update the renderWeekView and renderDayView event rendering to improve title visibility
   // Inside the renderWeekView function, update the event rendering:
   const renderEventContent = (event: CalendarEvent, eventColor: string, textColor: string, height: number, isNested?: boolean) => {
-    const isBlueEvent = ['#1056F5', '#016C9E'].includes(eventColor);
+    // Special handling for Out of Office events
+    if (event.eventType === 'outOfOffice') {
+      return (
+        <Box sx={{ 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden',
+          width: '100%',
+          justifyContent: 'center'
+        }}>
+          <Typography 
+            variant="subtitle2" 
+            sx={{
+              color: '#5F6368', // Standard gray text for OOO events
+              fontWeight: 'bold', 
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontSize: '0.85rem',
+              lineHeight: 1.2,
+              pl: 0.5,
+              textAlign: 'center'
+            }}
+          >
+            Out of office
+          </Typography>
+          {event.description && height > 30 && (
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                fontSize: '0.7rem',
+                color: '#5F6368',
+                textAlign: 'center',
+                fontStyle: 'italic',
+                mt: 0.5
+              }}
+            >
+              {event.description}
+            </Typography>
+          )}
+        </Box>
+      );
+    }
     
     // For very small events, skip the time display
     if (height < 30) {
@@ -1111,6 +1167,73 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   
                   // Check if this is the active/clicked event
                   const isActive = activeEventId === event.id;
+                  
+                  // Special styling for Out of Office events
+                  if (event.eventType === 'outOfOffice') {
+                    return (
+                      <WeekEventCard
+                        key={event.id}
+                        bgcolor="#E8EAED" // Light gray background for Out of Office
+                        top={startPx}
+                        height={height}
+                        width={width}
+                        left={left}
+                        onClick={(e) => handleEventClick(event, e)}
+                        sx={{ 
+                          zIndex: isActive ? 100 : (zIndex || 1),
+                          border: '1px dashed #5F6368', // Dashed border for Out of Office
+                          boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.3)' : 'none', // Less shadow
+                          transform: isActive ? 'scale(1.02)' : 'none',
+                          opacity: 0.9, // Slightly transparent
+                          borderRadius: '4px',
+                          '&:hover': {
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                            opacity: 1
+                          }
+                        }}
+                      >
+                        <Box sx={{ 
+                          height: '100%', 
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          overflow: 'hidden',
+                          width: '100%',
+                          justifyContent: 'center'
+                        }}>
+                          <Typography 
+                            variant="subtitle2" 
+                            sx={{
+                              color: '#5F6368', // Standard gray text for OOO events
+                              fontWeight: 'bold', 
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              fontSize: '0.85rem',
+                              lineHeight: 1.2,
+                              pl: 0.5,
+                              textAlign: 'center'
+                            }}
+                          >
+                            Out of office
+                          </Typography>
+                          {event.description && height > 30 && (
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                fontSize: '0.7rem',
+                                color: '#5F6368',
+                                textAlign: 'center',
+                                fontStyle: 'italic',
+                                mt: 0.5
+                              }}
+                            >
+                              {event.description}
+                            </Typography>
+                          )}
+                        </Box>
+                      </WeekEventCard>
+                    );
+                  }
                   
                   return (
                     <WeekEventCard
