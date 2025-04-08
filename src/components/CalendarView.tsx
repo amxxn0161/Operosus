@@ -22,8 +22,10 @@ import AddIcon from '@mui/icons-material/Add';
 import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
 import { useCalendar } from '../contexts/CalendarContext';
-import { CalendarEvent } from '../services/calendarService';
+import { CalendarEvent, getCalendarEventById } from '../services/calendarService';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isWithinInterval, addDays } from 'date-fns';
+import EventCreationModal from './EventCreationModal';
+import EventDetailsPopup from './EventDetailsPopup';
 
 // Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -64,7 +66,7 @@ const MonthEventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => 
   }
 }));
 
-// Update the WeekEventCard styled component for better title visibility
+// Update the WeekEventCard styled component to remove hover effects that affect z-index
 const WeekEventCard = styled(Box, {
   shouldForwardProp: (prop) => 
     prop !== 'bgcolor' && 
@@ -89,20 +91,17 @@ const WeekEventCard = styled(Box, {
   height: `${height}px`,
   width: width,
   left: left,
-  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-  transition: 'all 0.2s cubic-bezier(.25,.8,.25,1), transform 0.1s',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  transition: 'box-shadow 0.2s ease, transform 0.2s ease', // Remove z-index from transition
   transformOrigin: 'center center',
-  zIndex: 1,
+  zIndex: 1, // Base z-index
   display: 'flex',
   flexDirection: 'column',
+  border: '1px solid rgba(0,0,0,0.05)',
   '&:hover': {
-    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
-    zIndex: 100,
-    transform: 'scale(1.02)'
-  },
-  '&:active, &:focus': {
-    zIndex: 100,
-    transform: 'scale(1.02)'
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    filter: 'brightness(1.03)'
+    // Removed transform and z-index changes
   }
 }));
 
@@ -261,8 +260,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     error: calendarError,
     isConnected,
     connectCalendar,
-    refreshCalendarData
+    refreshCalendarData,
+    removeEvent
   } = useCalendar();
+  
+  // Event creation modal state
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [clickedDate, setClickedDate] = useState<Date>(new Date());
+  const [clickedTime, setClickedTime] = useState<{ hour: number; minute: number } | undefined>(undefined);
+  
+  // Add state to track clicked event
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  
+  // State for event details popup
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [popupAnchorEl, setPopupAnchorEl] = useState<HTMLElement | null>(null);
   
   // Make sure we're loading the data when the component mounts
   useEffect(() => {
@@ -462,71 +474,279 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     return (hours * 60 + minutes) * (HOUR_HEIGHT / 60);
   };
 
-  // Update the calculateEventPositions function to allow for more natural overlap
+  // Update the calculateEventPositions function for better handling of overlaps
   const calculateEventPositions = (events: CalendarEvent[]): {
     event: CalendarEvent;
     column: number;
     columnsInSlot: number;
+    width: string;
+    left: string;
     zIndex?: number;
+    isNested?: boolean;
   }[] => {
-    // First, identify events that should have higher z-index
-    const priorityEventTypes = ['standup', 'meeting', 'call', 'appointment'];
+    if (events.length === 0) return [];
     
-    // Sort events by priority (standup events on top), then by duration (shorter events on top)
+    // Define event type priorities (higher number = higher priority)
+    const eventTypePriority: Record<string, number> = {
+      'standup': 5,
+      'meeting': 4,
+      'call': 4,
+      'appointment': 4,
+      'test': 3,
+      'planning': 3,
+      'review': 3, 
+      'focus': 1,
+      'default': 2
+    };
+    
+    // Step 1: Sort events by start time, then by priority type
     const sortedEvents = [...events].sort((a, b) => {
-      // First prioritize by event type
-      const aType = a.title ? extractEventType(a.title.toLowerCase()) : '';
-      const bType = b.title ? extractEventType(b.title.toLowerCase()) : '';
+      // First sort by start time
+      const aStart = new Date(a.start).getTime();
+      const bStart = new Date(b.start).getTime();
+      if (aStart !== bStart) return aStart - bStart;
       
-      const aIsPriority = priorityEventTypes.includes(aType);
-      const bIsPriority = priorityEventTypes.includes(bType);
+      // If same start time, sort by event type priority
+      const aType = a.title ? extractEventType(a.title.toLowerCase()) : 'default';
+      const bType = b.title ? extractEventType(b.title.toLowerCase()) : 'default';
+      const aPriority = eventTypePriority[aType] || 2;
+      const bPriority = eventTypePriority[bType] || 2;
       
-      if (aIsPriority && !bIsPriority) return 1; // Priority events later in the array (higher z-index)
-      if (!aIsPriority && bIsPriority) return -1;
-      
-      // Then sort by duration (shorter events later in array)
-      const aDuration = new Date(a.end).getTime() - new Date(a.start).getTime();
-      const bDuration = new Date(b.end).getTime() - new Date(b.start).getTime();
-      
-      return aDuration - bDuration; // Shorter duration events come later (higher z-index)
+      return bPriority - aPriority; // Higher priority comes first
     });
-
-    // Track overlapping groups
+    
+    // Step 2: Group events that overlap with each other
+    interface EventGroup {
+      events: CalendarEvent[];
+      startTime: number;
+      endTime: number;
+    }
+    
+    const eventGroups: EventGroup[] = [];
+    
+    sortedEvents.forEach((event) => {
+      const eventStart = new Date(event.start).getTime();
+      const eventEnd = new Date(event.end).getTime();
+      
+      // Find an existing group that this event overlaps with
+      let foundGroup = false;
+      for (const group of eventGroups) {
+        if ((eventStart >= group.startTime && eventStart < group.endTime) ||
+            (eventEnd > group.startTime && eventEnd <= group.endTime) ||
+            (eventStart <= group.startTime && eventEnd >= group.endTime)) {
+          
+          // Add event to this group
+          group.events.push(event);
+          // Update group time range
+          group.startTime = Math.min(group.startTime, eventStart);
+          group.endTime = Math.max(group.endTime, eventEnd);
+          foundGroup = true;
+          
+          // Check if this event connects two groups
+          for (let i = 0; i < eventGroups.length; i++) {
+            if (eventGroups[i] === group) continue; // Skip the current group
+            
+            const otherGroup = eventGroups[i];
+            if ((group.startTime <= otherGroup.endTime && group.endTime >= otherGroup.startTime)) {
+              // Groups overlap, merge them
+              group.events = [...group.events, ...otherGroup.events.filter(e => !group.events.includes(e))];
+              group.startTime = Math.min(group.startTime, otherGroup.startTime);
+              group.endTime = Math.max(group.endTime, otherGroup.endTime);
+              
+              // Remove the other group
+              eventGroups.splice(i, 1);
+              i--; // Adjust index since we removed an element
+            }
+          }
+          
+          break;
+        }
+      }
+      
+      // If no overlapping group found, create a new one
+      if (!foundGroup) {
+        eventGroups.push({
+          events: [event],
+          startTime: eventStart,
+          endTime: eventEnd
+        });
+      }
+    });
+    
+    // Step 3: Position events within each group
     const eventPositions: {
       event: CalendarEvent;
       column: number;
       columnsInSlot: number;
+      width: string;
+      left: string;
       zIndex?: number;
+      isNested?: boolean;
     }[] = [];
-
-    // Track which columns are occupied
-    const columnEndTimes: number[] = [];
-
-    // For simplicity in the reference image style, set most events to take full width
-    // except for specific overlapping cases
-    sortedEvents.forEach((event, index) => {
-      const startTime = new Date(event.start).getTime();
-      const endTime = new Date(event.end).getTime();
-      
-      const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
-      const isSpecialEvent = priorityEventTypes.includes(eventType);
-      
-      // For events like "Stand Up", use a specific column position
-      if (isSpecialEvent) {
-        // These events should appear on top with a specific width
+    
+    eventGroups.forEach((group) => {
+      // For single events in a group, use full width
+      if (group.events.length === 1) {
+        const event = group.events[0];
+        const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
+        const typePriority = eventTypePriority[eventType] || 2;
+        
         eventPositions.push({
           event,
-          column: 0, // Start aligned left
-          columnsInSlot: 1, // Take partial width
-          zIndex: 2 // Higher z-index to appear on top
+          column: 0,
+          columnsInSlot: 1,
+          width: '95%',
+          left: '2.5%',
+          zIndex: typePriority
         });
-      } else {
-        // For regular events like "Focus time", take full width
+        return;
+      }
+      
+      // For multiple events, check if we have a focus time event containing other events
+      // Separate "Focus time" events from other events
+      const focusEvents = group.events.filter(e => 
+        e.title?.toLowerCase().includes('focus') || 
+        extractEventType(e.title || '').toLowerCase() === 'focus'
+      );
+      
+      const nonFocusEvents = group.events.filter(e => 
+        !focusEvents.includes(e)
+      );
+      
+      // Check if we have the focus time + contained event pattern
+      const containedEvents: CalendarEvent[] = [];
+      
+      if (focusEvents.length > 0 && nonFocusEvents.length > 0) {
+        focusEvents.forEach(focusEvent => {
+          const focusStart = new Date(focusEvent.start).getTime();
+          const focusEnd = new Date(focusEvent.end).getTime();
+          
+          // Find events fully contained within this focus event
+          const containedInFocus = nonFocusEvents.filter(e => {
+            const eStart = new Date(e.start).getTime();
+            const eEnd = new Date(e.end).getTime();
+            return eStart >= focusStart && eEnd <= focusEnd;
+          });
+          
+          // If we have fully contained events, handle them specially
+          if (containedInFocus.length > 0) {
+            // Add the focus event with lowest z-index
+            eventPositions.push({
+              event: focusEvent,
+              column: 0,
+              columnsInSlot: 1,
+              width: '95%', 
+              left: '2.5%',
+              zIndex: 1 // Lowest z-index for background
+            });
+            
+            // Position the contained events with special styling
+            containedInFocus.forEach((event, index) => {
+              const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
+              const typePriority = eventTypePriority[eventType] || 2;
+              
+              // Special sizing for contained events - make them more distinct
+              eventPositions.push({
+                event,
+                column: index,
+                columnsInSlot: containedInFocus.length,
+                width: '85%',
+                left: '7.5%',
+                zIndex: 20 + index, // Higher z-index to appear above focus time
+                isNested: true // Mark as nested for special styling
+              });
+              
+              // Mark these events as processed
+              containedEvents.push(event);
+            });
+          } else {
+            // If focus events don't contain other events, just add them as usual
+            eventPositions.push({
+              event: focusEvent,
+              column: 0,
+              columnsInSlot: 1,
+              width: '95%',
+              left: '2.5%',
+              zIndex: 1 // Low z-index to be in the background
+            });
+          }
+        });
+      } else if (focusEvents.length > 0) {
+        // If all events are focus events, handle them normally
+        focusEvents.forEach(event => {
+          eventPositions.push({
+            event,
+            column: 0,
+            columnsInSlot: 1,
+            width: '95%',
+            left: '2.5%',
+            zIndex: 1
+          });
+        });
+      }
+      
+      // Process remaining non-focus events that aren't contained in focus events
+      const remainingEvents = nonFocusEvents.filter(e => !containedEvents.includes(e));
+      
+      // Position standup events (they should be more visible)
+      const standupEvents = remainingEvents.filter(e => 
+        e.title?.toLowerCase().includes('stand') || 
+        extractEventType(e.title || '').toLowerCase() === 'standup'
+      );
+      
+      const regularEvents = remainingEvents.filter(e => 
+        !standupEvents.includes(e)
+      );
+      
+      // Position standup events in a special way
+      standupEvents.forEach((event, index) => {
+        const totalEvents = standupEvents.length;
+        const width = '75%';
+        const left = '12.5%';
+        
         eventPositions.push({
           event,
-          column: 0, // Start aligned left
-          columnsInSlot: 1, // Full width
-          zIndex: 1 // Lower z-index to appear behind
+          column: index,
+          columnsInSlot: totalEvents,
+          width,
+          left,
+          zIndex: 10 + index // High z-index to be on top
+        });
+      });
+      
+      // Distribute regular events with a staggered offset for better visibility
+      if (regularEvents.length > 0) {
+        const totalEvents = regularEvents.length;
+        
+        regularEvents.forEach((event, index) => {
+          const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
+          const typePriority = eventTypePriority[eventType] || 2;
+          
+          let width: string, left: string;
+          
+          // Different positioning strategies based on number of concurrent events
+          if (totalEvents === 2) {
+            // For 2 events, use nice side-by-side layout with slight overlap
+            width = '65%';
+            left = index === 0 ? '5%' : '30%';
+          } else if (totalEvents === 3) {
+            // For 3 events, use a staggered layout
+            width = '60%';
+            left = `${5 + index * 15}%`;
+          } else {
+            // For 4+ events, use a more condensed layout
+            width = `${Math.min(60, 90 / totalEvents)}%`;
+            left = `${5 + index * (90 / totalEvents)}%`;
+          }
+          
+          eventPositions.push({
+            event,
+            column: index,
+            columnsInSlot: totalEvents,
+            width,
+            left,
+            zIndex: typePriority + index // Base z-index on type priority plus position
+          });
         });
       }
     });
@@ -542,12 +762,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Update the renderWeekView and renderDayView event rendering to improve title visibility
   // Inside the renderWeekView function, update the event rendering:
-  const renderEventContent = (event: CalendarEvent, eventColor: string, textColor: string, height: number) => {
+  const renderEventContent = (event: CalendarEvent, eventColor: string, textColor: string, height: number, isNested?: boolean) => {
     const isBlueEvent = ['#1056F5', '#016C9E'].includes(eventColor);
     
     // For very small events, skip the time display
     if (height < 30) {
-      return (
+              return (
         <Box sx={{ 
           height: '100%', 
           display: 'flex', 
@@ -557,13 +777,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         }}>
           <Typography 
             variant="subtitle2" 
-            sx={{
+                  sx={{ 
               color: textColor,
-              fontWeight: 'bold',
+              fontWeight: isNested ? 'bold' : 'medium',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standard size for all events
+              fontSize: isNested ? '0.85rem' : '0.8rem', // Slightly larger font for nested events
               lineHeight: 1.2,
               pl: 0.5,
               width: '100%'
@@ -577,9 +797,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     // For normal sized events, show the title and time
     return (
-      <Box sx={{ 
-        height: '100%', 
-        display: 'flex', 
+                  <Box sx={{ 
+        height: '100%',
+                    display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         width: '100%'
@@ -589,7 +809,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           display: 'flex', 
           flexDirection: 'row',
           justifyContent: 'space-between',
-          alignItems: 'center',
+                    alignItems: 'center',
           width: '100%',
           mb: 0.2
         }}>
@@ -597,19 +817,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             variant="subtitle2" 
             sx={{
               color: textColor,
-              fontWeight: 'bold',
+                      fontWeight: 'bold', 
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standard size for all events
+              fontSize: isNested ? '0.85rem' : '0.8rem', // Larger font for nested events
               lineHeight: 1.2,
               pl: 0.5,
               flexGrow: 1,
               mr: 1 // Add margin to separate from time
             }}
           >
-            {event.title}
-          </Typography>
+                      {event.title}
+                    </Typography>
           
           <Typography 
             variant="caption" 
@@ -624,7 +844,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             }}
           >
             {formatTime(event.start)}-{formatTime(event.end)}
-          </Typography>
+                  </Typography>
         </Box>
         
         {/* Only show location if there's enough height */}
@@ -642,10 +862,142 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             }}
           >
             📍 {event.location}
-          </Typography>
-        )}
+                    </Typography>
+                  )}
       </Box>
     );
+  };
+
+  // Function to handle event click
+  const handleEventClick = async (event: CalendarEvent, e: React.MouseEvent) => {
+    // Guard clause to prevent errors with undefined events
+    if (!event || !event.id) {
+      console.warn('Attempted to handle click on undefined event or event without ID');
+      return;
+    }
+    
+    e.stopPropagation(); // Prevent grid click handlers
+    
+    // Store the clicked element as anchor for the popup
+    setPopupAnchorEl(e.currentTarget as HTMLElement);
+    
+    try {
+      // Log that we're fetching with the specific event ID
+      console.log(`Fetching specific event details using ID: ${event.id}`);
+      
+      // Call the updated getCalendarEventById which now uses the proper eventId parameter
+      const fullEventDetails = await getCalendarEventById(event.id);
+      
+      if (fullEventDetails) {
+        // Verify the returned event ID matches what we requested
+        if (fullEventDetails.id === event.id) {
+          console.log(`Successfully received specific event details for ID ${event.id}:`, fullEventDetails);
+          console.log(`Event title: ${fullEventDetails.title}`);
+          console.log(`Event summary: ${fullEventDetails.summary}`);
+          
+          // Log attendees if available to verify data is correctly structured
+          if (fullEventDetails.attendees && fullEventDetails.attendees.length > 0) {
+            console.log(`Event has ${fullEventDetails.attendees.length} attendees:`, 
+              fullEventDetails.attendees.map(a => a.email).join(', '));
+          }
+          
+          // Toggle clicked state - if same event, unselect it
+          if (activeEventId === event.id) {
+            setActiveEventId(null);
+            setSelectedEvent(null);
+          } else {
+            setActiveEventId(event.id);
+            setSelectedEvent(fullEventDetails); // Use the full event details from API
+          }
+        } else {
+          // We got an event, but it's not the one we requested - this shouldn't happen
+          console.error(`API returned the wrong event. Requested ID: ${event.id}, Got ID: ${fullEventDetails.id}`);
+          // Fall back to the basic event info
+          if (activeEventId === event.id) {
+            setActiveEventId(null);
+            setSelectedEvent(null);
+          } else {
+            setActiveEventId(event.id);
+            setSelectedEvent(event);
+          }
+        }
+      } else {
+        console.warn(`Failed to fetch details for event ID: ${event.id}, falling back to basic event info`);
+        // Fall back to the basic event info we already have
+        if (activeEventId === event.id) {
+          setActiveEventId(null);
+          setSelectedEvent(null);
+        } else {
+          setActiveEventId(event.id);
+          setSelectedEvent(event);
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching details for event ID: ${event.id}:`, error);
+      
+      // Fall back to the basic event info we already have
+      if (activeEventId === event.id) {
+        setActiveEventId(null);
+        setSelectedEvent(null);
+      } else {
+        setActiveEventId(event.id);
+        setSelectedEvent(event);
+      }
+    }
+    
+    // Call the parent click handler if provided
+    if (onEventClick) {
+      onEventClick(event);
+    }
+  };
+  
+  // Function to close the event details popup
+  const handleClosePopup = () => {
+    setPopupAnchorEl(null);
+    // We keep the activeEventId to maintain the visual focus state
+  };
+
+  // Handler function for deleting events
+  const handleDeleteEvent = async (event: CalendarEvent) => {
+    // Guard clause to prevent errors with undefined events
+    if (!event || !event.id) {
+      console.warn('Attempted to delete undefined event or event without ID');
+      return;
+    }
+    
+    try {
+      console.log(`Deleting specific event with ID: ${event.id}`);
+      
+      const success = await removeEvent(event.id);
+      
+      if (success) {
+        console.log(`Successfully deleted event with ID: ${event.id}`);
+        // Close popup and refresh data
+        setSelectedEvent(null);
+        setActiveEventId(null);
+        setPopupAnchorEl(null);
+        
+        // Refresh events to make sure we're up to date
+        refreshCalendarData();
+      } else {
+        console.error(`Failed to delete event with ID: ${event.id}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting event with ID: ${event.id}:`, error);
+    }
+  };
+
+  // Add handler function for editing events
+  const handleEditEvent = (event: CalendarEvent) => {
+    // Guard clause to prevent errors with undefined events
+    if (!event || !event.id) {
+      console.warn('Attempted to edit undefined event or event without ID');
+      return;
+    }
+    
+    console.log('Editing event:', event);
+    // The actual edit functionality is handled by the EventEditForm component
+    // This is just a placeholder for any additional logic needed when edit is clicked
   };
 
   // Render day view
@@ -660,7 +1012,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
         <Typography variant="h6" gutterBottom>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </Typography>
+                    </Typography>
         
         <Divider sx={{ my: 2 }} />
         
@@ -671,7 +1023,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             {TIME_LABELS.map((hour, index) => (
               <Box 
                 key={hour} 
-                  sx={{ 
+                sx={{ 
                   height: HOUR_HEIGHT, 
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -685,7 +1037,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     </Typography>
               </Box>
             ))}
-                  </Box>
+          </Box>
                   
           {/* Hour grid lines */}
           <Box sx={{ position: 'relative', borderLeft: 1, borderColor: 'divider', ml: 1 }}>
@@ -700,7 +1052,29 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   height: HOUR_HEIGHT,
                   borderBottom: 1,
                   borderColor: 'divider',
-                  zIndex: 0
+                  zIndex: 0,
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'rgba(1, 108, 158, 0.05)'
+                  }
+                }}
+                onClick={(e) => {
+                  // Only call handleEventClick if there is an event at this index
+                  if (dayEvents[index]) {
+                    handleEventClick(dayEvents[index], e);
+                  } else {
+                    // Handle empty slot click - could open event creation modal instead
+                    // For now, just prevent the error by not calling handleEventClick
+                    console.log(`Clicked on empty time slot: ${hour}:00`);
+                    
+                    // Optionally, you could open the event creation modal here
+                    // with the time pre-filled based on the clicked hour
+                    const clickedDate = new Date(selectedDate);
+                    clickedDate.setHours(hour, 0, 0, 0);
+                    setClickedDate(clickedDate);
+                    setClickedTime({ hour, minute: 0 });
+                    setIsEventModalOpen(true);
+                  }
                 }}
               />
             ))}
@@ -719,11 +1093,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
                 <Typography variant="body1" color="text.secondary">
                   No events scheduled for this day
-                    </Typography>
+                </Typography>
               </Box>
             ) : (
               <Box sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
-                {eventPositions.map(({ event, column, columnsInSlot, zIndex }, index) => {
+                {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
                   const start = new Date(event.start);
                   const end = new Date(event.end);
                   
@@ -732,21 +1106,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                   const height = Math.max(endPx - startPx, 30);
                   
-                  // Special sizing for different event types
-                  const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
-                  
-                  // Width calculation based on event type
-                  let width = '85%'; // Default width
-                  let left = '7.5%'; // Default left position
-                  
-                  // For special events like "Stand Up", "Meeting", etc.
-                  if (['standup', 'meeting', 'call', 'appointment'].includes(eventType)) {
-                    width = event.title?.toLowerCase().includes('stand up') ? '70%' : '60%';
-                    left = '20%'; // Align a bit to the right to overlap with focus time
-                  }
-                  
                   const eventColor = getEventColor(event);
                   const textColor = getEventTextColor(eventColor);
+                  
+                  // Check if this is the active/clicked event
+                  const isActive = activeEventId === event.id;
                   
                   return (
                     <WeekEventCard
@@ -756,14 +1120,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       height={height}
                       width={width}
                       left={left}
-                      onClick={() => onEventClick && onEventClick(event)}
-                      sx={{ zIndex: zIndex || 1 }}
+                      onClick={(e) => handleEventClick(event, e)}
+                      sx={{ 
+                        zIndex: isActive ? 100 : (zIndex || 1), // Bring to front when clicked
+                        border: isNested ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
+                        boxShadow: isActive 
+                          ? '0 4px 12px rgba(0,0,0,0.3)' 
+                          : (isNested ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
+                        transform: isActive ? 'scale(1.02)' : 'none',
+                        filter: isActive ? 'brightness(1.05)' : 'none',
+                        // No hover effects that change z-index
+                      }}
                     >
-                      {renderEventContent(event, eventColor, textColor, height)}
+                      {renderEventContent(event, eventColor, textColor, height, isNested)}
                     </WeekEventCard>
-                  );
-                })}
-              </Box>
+              );
+            })}
+          </Box>
             )}
           </Box>
         </Box>
@@ -894,7 +1267,29 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           height: HOUR_HEIGHT,
                           borderBottom: 1,
                           borderColor: 'divider',
-                          zIndex: 0
+                          zIndex: 0,
+                          cursor: 'pointer',
+                          '&:hover': {
+                            backgroundColor: 'rgba(1, 108, 158, 0.05)'
+                          }
+                        }}
+                        onClick={(e) => {
+                          // Only call handleEventClick if there is an event at this index
+                          if (dayEvents[hourIndex]) {
+                            handleEventClick(dayEvents[hourIndex], e);
+                          } else {
+                            // Handle empty slot click - could open event creation modal instead
+                            // For now, just prevent the error by not calling handleEventClick
+                            console.log(`Clicked on empty time slot: ${hour}:00`);
+                            
+                            // Optionally, you could open the event creation modal here
+                            // with the time pre-filled based on the clicked hour
+                            const clickedDate = new Date(selectedDate);
+                            clickedDate.setHours(hour, 0, 0, 0);
+                            setClickedDate(clickedDate);
+                            setClickedTime({ hour, minute: 0 });
+                            setIsEventModalOpen(true);
+                          }
                         }}
                       />
                     ))}
@@ -909,7 +1304,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     )}
                     
                     {/* Events */}
-                    {eventPositions.map(({ event, column, columnsInSlot, zIndex }, index) => {
+                    {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
                       const start = new Date(event.start);
                       const end = new Date(event.end);
                       
@@ -917,19 +1312,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                       const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                       const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
-                      
-                      // Special sizing for different event types
-                      const eventType = event.title ? extractEventType(event.title.toLowerCase()) : '';
-                      
-                      // Width calculation based on event type
-                      let width = '95%'; // Default width (almost full width)
-                      let left = '2.5%'; // Default left position (centered)
-                      
-                      // For special events like "Stand Up", "Meeting", etc.
-                      if (['standup', 'meeting', 'call', 'appointment'].includes(eventType)) {
-                        width = event.title?.toLowerCase().includes('stand up') ? '75%' : '60%';
-                        left = '20%'; // Align a bit to the right to overlap with focus time
-                      }
                       
                       const eventColor = getEventColor(event);
                       const textColor = getEventTextColor(eventColor);
@@ -942,16 +1324,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           height={height}
                           width={width}
                           left={left}
-                        onClick={() => onEventClick && onEventClick(event)}
-                        sx={{ zIndex: zIndex || 1 }}
+                        onClick={(e) => handleEventClick(event, e)}
+                        sx={{
+                            zIndex: (activeEventId === event.id) ? 100 : (zIndex || 1), // Bring to front when clicked
+                            border: isNested ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
+                            boxShadow: (activeEventId === event.id) ? '0 4px 12px rgba(0,0,0,0.3)' : (isNested ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
+                            transform: (activeEventId === event.id) ? 'scale(1.02)' : 'none',
+                            filter: (activeEventId === event.id) ? 'brightness(1.05)' : 'none',
+                            // No hover effects that change z-index
+                          }}
                         >
-                          {renderEventContent(event, eventColor, textColor, height)}
+                          {renderEventContent(event, eventColor, textColor, height, isNested)}
                         </WeekEventCard>
-                    );
-                  })}
-              </Grid>
-            );
-          })}
+                      );
+                    })}
+                  </Grid>
+                );
+              })}
             </Grid>
           </Grid>
         </Grid>
@@ -1007,14 +1396,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               item 
               key={format(currentDay, 'yyyy-MM-dd')} 
               xs={12/7}
-              sx={{ 
+                        sx={{
                 p: 0.5,
                 border: 1,
                 borderColor: 'divider',
                 opacity: isCurrentMonth ? 1 : 0.4,
                 backgroundColor: isToday ? 'rgba(1, 108, 158, 0.08)' : 'transparent',
                 minHeight: '100px',
-                display: 'flex',
+                          display: 'flex', 
                 flexDirection: 'column',
                 '&:hover': {
                   backgroundColor: isToday ? 'rgba(1, 108, 158, 0.12)' : 'rgba(1, 108, 158, 0.05)'
@@ -1022,7 +1411,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 cursor: 'pointer',
                 transition: 'background-color 0.2s'
               }}
-              onClick={() => {
+              onClick={(e) => {
                 setSelectedDate(new Date(currentDay));
                 setViewMode('day');
               }}
@@ -1030,9 +1419,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               {/* Date number in circle for today */}
               <Box 
                 sx={{ 
-                  display: 'flex',
+                          display: 'flex', 
                   justifyContent: 'center',
-                  alignItems: 'center',
+                          alignItems: 'center',
                   mb: 0.5
                 }}
               >
@@ -1068,7 +1457,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                overflow: 'hidden',
+                          overflow: 'hidden', 
                 pb: 0.5,
                 gap: 0.5
               }}>
@@ -1077,10 +1466,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   <MonthEventCard 
                     key={event.id}
                     bgcolor={getEventColor(event)}
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent triggering the day cell click
-                      onEventClick && onEventClick(event);
-                    }}
+                    onClick={(e) => handleEventClick(event, e)}
                   >
                     <Typography 
                       variant="caption" 
@@ -1088,16 +1474,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         fontSize: '0.75rem', 
                 fontWeight: 'medium',
                         color: getEventTextColor(getEventColor(event)),
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         width: '100%',
                         display: 'block',
                         paddingLeft: '3px'
                       }}
                     >
-                      {event.title}
-                    </Typography>
+                            {event.title}
+                          </Typography>
                   </MonthEventCard>
                 ))}
                 
@@ -1131,12 +1517,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 }}
               >
                       +{moreEventsCount} more
-              </Typography>
+                        </Typography>
                   </Box>
                 )}
-              </Box>
-            </Grid>
-          );
+                </Box>
+              </Grid>
+            );
           
           day = addDays(day, 1);
         }
@@ -1144,40 +1530,40 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         weeks.push(
           <Grid container key={`week-${format(day, 'yyyy-MM-dd')}`}>
             {days}
-        </Grid>
-        );
+      </Grid>
+    );
         
         days = [];
       }
       
       return weeks;
     };
-            
-            return (
+    
+    return (
       <Grid container direction="column" sx={{ minHeight: 300 }}>
         {/* Day names header */}
         <Grid container>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-              <Grid 
-                item 
-                key={index} 
-                xs={12/7}
-                sx={{ 
+            <Grid 
+              item 
+              key={index} 
+              xs={12/7}
+              sx={{ 
                 p: 1, 
                 textAlign: 'center',
                 fontWeight: 'medium',
                 borderBottom: 1,
                 borderColor: 'divider'
+              }}
+            >
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
+                  fontFamily: 'Poppins'
                 }}
               >
-                <Typography 
-                variant="subtitle2" 
-                  sx={{ 
-                    fontFamily: 'Poppins'
-                  }}
-                >
                 {day}
-                </Typography>
+              </Typography>
             </Grid>
           ))}
         </Grid>
@@ -1194,13 +1580,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const sortedEvents = [...allEvents].sort((a, b) => {
       return new Date(a.start).getTime() - new Date(b.start).getTime();
     });
-                    
-                    return (
+            
+            return (
       <Box sx={{ p: 2 }}>
         <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins', fontWeight: 'bold' }}>
           All Events
-        </Typography>
-        
+                </Typography>
+                
         {sortedEvents.length > 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {sortedEvents.map((event: CalendarEvent) => {
@@ -1212,8 +1598,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 day: 'numeric', 
                 year: 'numeric' 
               });
-              
-              return (
+                    
+                    return (
                 <Paper
                         key={event.id}
                   elevation={1}
@@ -1227,7 +1613,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       zIndex: 100
                     }
                   }}
-                  onClick={() => onEventClick && onEventClick(event)}
+                  onClick={(e) => handleEventClick(event, e)}
                       >
                         <Box sx={{
                     display: 'flex',
@@ -1360,10 +1746,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           
           <Tooltip title="Add Event">
             <IconButton 
-              onClick={onAddEvent} 
+              onClick={() => {
+                setClickedDate(new Date(selectedDate));
+                setClickedTime(undefined); // No specific time
+                setIsEventModalOpen(true);
+              }}
               size="small" 
               sx={{ ml: 1, color: '#016C9E' }}
-              disabled={!isConnected && onAddEvent !== undefined}
+              disabled={!isConnected}
             >
               <AddIcon />
             </IconButton>
@@ -1441,7 +1831,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <ToggleButtonGroup
             value={viewMode}
             exclusive
-            onChange={handleViewModeChange}
+            onChange={(event, newValue) => {
+              if (newValue !== null) {
+                setViewMode(newValue);
+              }
+            }}
             size="small"
             sx={{
               '& .MuiToggleButton-root': {
@@ -1518,6 +1912,26 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </>
         )}
       </Box>
+
+      {/* Event Creation Modal */}
+      <EventCreationModal
+        open={isEventModalOpen}
+        onClose={() => {
+          setIsEventModalOpen(false);
+          refreshCalendarData(); // Refresh events after modal closes
+        }}
+        selectedDate={clickedDate}
+        selectedTime={clickedTime}
+      />
+      
+      {/* Event Details Popup */}
+      <EventDetailsPopup
+        event={selectedEvent}
+        anchorEl={popupAnchorEl}
+        onClose={handleClosePopup}
+        onEdit={handleEditEvent}
+        onDelete={handleDeleteEvent}
+      />
     </Paper>
   );
 };

@@ -496,47 +496,8 @@ const Dashboard: React.FC = () => {
   // Handler for calendar event click
   const handleCalendarEventClick = (event: any) => {
     console.log('Calendar event clicked:', event);
-    
-    // Format the event times for display
-    const startTime = new Date(event.start).toLocaleTimeString('en-US', { 
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-    
-    const endTime = new Date(event.end).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-    
-    const formattedDate = new Date(event.start).toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric'
-    });
-    
-    // Build the content for the alert
-    let content = `${event.title}\n`;
-    content += `${formattedDate}, ${startTime} - ${endTime}\n`;
-    
-    if (event.location) {
-      content += `Location: ${event.location}\n`;
-    }
-    
-    if (event.description) {
-      content += `\n${event.description}\n`;
-    }
-    
-    // Add note about editing capabilities
-    if (!isConnected) {
-      content += '\n\nNote: This is sample data. Connect to Google Calendar to manage real events.';
-    } else {
-      content += '\n\nEvent editing will be available in the next update.';
-    }
-    
-    // Show the event details
-    alert(content);
+    // No longer need to show an alert since EventDetailsPopup handles this now
+    // The EventDetailsPopup component will be triggered by the CalendarView component directly
   };
 
   // Handler for adding new calendar events
@@ -552,9 +513,7 @@ const Dashboard: React.FC = () => {
       }
     } else {
       console.log('Add new calendar event');
-      // In the future, you would open a modal dialog here to create an event
-      alert('Calendar event creation will be available in the next update!');
-      // You can implement a modal or navigation to add event here
+      // The EventCreationModal component will be opened by the CalendarView component directly
     }
   };
 

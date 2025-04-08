@@ -9,6 +9,32 @@ export interface CalendarEvent {
   description?: string;
   colorId?: string;
   isAllDay?: boolean;
+  
+  // API-specific fields that we pass through
+  summary?: string;
+  creator?: {
+    email?: string;
+    displayName?: string | null;
+  };
+  organizer?: {
+    email?: string;
+    displayName?: string | null;
+  };
+  attendees?: Array<{
+    email?: string;
+    displayName?: string | null;
+    responseStatus?: string;
+    organizer?: boolean;
+    self?: boolean;
+    resource?: boolean;
+    optional?: boolean;
+    comment?: string;
+  }>;
+  htmlLink?: string;
+  status?: string;
+  visibility?: string | null;
+  recurringEventId?: string;
+  eventType?: string;
 }
 
 export interface CalendarList {
@@ -92,6 +118,14 @@ export const getCalendarEvents = async (
       // Could not find events in the response
       console.error('Could not find events array in API response. Response structure:', Object.keys(response));
       return [];
+    }
+    
+    // Store events in localStorage for fallback retrieval
+    try {
+      localStorage.setItem('calendarEvents', JSON.stringify(eventsArray));
+      console.log(`Stored ${eventsArray.length} events in localStorage for fallback access`);
+    } catch (storageError) {
+      console.error('Failed to store events in localStorage:', storageError);
     }
     
     // Map the API response to our CalendarEvent format
@@ -192,6 +226,7 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
   // With id, summary, start, end, eventType fields
   
   const eventId = apiEvent.id || `temp-${Math.random().toString(36).substring(2, 9)}`;
+  // API uses 'summary' field for the event title
   const eventTitle = apiEvent.summary || apiEvent.title || 'Untitled Event';
   let eventLocation = apiEvent.location || undefined;
   let eventDescription = apiEvent.description || undefined;
@@ -286,13 +321,23 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
   // Log the mapped event data
   const mappedEvent = {
     id: eventId,
-    title: eventTitle,
+    title: eventTitle,  // Map 'summary' from API to 'title' in our model
     start: startDateTime,
     end: endDateTime,
     location: eventLocation,
     description: eventDescription,
     colorId: getColorIdFromEventType(eventType),
     isAllDay: isAllDay,
+    // Pass through additional API fields for the EventDetailsPopup
+    ...(apiEvent.summary && { summary: apiEvent.summary }),
+    ...(apiEvent.creator && { creator: apiEvent.creator }),
+    ...(apiEvent.organizer && { organizer: apiEvent.organizer }),
+    ...(apiEvent.attendees && { attendees: apiEvent.attendees }),
+    ...(apiEvent.htmlLink && { htmlLink: apiEvent.htmlLink }),
+    ...(apiEvent.status && { status: apiEvent.status }),
+    ...(apiEvent.visibility !== undefined && { visibility: apiEvent.visibility }),
+    ...(apiEvent.recurringEventId && { recurringEventId: apiEvent.recurringEventId }),
+    ...(apiEvent.eventType && { eventType: apiEvent.eventType })
   };
   
   console.log('Mapped to calendar event:', mappedEvent);
@@ -324,14 +369,90 @@ export const createCalendarEvent = async (
   event: Omit<CalendarEvent, 'id'>
 ): Promise<CalendarEvent> => {
   try {
-    const response = await apiRequest<{ event: CalendarEvent }>(`/api/calendar/events/create`, {
-      method: 'POST',
-      body: {
-        calendarId,
-        event
+    console.log('Creating new calendar event:', event);
+    
+    // Format the start and end times as objects according to Google Calendar API format
+    const formatDateTime = (isoString: string, isAllDay: boolean | undefined) => {
+      const date = new Date(isoString);
+      if (isAllDay) {
+        // For all-day events, just use the date part
+        return {
+          date: date.toISOString().split('T')[0]
+        };
+      } else {
+        // For timed events, use dateTime
+        return {
+          dateTime: date.toISOString()
+        };
       }
-    });
-    return response.event;
+    };
+    
+    // Map our event model to the format expected by the backend
+    const requestBody = {
+      summary: event.title, // Map 'title' to required 'summary' field
+      start: formatDateTime(event.start, event.isAllDay),
+      end: formatDateTime(event.end, event.isAllDay),
+      description: event.description,
+      location: event.location,
+      colorId: event.colorId,
+      calendarId
+    };
+    
+    console.log('Sending event request with body:', requestBody);
+    
+    // Use the direct endpoint as specified
+    const response = await apiRequest<any>(
+      'https://app2.operosus.com/api/calendar/events', 
+      {
+      method: 'POST',
+        body: requestBody
+      }
+    );
+    
+    console.log('Event creation response:', response);
+    
+    // Handle different response formats
+    let createdEvent: CalendarEvent;
+    if (response.data?.event) {
+      createdEvent = {
+        id: response.data.event.id,
+        title: response.data.event.summary || event.title, // Map summary back to title
+        start: event.start, // Use original values since response might not include full details
+        end: event.end,
+        location: event.location,
+        description: event.description,
+        colorId: event.colorId,
+        isAllDay: event.isAllDay
+      };
+    } else if (response.data) {
+      // If the response.data contains the event data directly
+      createdEvent = {
+        id: response.data.id || `temp-${Math.random().toString(36).substring(2, 9)}`,
+        title: response.data.summary || event.title, // Map summary back to title
+        start: event.start,
+        end: event.end,
+        location: event.location,
+        description: event.description,
+        colorId: event.colorId,
+        isAllDay: event.isAllDay
+      };
+    } else {
+      // If no event data is returned, create a temporary event object
+      // This is not ideal but prevents the app from breaking
+      createdEvent = {
+        id: `temp-${Math.random().toString(36).substring(2, 9)}`,
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        location: event.location,
+        description: event.description,
+        colorId: event.colorId,
+        isAllDay: event.isAllDay
+      };
+      console.warn('Could not find event in API response. Created temporary event:', createdEvent);
+    }
+    
+    return createdEvent;
   } catch (error) {
     console.error('Error creating calendar event:', error);
     throw error;
@@ -340,43 +461,134 @@ export const createCalendarEvent = async (
 
 // Update an existing calendar event
 export const updateCalendarEvent = async (
-  calendarId: string = 'primary',
   eventId: string,
-  event: Partial<Omit<CalendarEvent, 'id'>>
-): Promise<CalendarEvent> => {
+  updatedFields: Partial<Omit<CalendarEvent, 'id'>>
+): Promise<CalendarEvent | null> => {
   try {
-    const response = await apiRequest<{ event: CalendarEvent }>(`/api/calendar/events/update`, {
-      method: 'POST',
-      body: {
-        calendarId,
-        eventId,
-        event
+    console.log(`Updating calendar event with ID: ${eventId}`, updatedFields);
+    
+    // URL for updating a specific event - using eventId in path
+    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}`;
+    console.log(`Using update URL: ${url}`);
+    
+    // Prepare the request body with only the fields that are being updated
+    const requestBody: any = {};
+    
+    // Map summary from our title field if it exists
+    if (updatedFields.title) {
+      requestBody.summary = updatedFields.title;
+    } else if (updatedFields.summary) {
+      requestBody.summary = updatedFields.summary;
+    }
+    
+    // Add other fields if they exist in the updated fields
+    if (updatedFields.description !== undefined) {
+      requestBody.description = updatedFields.description;
+    }
+    
+    if (updatedFields.location !== undefined) {
+      requestBody.location = updatedFields.location;
+    }
+    
+    // Format start and end times if provided
+    if (updatedFields.start) {
+      const startDate = new Date(updatedFields.start);
+      if (updatedFields.isAllDay) {
+        requestBody.start = {
+          date: startDate.toISOString().split('T')[0] // Just the date part for all-day events
+        };
+      } else {
+        requestBody.start = {
+          dateTime: startDate.toISOString()
+        };
       }
+    }
+    
+    if (updatedFields.end) {
+      const endDate = new Date(updatedFields.end);
+      if (updatedFields.isAllDay) {
+        requestBody.end = {
+          date: endDate.toISOString().split('T')[0] // Just the date part for all-day events
+        };
+      } else {
+        requestBody.end = {
+          dateTime: endDate.toISOString()
+        };
+      }
+    }
+    
+    // Include visibility if it's being updated
+    if (updatedFields.visibility !== undefined) {
+      requestBody.visibility = updatedFields.visibility;
+    }
+    
+    // Include attendees if they're being updated
+    if (updatedFields.attendees) {
+      requestBody.attendees = updatedFields.attendees.map(attendee => ({
+        email: attendee.email,
+        // Include other attendee fields if available
+        ...(attendee.displayName && { displayName: attendee.displayName }),
+        ...(attendee.responseStatus && { responseStatus: attendee.responseStatus }),
+        ...(attendee.optional !== undefined && { optional: attendee.optional })
+      }));
+    }
+    
+    console.log('Sending update request with body:', requestBody);
+    
+    // Make the API request
+    const response = await apiRequest<any>(url, {
+      method: 'PUT',
+      body: requestBody
     });
-    return response.event;
+    
+    console.log('Event update response:', response);
+    
+    // Check if the update was successful
+    if (response.status === 'success' && response.data?.event) {
+      console.log('Event updated successfully:', response.data.event);
+      
+      // Fetch the updated event to get all fields
+      const updatedEvent = await getCalendarEventById(eventId);
+      return updatedEvent;
+    } else {
+      console.error('Failed to update event:', response);
+      return null;
+    }
   } catch (error) {
     console.error('Error updating calendar event:', error);
-    throw error;
+    return null;
   }
 };
 
 // Delete a calendar event
 export const deleteCalendarEvent = async (
-  calendarId: string = 'primary',
   eventId: string
 ): Promise<boolean> => {
   try {
-    const response = await apiRequest<{ success: boolean }>(`/api/calendar/events/delete`, {
-      method: 'POST',
-      body: {
-        calendarId,
-        eventId
-      }
+    console.log(`Deleting calendar event with ID: ${eventId}`);
+    
+    // URL for deleting a specific event - using eventId in path
+    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}`;
+    console.log(`Using delete URL: ${url}`);
+    
+    // Make the API request
+    const response = await apiRequest<any>(url, {
+      method: 'DELETE'
     });
-    return response.success;
+    
+    console.log('Event deletion response:', response);
+    
+    // Check if the deletion was successful
+    if (response.status === 'success') {
+      console.log('Event deleted successfully');
+      return true;
+    } else {
+      console.error('Failed to delete event:', response);
+      return false;
+    }
   } catch (error) {
     console.error('Error deleting calendar event:', error);
-    throw error;
+    return false;
   }
 };
 
@@ -384,4 +596,124 @@ export const deleteCalendarEvent = async (
 export const isGoogleCalendarConnected = async (): Promise<boolean> => {
   // Always return true to bypass connection check
   return true;
+};
+
+// Get a specific calendar event by ID
+export const getCalendarEventById = async (eventId: string): Promise<CalendarEvent | null> => {
+  try {
+    console.log(`Fetching specific event with ID: ${eventId}`);
+    
+    // Change the parameter name from 'id' to 'eventId' to match the backend expectations
+    const url = `https://app2.operosus.com/api/calendar/events?eventId=${encodeURIComponent(eventId)}`;
+    
+    // Make the API request
+    const response = await apiRequest<any>(url, {
+      method: 'GET'
+    });
+    
+    console.log('Event API response structure:', 
+      Object.keys(response), 
+      response.data ? `data keys: ${Object.keys(response.data)}` : 'no data field',
+      Array.isArray(response) ? `array length: ${response.length}` : 'not an array'
+    );
+    
+    // Extract the event data from the response
+    let eventData: any = null;
+    
+    // Based on the backend code, when fetching a single event, the structure should be:
+    // { status: 'success', data: { event: {...}, isIndividualEvent: true } }
+    
+    // First check if we have the expected structure for a single event
+    if (response.status === 'success' && response.data?.event && response.data?.isIndividualEvent === true) {
+      console.log('Found event in the expected single event structure');
+      eventData = response.data.event;
+    } 
+    // Handle other possible response formats as fallbacks
+    else if (response.data?.event) {
+      // Direct event object
+      eventData = response.data.event;
+      console.log('Found event in data.event');
+    } else if (response.event) {
+      // Direct event object at top level
+      eventData = response.event;
+      console.log('Found event in response.event');
+    } else if (response.data?.events) {
+      // Find the specific event in the events array
+      try {
+        eventData = response.data.events.find((event: any) => event.id === eventId);
+        console.log(`Found event in data.events array with ID ${eventId}:`, eventData ? 'Yes' : 'No');
+      } catch (findError) {
+        console.error('Error searching in data.events array:', findError);
+      }
+    } else if (response.events) {
+      // Find the specific event in the events array
+      try {
+        eventData = response.events.find((event: any) => event.id === eventId);
+        console.log(`Found event in events array with ID ${eventId}:`, eventData ? 'Yes' : 'No');
+      } catch (findError) {
+        console.error('Error searching in events array:', findError);
+      }
+    } else if (Array.isArray(response)) {
+      // Find the specific event in the direct array
+      try {
+        eventData = response.find((event: any) => event.id === eventId);
+        console.log(`Found event in direct array with ID ${eventId}:`, eventData ? 'Yes' : 'No');
+      } catch (findError) {
+        console.error('Error searching in direct array:', findError);
+      }
+    } else if (response.data && Array.isArray(response.data)) {
+      // Find the specific event in data array
+      try {
+        eventData = response.data.find((event: any) => event.id === eventId);
+        console.log(`Found event in data array with ID ${eventId}:`, eventData ? 'Yes' : 'No');
+      } catch (findError) {
+        console.error('Error searching in data array:', findError);
+      }
+    } else if (!Array.isArray(response) && typeof response === 'object') {
+      // If the response is the event object directly and has matching ID
+      if (response.id === eventId) {
+        eventData = response;
+        console.log('Found event in direct response object');
+      }
+    }
+    
+    // If we didn't find the event via API or it's not the correct event, try to get it from localStorage
+    if (!eventData || eventData.id !== eventId) {
+      console.log('Correct event not found via API, checking localStorage');
+      try {
+        const storedEvents = localStorage.getItem('calendarEvents');
+        if (storedEvents) {
+          const parsedEvents = JSON.parse(storedEvents);
+          if (Array.isArray(parsedEvents)) {
+            eventData = parsedEvents.find(event => event.id === eventId);
+            if (eventData) {
+              console.log('Found correct event in localStorage:', eventData);
+            }
+          }
+        }
+      } catch (storageError) {
+        console.error('Error accessing localStorage:', storageError);
+      }
+    }
+    
+    // Check if we have the correct event data
+    if (!eventData) {
+      console.error(`Event with ID ${eventId} not found in API response or localStorage`);
+      return null;
+    }
+    
+    // Final verification check
+    if (eventData.id !== eventId) {
+      console.error(`Found event data but ID mismatch: expected ${eventId}, got ${eventData.id}`);
+      return null;
+    }
+    
+    console.log(`Successfully extracted correct event with ID ${eventId}:`, eventData);
+    
+    // Map the API response to our CalendarEvent format
+    return mapApiEventToCalendarEvent(eventData);
+  } catch (error) {
+    console.error(`Error fetching calendar event with ID ${eventId}:`, error);
+    return null;
+  }
 }; 

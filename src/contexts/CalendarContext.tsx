@@ -148,7 +148,12 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setError(null);
     
     try {
-      const updatedEvent = await updateCalendarEvent('primary', eventId, eventUpdate);
+      const updatedEvent = await updateCalendarEvent(eventId, eventUpdate);
+      
+      if (!updatedEvent) {
+        throw new Error('Failed to update calendar event');
+      }
+      
       // Update events state with the updated event
       setEvents(prevEvents => 
         prevEvents.map(event => event.id === eventId ? updatedEvent : event)
@@ -169,7 +174,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setError(null);
     
     try {
-      const success = await deleteCalendarEvent('primary', eventId);
+      const success = await deleteCalendarEvent(eventId);
       if (success) {
         // Remove the event from state
         setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
@@ -178,7 +183,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (error) {
       console.error('Error deleting calendar event:', error);
       setError('Failed to delete calendar event');
-      throw error;
+      return false;
     } finally {
       setIsLoading(false);
     }
