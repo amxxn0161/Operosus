@@ -15,7 +15,16 @@ import {
   Menu,
   MenuItem,
   Snackbar,
-  Alert
+  Alert,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormControl
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -65,6 +74,12 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+  const [noteDialogOpen, setNoteDialogOpen] = useState<boolean>(false);
+  const [responseNote, setResponseNote] = useState<string>('');
+  const [recurringDialogOpen, setRecurringDialogOpen] = useState<boolean>(false);
+  const [responseScope, setResponseScope] = useState<'single' | 'following' | 'all'>('single');
+  const [rsvpMenuAnchorEl, setRsvpMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [recurringDialogMode, setRecurringDialogMode] = useState<'rsvp' | 'note'>('rsvp');
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -99,7 +114,10 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
 
   // Map UI response values to API values
   const mapRsvpToApiResponse = (status: string): 'accepted' | 'declined' | 'tentative' => {
-    switch (status) {
+    // Extract the base response (Yes, No, Maybe) from enhanced status options
+    const baseStatus = status.split(',')[0].trim();
+    
+    switch (baseStatus) {
       case 'Yes':
         return 'accepted';
       case 'No':
@@ -111,14 +129,110 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     }
   };
   
-  // Handle RSVP UI selection change
-  const handleRsvpChange = (
+  // The main RSVP change function used with both toggle buttons and menu items
+  const handleRsvpChange = (newStatus: string) => {
+    setRsvpStatus(newStatus);
+    setRsvpMenuAnchorEl(null);
+  };
+  
+  // Specialized handler for ToggleButtonGroup which has a different signature
+  const handleRsvpToggleChange = (
     _event: React.MouseEvent<HTMLElement> | null,
     newStatus: string,
   ) => {
     if (newStatus !== null) {
       setRsvpStatus(newStatus);
     }
+  };
+  
+  // Open RSVP menu
+  const handleRsvpMenuOpen = (event: React.MouseEvent<HTMLDivElement>) => {
+    setRsvpMenuAnchorEl(event.currentTarget);
+  };
+  
+  // Close RSVP menu
+  const handleRsvpMenuClose = () => {
+    setRsvpMenuAnchorEl(null);
+  };
+  
+  // Open note dialog when clicking Update button
+  const handleOpenNoteDialog = () => {
+    // Check if this is a focus time event
+    if (event?.eventType === 'focusTime') {
+      console.error('Cannot RSVP to a focus time event');
+      setSnackbarMessage('Focus time events cannot have attendees or responses');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    setResponseNote(''); // Reset note field
+    setRecurringDialogMode('rsvp'); // Set dialog mode to RSVP
+    
+    // Only show the recurring dialog if this is truly a recurring event
+    // Check for both recurringEventId (event instance) and recurrence (master event)
+    const isRecurringEvent = Boolean(event?.recurringEventId) || 
+                            (Array.isArray(event?.recurrence) && event?.recurrence && event.recurrence.length > 0);
+    
+    console.log('Event recurring status check:', {
+      isRecurringEvent,
+      hasRecurringEventId: Boolean(event?.recurringEventId),
+      hasRecurrence: Array.isArray(event?.recurrence) && event?.recurrence && event.recurrence.length > 0,
+      recurringEventId: event?.recurringEventId,
+      recurrence: event?.recurrence
+    });
+    
+    if (isRecurringEvent) {
+      setRecurringDialogOpen(true);
+    } else {
+      setNoteDialogOpen(true);
+    }
+  };
+  
+  // Open note dialog directly without checking for recurring events
+  const handleDirectNoteDialog = () => {
+    // Check if this is a focus time event
+    if (event?.eventType === 'focusTime') {
+      console.error('Cannot add a note to a focus time event');
+      setSnackbarMessage('Focus time events cannot have attendees or responses');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    setResponseNote(''); // Reset note field
+    setRecurringDialogMode('note'); // Set dialog mode to note
+    
+    // Check if this is a recurring event, just like in handleOpenNoteDialog
+    const isRecurringEvent = Boolean(event?.recurringEventId) || 
+                            (Array.isArray(event?.recurrence) && event?.recurrence && event.recurrence.length > 0);
+    
+    if (isRecurringEvent) {
+      setRecurringDialogOpen(true);
+    } else {
+      setNoteDialogOpen(true);
+    }
+  };
+  
+  // Close note dialog
+  const handleCloseNoteDialog = () => {
+    setNoteDialogOpen(false);
+  };
+  
+  // Handle response scope selection for recurring events
+  const handleRecurringScopeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setResponseScope(e.target.value as 'single' | 'following' | 'all');
+  };
+  
+  // Close recurring dialog
+  const handleCloseRecurringDialog = () => {
+    setRecurringDialogOpen(false);
+  };
+  
+  // Open note dialog after selecting response scope
+  const handleRecurringConfirm = () => {
+    setRecurringDialogOpen(false);
+    setNoteDialogOpen(true);
   };
   
   // Handle RSVP update submission
@@ -131,16 +245,48 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       return;
     }
     
+    // Check if this is a focus time event
+    if (event.eventType === 'focusTime') {
+      console.error('Cannot RSVP to a focus time event');
+      setSnackbarMessage('Focus time events cannot have attendees or responses');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      setNoteDialogOpen(false);
+      return;
+    }
+    
+    setNoteDialogOpen(false);
+    
     try {
       const apiResponse = mapRsvpToApiResponse(rsvpStatus);
-      await respondToEventInvitation(event.id, apiResponse);
+      
+      // Pass the note and responseScope to the API
+      const noteValue = responseNote.trim() || undefined;
+      await respondToEventInvitation(event.id, apiResponse, noteValue, responseScope);
+      
       setSnackbarMessage('RSVP status updated successfully');
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
       fetchEvents();
     } catch (error) {
       console.error('Error updating RSVP status:', error);
-      setSnackbarMessage('Failed to update RSVP status');
+      
+      // Parse the error message for better user feedback
+      let errorMessage = 'Failed to update RSVP status';
+      if (error instanceof Error) {
+        // Check if it's a focus time error
+        if (error.message.includes('focusTime') || error.message.includes('focus time')) {
+          errorMessage = 'Focus time events cannot have attendees or responses';
+        } else {
+          // Try to extract a more specific error message
+          const matchError = error.message.match(/"message":\s*"([^"]+)"/);
+          if (matchError && matchError[1]) {
+            errorMessage = matchError[1];
+          }
+        }
+      }
+      
+      setSnackbarMessage(errorMessage);
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     }
@@ -193,8 +339,12 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   };
   
   const formatRecurrence = () => {
-    // Use recurringEventId to determine if this is a recurring event
-    if (event.recurringEventId) {
+    // Check both ways a recurring event could be identified
+    const isRecurringEvent = Boolean(event.recurringEventId) || 
+                             (Array.isArray(event.recurrence) && event.recurrence && event.recurrence.length > 0);
+    
+    if (isRecurringEvent) {
+      // If it's a specific day of the week recurring event
       return 'Weekly on ' + format(eventStart, 'EEEE');
     }
     return '';
@@ -367,6 +517,9 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const acceptedCount = guestList.filter(guest => 
     guest.response === 'Going' || guest.response === 'Accepted' || guest.response === 'Yes'
   ).length;
+
+  // Check if this is a focus time event
+  const isFocusTimeEvent = event.eventType === 'focusTime';
 
   return (
     <>
@@ -681,59 +834,345 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
             </Typography>
           </Box>
           
-          {/* RSVP section */}
-          <Divider />
-          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                mr: 2, 
-                fontSize: '0.85rem'
-              }}
-            >
-              Going?
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <ToggleButtonGroup
-                value={rsvpStatus}
-                exclusive
-                onChange={handleRsvpChange}
-                size="small"
-                sx={{
-                  '& .MuiToggleButton-root': {
-                    px: 2,
+          {/* RSVP section - hide for focus time events */}
+          {!isFocusTimeEvent && (
+            <>
+              <Divider />
+              <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    mr: 2, 
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  Going?
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <ToggleButtonGroup
+                    value={rsvpStatus}
+                    exclusive
+                    onChange={handleRsvpToggleChange}
+                    size="small"
+                    sx={{
+                      '& .MuiToggleButton-root': {
+                        px: 2,
+                        textTransform: 'none',
+                        fontSize: '0.85rem',
+                        '&.Mui-selected': {
+                          bgcolor: '#E8F0FE',
+                          color: '#1A73E8',
+                          '&:hover': { bgcolor: '#D2E3FC' }
+                        }
+                      }
+                    }}
+                  >
+                    <ToggleButton value="Yes">Yes</ToggleButton>
+                    <ToggleButton value="No">No</ToggleButton>
+                    <ToggleButton value="Maybe">Maybe</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Button 
+                    variant="contained" 
+                    size="small" 
+                    onClick={handleOpenNoteDialog}
+                    sx={{ 
+                      ml: 1, 
+                      bgcolor: '#1A73E8', 
+                      '&:hover': { bgcolor: '#1557b0' },
+                      fontSize: '0.8rem',
+                      textTransform: 'none'
+                    }}
+                  >
+                    Update
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Add a note button */}
+              <Box sx={{ px: 2, pb: 2, display: 'flex', justifyContent: 'center' }}>
+                <Button 
+                  variant="outlined" 
+                  fullWidth
+                  size="small" 
+                  onClick={handleDirectNoteDialog}
+                  sx={{ 
                     textTransform: 'none',
                     fontSize: '0.85rem',
-                    '&.Mui-selected': {
-                      bgcolor: '#E8F0FE',
-                      color: '#1A73E8',
-                      '&:hover': { bgcolor: '#D2E3FC' }
+                    borderColor: '#dadce0',
+                    color: '#3c4043',
+                    '&:hover': {
+                      borderColor: '#d2d5d9',
+                      bgcolor: 'rgba(60, 64, 67, 0.04)'
                     }
-                  }
-                }}
+                  }}
+                >
+                  Add a note
+                </Button>
+              </Box>
+            </>
+          )}
+          
+          {/* Focus time message - only show for focus time events */}
+          {isFocusTimeEvent && (
+            <Box sx={{ px: 3, py: 2, textAlign: 'center' }}>
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: '0.85rem' }}
               >
-                <ToggleButton value="Yes">Yes</ToggleButton>
-                <ToggleButton value="No">No</ToggleButton>
-                <ToggleButton value="Maybe">Maybe</ToggleButton>
-              </ToggleButtonGroup>
-              <Button 
-                variant="contained" 
-                size="small" 
-                onClick={handleRsvp}
-                sx={{ 
-                  ml: 1, 
-                  bgcolor: '#1A73E8', 
-                  '&:hover': { bgcolor: '#1557b0' },
-                  fontSize: '0.8rem',
-                  textTransform: 'none'
-                }}
-              >
-                Update
-              </Button>
+                This is a focus time event. You cannot add attendees or responses.
+              </Typography>
             </Box>
-          </Box>
+          )}
         </Paper>
       </Popover>
+      
+      {/* Recurring Event Dialog */}
+      <Dialog
+        open={recurringDialogOpen}
+        onClose={handleCloseRecurringDialog}
+        aria-labelledby="recurring-response-dialog-title"
+        PaperProps={{
+          sx: { 
+            borderRadius: 2,
+            width: 400
+          }
+        }}
+      >
+        <DialogTitle id="recurring-response-dialog-title" sx={{ pb: 1 }}>
+          {recurringDialogMode === 'rsvp' ? 'RSVP to recurring event' : 'Add note to recurring event'}
+        </DialogTitle>
+        <DialogContent>
+          <FormControl component="fieldset">
+            <RadioGroup
+              aria-label="response-scope"
+              name="response-scope"
+              value={responseScope}
+              onChange={handleRecurringScopeChange}
+            >
+              <FormControlLabel 
+                value="single" 
+                control={<Radio />} 
+                label="This event" 
+              />
+              <FormControlLabel 
+                value="following" 
+                control={<Radio />} 
+                label="This and following events" 
+              />
+              <FormControlLabel 
+                value="all" 
+                control={<Radio />} 
+                label="All events" 
+              />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={handleCloseRecurringDialog}
+            sx={{ 
+              color: '#1A73E8', 
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={handleRecurringConfirm}
+            sx={{ 
+              bgcolor: '#1A73E8', 
+              '&:hover': { bgcolor: '#1557b0' },
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Add Note Dialog - Redesigned to match screenshots */}
+      <Dialog
+        open={noteDialogOpen}
+        onClose={handleCloseNoteDialog}
+        aria-labelledby="add-note-dialog-title"
+        PaperProps={{
+          sx: { 
+            borderRadius: 2,
+            width: 400,
+            maxWidth: '90vw'
+          }
+        }}
+      >
+        <DialogTitle 
+          id="add-note-dialog-title" 
+          sx={{ 
+            pt: 3, 
+            pb: 2,
+            px: 3,
+            fontSize: '1.5rem',
+            fontWeight: 400
+          }}
+        >
+          Add a note
+        </DialogTitle>
+        <DialogContent sx={{ px: 3, pt: 1, pb: 3 }}>
+          {/* Note input field styled to match Google Calendar */}
+          <Box 
+            component="div" 
+            sx={{
+              width: '100%',
+              mb: 3,
+              mt: 1,
+              backgroundColor: '#f1f3f4',
+              borderRadius: '8px',
+              position: 'relative',
+              '&:focus-within': {
+                outline: '2px solid #1a73e8'
+              }
+            }}
+          >
+            <Box
+              component="textarea"
+              placeholder="Add a note"
+              value={responseNote}
+              onChange={(e) => setResponseNote(e.target.value)}
+              sx={{
+                width: '100%',
+                minHeight: '150px',
+                p: 2,
+                border: 'none',
+                borderRadius: '8px',
+                resize: 'none',
+                fontFamily: 'inherit',
+                fontSize: '1rem',
+                backgroundColor: 'transparent',
+                '&:focus': {
+                  outline: 'none'
+                }
+              }}
+            />
+          </Box>
+          
+          {/* RSVP dropdown styled to match Google Calendar */}
+          <Box 
+            onClick={handleRsvpMenuOpen}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: 2,
+              py: 1.5,
+              backgroundColor: '#f1f3f4',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              '&:hover': {
+                backgroundColor: '#e8eaed'
+              }
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box 
+                component="span" 
+                sx={{ 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#1a73e8',
+                  mr: 1
+                }}
+              >
+                ✓
+              </Box>
+              <Typography sx={{ color: '#202124' }}>
+                RSVP: {rsvpStatus}
+              </Typography>
+            </Box>
+            <Box component="span" sx={{ color: '#5f6368' }}>
+              ▼
+            </Box>
+          </Box>
+          
+          {/* RSVP dropdown menu */}
+          <Menu
+            anchorEl={rsvpMenuAnchorEl}
+            open={Boolean(rsvpMenuAnchorEl)}
+            onClose={handleRsvpMenuClose}
+            sx={{
+              '& .MuiPaper-root': {
+                borderRadius: '8px',
+                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)',
+                mt: 1
+              }
+            }}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'left',
+            }}
+          >
+            <MenuItem onClick={() => handleRsvpChange('Yes')} sx={{ py: 1.5, px: 2 }}>
+              <Box component="span" sx={{ color: '#1a73e8', mr: 2 }}>✓</Box>
+              Yes
+            </MenuItem>
+            <MenuItem onClick={() => handleRsvpChange('Yes, in a meeting room')} sx={{ py: 1.5, px: 2 }}>
+              <Box component="span" sx={{ mr: 2, width: '1em', display: 'inline-block' }}>🏢</Box>
+              Yes, in a meeting room
+            </MenuItem>
+            <MenuItem onClick={() => handleRsvpChange('Yes, joining virtually')} sx={{ py: 1.5, px: 2 }}>
+              <Box component="span" sx={{ mr: 2, width: '1em', display: 'inline-block' }}>🎥</Box>
+              Yes, joining virtually
+            </MenuItem>
+            <MenuItem onClick={() => handleRsvpChange('No')} sx={{ py: 1.5, px: 2 }}>
+              <Box component="span" sx={{ mr: 2, width: '1em', display: 'inline-block' }}>✕</Box>
+              No
+            </MenuItem>
+            <MenuItem onClick={() => handleRsvpChange('Maybe')} sx={{ py: 1.5, px: 2 }}>
+              <Box component="span" sx={{ mr: 2, width: '1em', display: 'inline-block' }}>?</Box>
+              Maybe
+            </MenuItem>
+          </Menu>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button 
+            onClick={handleCloseNoteDialog}
+            sx={{ 
+              color: '#1A73E8', 
+              textTransform: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              letterSpacing: '0.25px',
+              px: 2,
+              py: 1
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={handleRsvp}
+            sx={{ 
+              bgcolor: '#1A73E8', 
+              '&:hover': { bgcolor: '#1557b0' },
+              textTransform: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              borderRadius: '4px',
+              px: 3,
+              py: 1,
+              ml: 1
+            }}
+          >
+            Send
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Edit form dialog */}
       <EventEditForm 

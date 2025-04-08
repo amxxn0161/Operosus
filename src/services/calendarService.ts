@@ -35,6 +35,7 @@ export interface CalendarEvent {
   status?: string;
   visibility?: string | null;
   recurringEventId?: string;
+  recurrence?: string[]; // For recurring event patterns (RRULE, EXRULE, etc.)
 }
 
 export interface CalendarList {
@@ -786,19 +787,40 @@ export const getCalendarEventById = async (eventId: string): Promise<CalendarEve
 // Respond to a calendar event invitation (accept, decline, or tentative)
 export const respondToEventInvitation = async (
   eventId: string,
-  response: 'accepted' | 'declined' | 'tentative'
+  response: 'accepted' | 'declined' | 'tentative',
+  note?: string,
+  responseScope?: 'single' | 'following' | 'all'
 ): Promise<boolean> => {
   try {
-    console.log(`Responding to event ${eventId} with response: ${response}`);
+    console.log(`Responding to event ${eventId} with response: ${response}, note: ${note || 'none'}, scope: ${responseScope || 'single'}`);
     
     // URL for responding to an event invitation
     const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}/respond`;
     console.log(`Using response URL: ${url}`);
     
+    // Prepare the request body with response status and optional note
+    const requestBody: {
+      response: string;
+      note?: string;
+      responseScope?: string;
+    } = { 
+      response 
+    };
+    
+    // Add note if provided
+    if (note) {
+      requestBody.note = note;
+    }
+    
+    // Add responseScope if provided, otherwise it defaults to 'single' on the server
+    if (responseScope) {
+      requestBody.responseScope = responseScope;
+    }
+    
     // Make the API request - using PUT method as required by the endpoint
     const apiResponse = await apiRequest<any>(url, {
       method: 'PUT',
-      body: { response }
+      body: requestBody
     }).catch(error => {
       console.error('API request failed with error:', error);
       throw error;
