@@ -443,13 +443,24 @@ export const createCalendarEvent = async (calendarId: string, event: Omit<Calend
 // Update an existing calendar event
 export const updateCalendarEvent = async (
   eventId: string,
-  updatedFields: Partial<Omit<CalendarEvent, 'id'>>
+  updatedFields: Partial<Omit<CalendarEvent, 'id'>>,
+  attendeeOperations?: {
+    add?: Array<{
+      email: string;
+      optional?: boolean;
+      responseStatus?: string;
+    }>;
+    remove?: string[]; // Array of email addresses to remove
+  }
 ): Promise<CalendarEvent | null> => {
   try {
     console.log(`Updating calendar event with ID: ${eventId}`, updatedFields);
+    if (attendeeOperations) {
+      console.log('With attendee operations:', JSON.stringify(attendeeOperations, null, 2));
+    }
     
-    // URL for updating a specific event - using eventId in path
-    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}`;
+    // URL for updating a specific event - using eventId in path with the correct API endpoint
+    const url = `/api/calendar/events/${encodeURIComponent(eventId)}`;
     console.log(`Using update URL: ${url}`);
     
     // Prepare the request body with only the fields that are being updated
@@ -471,35 +482,35 @@ export const updateCalendarEvent = async (
       requestBody.location = updatedFields.location;
     }
     
-    // SIMPLIFIED APPROACH: Instead of using nested objects for start/end which may cause issues
-    // with PHP type conversion, use flattened properties that match exactly what the backend expects
-    
+    // For start and end times, we need to use a simpler format that PHP can convert to Google Calendar types
     if (updatedFields.start) {
-      const startDate = new Date(updatedFields.start);
-      
+      // For all-day events, just send a simple date string
       if (updatedFields.isAllDay) {
-        // For all-day events, just send the date as a string in YYYY-MM-DD format
-        requestBody.start_date = startDate.toISOString().split('T')[0];
+        const startDate = new Date(updatedFields.start);
+        const dateString = startDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        requestBody.start_date = dateString; // Use a flattened format
         requestBody.is_all_day = true;
       } else {
-        // For regular events, send the full ISO string
-        requestBody.start_datetime = startDate.toISOString();
-        // Send timezone as a separate field, not nested
-        requestBody.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        // For regular events, send the ISO string directly
+        requestBody.start_datetime = new Date(updatedFields.start).toISOString();
       }
     }
     
     if (updatedFields.end) {
-      const endDate = new Date(updatedFields.end);
-      
+      // For all-day events, just send a simple date string
       if (updatedFields.isAllDay) {
-        // For all-day events, just send the date as a string in YYYY-MM-DD format
-        requestBody.end_date = endDate.toISOString().split('T')[0];
+        const endDate = new Date(updatedFields.end);
+        const dateString = endDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        requestBody.end_date = dateString; // Use a flattened format
       } else {
-        // For regular events, send the full ISO string
-        requestBody.end_datetime = endDate.toISOString();
-        // We already sent timezone above, no need to repeat
+        // For regular events, send the ISO string directly
+        requestBody.end_datetime = new Date(updatedFields.end).toISOString();
       }
+    }
+    
+    // Include timezone if needed for non-all-day events
+    if ((updatedFields.start || updatedFields.end) && !updatedFields.isAllDay) {
+      requestBody.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     }
     
     // Include visibility if it's being updated
@@ -507,7 +518,7 @@ export const updateCalendarEvent = async (
       requestBody.visibility = updatedFields.visibility;
     }
     
-    // Include attendees if they're being updated
+    // Include attendees if they're being updated (complete replacement)
     if (updatedFields.attendees) {
       requestBody.attendees = updatedFields.attendees.map(attendee => ({
         email: attendee.email,
@@ -518,7 +529,29 @@ export const updateCalendarEvent = async (
       }));
     }
     
-    console.log('Sending update request with body:', requestBody);
+    // If attendeeOperations is provided, include it in the request
+    if (attendeeOperations) {
+      requestBody.attendeeOperations = {};
+      
+      // Handle adding attendees
+      if (attendeeOperations.add && attendeeOperations.add.length > 0) {
+        requestBody.attendeeOperations.add = attendeeOperations.add.map(attendee => ({
+          email: attendee.email,
+          ...(attendee.optional !== undefined && { optional: attendee.optional }),
+          ...(attendee.responseStatus && { responseStatus: attendee.responseStatus })
+        }));
+      }
+      
+      // Handle removing attendees
+      if (attendeeOperations.remove && attendeeOperations.remove.length > 0) {
+        requestBody.attendeeOperations.remove = attendeeOperations.remove;
+      }
+      
+      console.log('Including attendee operations in request:', 
+        JSON.stringify(requestBody.attendeeOperations, null, 2));
+    }
+    
+    console.log('Sending update request with body:', JSON.stringify(requestBody, null, 2));
     
     // Make the API request
     const response = await apiRequest<any>(url, {
@@ -552,8 +585,8 @@ export const deleteCalendarEvent = async (
   try {
     console.log(`Deleting calendar event with ID: ${eventId}`);
     
-    // URL for deleting a specific event - using eventId in path
-    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}`;
+    // URL for deleting a specific event - using eventId in path with the correct API endpoint
+    const url = `/api/calendar/events/${encodeURIComponent(eventId)}`;
     console.log(`Using delete URL: ${url}`);
     
     // Make the API request
@@ -588,8 +621,9 @@ export const getCalendarEventById = async (eventId: string): Promise<CalendarEve
   try {
     console.log(`Fetching specific event with ID: ${eventId}`);
     
-    // Change the parameter name from 'id' to 'eventId' to match the backend expectations
-    const url = `https://app2.operosus.com/api/calendar/events?eventId=${encodeURIComponent(eventId)}`;
+    // URL for getting a specific event with query parameter
+    const url = `/api/calendar/events?eventId=${encodeURIComponent(eventId)}`;
+    console.log(`Using get URL: ${url}`);
     
     // Make the API request
     const response = await apiRequest<any>(url, {
@@ -714,7 +748,7 @@ export const respondToEventInvitation = async (
     console.log(`Responding to event ${eventId} with response: ${response}, note: ${note || 'none'}, scope: ${responseScope || 'single'}`);
     
     // URL for responding to an event invitation
-    const url = `https://app2.operosus.com/api/calendar/events/${encodeURIComponent(eventId)}/respond`;
+    const url = `/api/calendar/events/${encodeURIComponent(eventId)}/respond`;
     console.log(`Using response URL: ${url}`);
     
     // Prepare the request body with response status and optional note
@@ -758,5 +792,53 @@ export const respondToEventInvitation = async (
   } catch (error) {
     console.error(`Error responding to event invitation ${eventId}:`, error);
     return false;
+  }
+};
+
+// Helper function to add attendees to an existing event
+export const addAttendeesToEvent = async (
+  eventId: string,
+  attendeesToAdd: Array<{
+    email: string;
+    optional?: boolean;
+    responseStatus?: string;
+  }>
+): Promise<CalendarEvent | null> => {
+  try {
+    console.log(`Adding ${attendeesToAdd.length} attendees to event ${eventId}`);
+    
+    // Use the updateCalendarEvent function with attendeeOperations
+    return await updateCalendarEvent(
+      eventId,
+      {}, // No other fields to update
+      {
+        add: attendeesToAdd
+      }
+    );
+  } catch (error) {
+    console.error('Error adding attendees to event:', error);
+    return null;
+  }
+};
+
+// Helper function to remove attendees from an existing event
+export const removeAttendeesFromEvent = async (
+  eventId: string,
+  emailsToRemove: string[]
+): Promise<CalendarEvent | null> => {
+  try {
+    console.log(`Removing ${emailsToRemove.length} attendees from event ${eventId}`);
+    
+    // Use the updateCalendarEvent function with attendeeOperations
+    return await updateCalendarEvent(
+      eventId,
+      {}, // No other fields to update
+      {
+        remove: emailsToRemove
+      }
+    );
+  } catch (error) {
+    console.error('Error removing attendees from event:', error);
+    return null;
   }
 }; 

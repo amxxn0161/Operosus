@@ -6,7 +6,9 @@ import {
   isGoogleCalendarConnected,
   createCalendarEvent,
   updateCalendarEvent,
-  deleteCalendarEvent
+  deleteCalendarEvent,
+  addAttendeesToEvent,
+  removeAttendeesFromEvent
 } from '../services/calendarService';
 import { useAuth } from './AuthContext';
 
@@ -25,6 +27,8 @@ interface CalendarContextType {
   updateEvent: (eventId: string, event: Partial<Omit<CalendarEvent, 'id'>>) => Promise<CalendarEvent>;
   removeEvent: (eventId: string) => Promise<boolean>;
   refreshCalendarData: () => Promise<void>;
+  addAttendeesToEvent: (eventId: string, attendees: Array<{ email: string, optional?: boolean }>) => Promise<CalendarEvent | null>;
+  removeAttendeesFromEvent: (eventId: string, emails: string[]) => Promise<CalendarEvent | null>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -182,6 +186,64 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  // Add attendees to an event
+  const addAttendees = async (
+    eventId: string, 
+    attendees: Array<{ email: string, optional?: boolean }>
+  ): Promise<CalendarEvent | null> => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`Adding ${attendees.length} attendees to event ${eventId}`);
+      const updatedEvent = await addAttendeesToEvent(eventId, attendees);
+      
+      if (updatedEvent) {
+        // Update events state with the updated event
+        setEvents(prevEvents => 
+          prevEvents.map(event => event.id === eventId ? updatedEvent : event)
+        );
+      }
+      
+      return updatedEvent;
+    } catch (error) {
+      console.error('Error adding attendees to event:', error);
+      setError('Failed to add attendees to event');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Remove attendees from an event
+  const removeAttendees = async (
+    eventId: string, 
+    emails: string[]
+  ): Promise<CalendarEvent | null> => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`Removing ${emails.length} attendees from event ${eventId}`);
+      const updatedEvent = await removeAttendeesFromEvent(eventId, emails);
+      
+      if (updatedEvent) {
+        // Update events state with the updated event
+        setEvents(prevEvents => 
+          prevEvents.map(event => event.id === eventId ? updatedEvent : event)
+        );
+      }
+      
+      return updatedEvent;
+    } catch (error) {
+      console.error('Error removing attendees from event:', error);
+      setError('Failed to remove attendees from event');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Remove an event
   const removeEvent = async (eventId: string): Promise<boolean> => {
     setIsLoading(true);
@@ -223,7 +285,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addEvent,
     updateEvent,
     removeEvent,
-    refreshCalendarData
+    refreshCalendarData,
+    addAttendeesToEvent: addAttendees,
+    removeAttendeesFromEvent: removeAttendees
   };
 
   return (
