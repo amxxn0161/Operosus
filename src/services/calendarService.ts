@@ -386,9 +386,10 @@ export const createCalendarEvent = async (
           date: date.toISOString().split('T')[0]
         };
       } else {
-        // For timed events, use dateTime
+        // For timed events, use dateTime with timeZone
         return {
-          dateTime: date.toISOString()
+          dateTime: date.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
       }
     };
@@ -411,40 +412,60 @@ export const createCalendarEvent = async (
       
       // Add special properties based on event type
       if (event.eventType === 'outOfOffice') {
-        // For Out of Office events, exactly match the format expected by the backend
-        if (event.isAllDay !== false) {
-          // Ensure it's an all-day event
-          requestBody.start = {
-            date: new Date(event.start).toISOString().split('T')[0]
-          };
-          requestBody.end = {
-            date: new Date(event.end).toISOString().split('T')[0]
-          };
-        }
+        // IMPORTANT: Out of Office events must NOT be all-day events
+        // Format exactly as required by the Google Calendar API
+        const startDate = new Date(event.start);
+        const endDate = new Date(event.end);
         
-        // Define outOfOfficeProperties using the correct enum value for autoDeclineMode
-        requestBody.outOfOfficeProperties = {
-          autoDeclineMode: "DECLINE_ALL"
+        // Using exact format required by API with "Z" for UTC time
+        // and specific Europe/London timezone
+        requestBody.start = {
+          dateTime: startDate.toISOString(), // This includes the Z at the end
+          timeZone: "Europe/London"
         };
         
-        // Set decline message if description exists
-        if (event.description) {
-          requestBody.outOfOfficeProperties.declineMessage = event.description;
-        }
+        requestBody.end = {
+          dateTime: endDate.toISOString(), // This includes the Z at the end
+          timeZone: "Europe/London"
+        };
+        
+        // Do not include description at the top level for Out of Office events
+        delete requestBody.description;
+        
+        // Structure outOfOfficeProperties exactly as required by the API
+        requestBody.outOfOfficeProperties = {
+          autoDeclineMode: "declineAllConflictingInvitations",
+          declineMessage: event.description || "Out of Office"
+        };
       } 
       else if (event.eventType === 'focusTime') {
-        // Define focusTimeProperties with correct enum values
-        requestBody.focusTimeProperties = {
-          autoDeclineMode: "DECLINE_WHEN_BUSY"
+        // IMPORTANT: Focus Time events must use the specific format required by Google Calendar API
+        const startDate = new Date(event.start);
+        const endDate = new Date(event.end);
+        
+        // Format datetime strings with timezone information
+        requestBody.start = {
+          dateTime: startDate.toISOString(),
+          timeZone: "Europe/London"
         };
         
-        // Set decline message if description exists
-        if (event.description) {
-          requestBody.focusTimeProperties.declineMessage = event.description;
-        }
+        requestBody.end = {
+          dateTime: endDate.toISOString(),
+          timeZone: "Europe/London"
+        };
+        
+        // Do not include description at the top level for Focus Time events
+        delete requestBody.description;
+        
+        // Structure focusTimeProperties exactly as required by the API
+        requestBody.focusTimeProperties = {
+          chatStatus: "doNotDisturb",
+          autoDeclineMode: "declineOnlyNewConflictingInvitations",
+          declineMessage: event.description || "Declined because I am in focus time."
+        };
       }
       else if (event.eventType === 'workingLocation') {
-        // Define workingLocationProperties
+        // Structure workingLocationProperties as a nested object
         requestBody.workingLocationProperties = {
           type: 'custom'
         };

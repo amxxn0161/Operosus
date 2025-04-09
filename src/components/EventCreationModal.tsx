@@ -74,6 +74,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [endDate, setEndDate] = useState(format(initialEnd, 'yyyy-MM-dd'));
   const [endTime, setEndTime] = useState(format(initialEnd, 'HH:mm'));
   const [isAllDay, setIsAllDay] = useState(false);
+  const [doNotDisturb, setDoNotDisturb] = useState(true);
+  const [autoDeclineMeetings, setAutoDeclineMeetings] = useState(true);
   
   // Form validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -170,15 +172,34 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         // Set the eventType field to focusTime
         newEvent.eventType = 'focusTime';
         
-        // Add focus time properties with correct enum value
-        newEvent.focusTimeProperties = {
-          autoDeclineMode: "DECLINE_WHEN_BUSY",
-        };
+        // Add focus time properties with values based on user selections
+        newEvent.focusTimeProperties = {};
         
-        // Only add declineMessage if description exists
+        // Only set chatStatus to doNotDisturb if the checkbox is checked
+        if (doNotDisturb) {
+          newEvent.focusTimeProperties.chatStatus = "doNotDisturb";
+        }
+        
+        // Only set autoDeclineMode if the checkbox is checked
+        if (autoDeclineMeetings) {
+          newEvent.focusTimeProperties.autoDeclineMode = "declineOnlyNewConflictingInvitations";
+        }
+        
+        // Add decline message if description exists
         if (description) {
           newEvent.focusTimeProperties.declineMessage = description;
+        } else if (autoDeclineMeetings) {
+          // Add a default decline message if auto-decline is enabled but no description
+          newEvent.focusTimeProperties.declineMessage = "Declined because I am in focus time.";
         }
+        
+        // Ensure we're using dateTime format for Focus Time events
+        const startDateTime = new Date(`${startDate}T${isAllDay ? '00:00:00' : startTime}`);
+        const endDateTime = new Date(`${endDate}T${isAllDay ? '23:59:59' : endTime}`);
+        
+        // Override the start and end format
+        newEvent.start = startDateTime.toISOString();
+        newEvent.end = endDateTime.toISOString();
       } else if (eventType === 'workingLocation') {
         // Set the eventType field to workingLocation
         newEvent.eventType = 'workingLocation';
@@ -239,6 +260,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setLocation('');
     setEventType('default');
     setIsAllDay(false);
+    setDoNotDisturb(true);
+    setAutoDeclineMeetings(true);
     setErrors({});
     setApiError(null);
     
@@ -263,6 +286,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         setDescription('I am out of office');
       }
     }
+    // When selecting Focus Time
+    else if (newType === 'focusTime') {
+      // Auto-fill the title if empty
+      if (!title) {
+        setTitle('Focus Time');
+      }
+      
+      // Set default values for Focus Time options
+      setDoNotDisturb(true);
+      setAutoDeclineMeetings(true);
+    }
   };
   
   // For Out of Office events, show a clearer explanation
@@ -282,7 +316,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
           Focus Time events help you block time for deep work without interruptions.
           <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-            Uses DECLINE_WHEN_BUSY mode to reject invitations that conflict with this event.
+            You can choose whether to enable Do Not Disturb for chat notifications and whether to automatically decline new meeting invitations during this time.
           </Typography>
         </Alert>
       );
@@ -545,6 +579,42 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             InputLabelProps={{ shrink: true }}
             placeholder={eventType === 'outOfOffice' ? 'I am out of office' : 'Add details about this event'}
           />
+          
+          {/* Focus Time specific options */}
+          {eventType === 'focusTime' && (
+            <Box sx={{ mt: -1, mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={doNotDisturb}
+                    onChange={(e) => setDoNotDisturb(e.target.checked)}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body2">Do Not Disturb</Typography>
+                    <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                      Mute chat notifications
+                    </Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={autoDeclineMeetings}
+                    onChange={(e) => setAutoDeclineMeetings(e.target.checked)}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body2">Automatically decline meetings</Typography>
+                  </Box>
+                }
+              />
+            </Box>
+          )}
           
           {renderEventTypeDescription()}
           
