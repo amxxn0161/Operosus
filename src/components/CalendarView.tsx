@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Paper, 
   Box, 
@@ -283,6 +283,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     removeEvent
   } = useCalendar();
   
+  // Loading state is only from calendar
+  const isLoading = calendarLoading;
+  
+  // Error state is only from calendar
+  const error = calendarError;
+  
+  // Add a ref for the scrollable container
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  
   // Event creation modal state
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [clickedDate, setClickedDate] = useState<Date>(new Date());
@@ -324,17 +333,147 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       console.log(`Events for today (${now.toDateString()}):`, currentDayEvents.length);
     }
   }, [events, viewMode]);
+
+  // Add a new effect specifically for initial scroll on first render
+  useEffect(() => {
+    // Only run this effect once on component mount
+    if (scrollContainerRef.current && (viewMode === 'day' || viewMode === 'week')) {
+      const initialScrollToContent = () => {
+        // Get current date events
+        const currentDayEvents = getEventsForDay(selectedDate);
+        const now = new Date();
+        const currentHour = now.getHours();
+        
+        // Find the earliest non-all-day event time or use the current time
+        let targetTime;
+        
+        if (currentDayEvents.length > 0) {
+          // Sort events by start time, filtering out all-day events
+          const sortedEvents = [...currentDayEvents]
+            .filter(event => !event.isAllDay)
+            .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+          
+          if (sortedEvents.length > 0) {
+            // Use the first event's start time, but back up by 30 minutes for context
+            const firstEventStart = new Date(sortedEvents[0].start);
+            // Cap the earliest scroll to 7am unless events start earlier
+            const earliestStartHour = Math.max(7, firstEventStart.getHours() - 1);
+            
+            if (firstEventStart.getHours() < earliestStartHour) {
+              // If the first event is before our earliest preferred time, use the event time
+              targetTime = firstEventStart;
+            } else {
+              // Otherwise use our preferred earliest time (ex: 7am)
+              targetTime = new Date(new Date(firstEventStart).setHours(earliestStartHour, 0, 0, 0));
+            }
+          } else {
+            // If all events are all-day events, use current time or business hours
+            targetTime = currentHour >= 9 && currentHour <= 17 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          }
+        } else {
+          // No events, use current time if it's during business hours, otherwise use 9am
+          targetTime = currentHour >= 9 && currentHour <= 17 
+            ? now 
+            : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+        }
+        
+        // Ensure the target time is within our view range
+        const targetHour = targetTime.getHours();
+        
+        if (targetHour >= DAY_START_HOUR && targetHour <= DAY_END_HOUR && scrollContainerRef.current) {
+          console.log(`Initial scroll to: ${targetTime.toLocaleTimeString()}`);
+          
+          // Calculate position based on target time
+          const timePosition = timeToPixels(targetTime) - 
+                              timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+          
+          // Use immediate scroll for initial rendering
+          scrollContainerRef.current.scrollTop = Math.max(0, timePosition - 20); // Small offset for better viewing
+        }
+      };
+      
+      // Apply a very short timeout to ensure the calendar is rendered
+      const initialScrollTimer = setTimeout(initialScrollToContent, 50);
+      return () => clearTimeout(initialScrollTimer);
+    }
+  }, [selectedDate, viewMode]); // Add dependencies to avoid linter errors
+
+  // Also update the auto-scroll effect for when events load or view changes
+  useEffect(() => {
+    if (!isLoading && scrollContainerRef.current && (viewMode === 'day' || viewMode === 'week')) {
+      const scrollToContent = () => {
+        // Get current date events
+        const currentDayEvents = getEventsForDay(selectedDate);
+        const now = new Date();
+        const currentHour = now.getHours();
+        
+        // Find the earliest non-all-day event time or use the current time
+        let targetTime;
+        
+        if (currentDayEvents.length > 0) {
+          // Sort events by start time, filtering out all-day events
+          const sortedEventsFiltered = [...currentDayEvents]
+            .filter(event => !event.isAllDay)
+            .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+          
+          if (sortedEventsFiltered.length > 0) {
+            // Use the first event's start time, but back up by 30 minutes for context
+            const firstEventStart = new Date(sortedEventsFiltered[0].start);
+            // Cap the earliest scroll to 7am unless events start earlier
+            const earliestStartHour = Math.max(7, firstEventStart.getHours() - 1);
+            
+            if (firstEventStart.getHours() < earliestStartHour) {
+              // If the first event is before our earliest preferred time, use the event time
+              targetTime = firstEventStart;
+            } else {
+              // Otherwise use our preferred earliest time (ex: 7am)
+              targetTime = new Date(new Date(firstEventStart).setHours(earliestStartHour, 0, 0, 0));
+            }
+          } else {
+            // If all events are all-day events, use current time or business hours
+            targetTime = currentHour >= 9 && currentHour <= 17 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          }
+        } else {
+          // No events, use current time if it's during business hours, otherwise use 9am
+          targetTime = currentHour >= 9 && currentHour <= 17 
+            ? now 
+            : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+        }
+        
+        // Ensure the target time is within our view range
+        const targetHour = targetTime.getHours();
+        
+        if (targetHour >= DAY_START_HOUR && targetHour <= DAY_END_HOUR && scrollContainerRef.current) {
+          console.log(`Scrolling to: ${targetTime.toLocaleTimeString()}`);
+          
+          // Calculate position based on target time
+          const timePosition = timeToPixels(targetTime) - 
+                              timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
+          
+          // Apply the scroll with smooth animation
+          scrollContainerRef.current.scrollTo({
+            top: Math.max(0, timePosition - 20),
+            behavior: 'smooth'
+          });
+        }
+      };
+      
+      // Delay to ensure DOM is fully rendered
+      const scrollTimer = setTimeout(scrollToContent, 150);
+      
+      // Cleanup timer on unmount
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [events, isLoading, viewMode, selectedDate]);
   
   // Use events directly from calendar context, no task conversion
   const allEvents = events;
   console.log(`Total events in calendar: ${allEvents.length} events`);
   
-  // Loading state is only from calendar
-  const isLoading = calendarLoading;
-  
-  // Error state is only from calendar
-  const error = calendarError;
-
   // Function to refresh all data
   const refreshAllData = async () => {
     console.log('Refreshing calendar data...');
@@ -774,9 +913,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   // Constants for time grid
+  const CALENDAR_ITEM_HEIGHT = 30;
   const HOUR_HEIGHT = 60; // Height in pixels for one hour
-  const DAY_START_HOUR = 7; // Start the day view at 7 AM
-  const DAY_END_HOUR = 19; // End the day view at 7 PM
+  const GRID_GAP = 8;
+  const DEFAULT_EVENT_WIDTH = 80;
+  const DAY_START_HOUR = 1; // Start the day view at 1 AM
+  const DAY_END_HOUR = 23; // End the day view at 11 PM
   const TIME_LABELS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i);
 
   // Update the renderWeekView and renderDayView event rendering to improve title visibility
@@ -814,7 +956,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: '0.85rem',
+              fontSize: '0.8rem', // Standardized font size
               lineHeight: 1.2,
               pl: 0.5,
               textAlign: 'center',
@@ -857,11 +999,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             variant="subtitle2" 
             sx={{ 
               color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              fontWeight: isNested ? 'bold' : 'medium',
+              fontWeight: 'medium', // Standardized font weight
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: isNested ? '0.85rem' : '0.8rem', // Slightly larger font for nested events
+              fontSize: '0.8rem', // Standardized font size
               lineHeight: 1.2,
               pl: 0.5,
               width: '100%',
@@ -897,11 +1039,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             variant="subtitle2" 
             sx={{
               color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              fontWeight: isNested ? 'bold' : 'medium', 
+              fontWeight: 'medium', // Standardized font weight
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: isNested ? '0.9rem' : '0.8rem', // Larger font for nested events
+              fontSize: '0.8rem', // Standardized font size
               lineHeight: 1.2,
               pl: 0.5,
               flexGrow: 1,
@@ -915,7 +1057,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <Typography 
             variant="caption" 
             sx={{ 
-              fontSize: '0.65rem', 
+              fontSize: '0.7rem', // Slightly increased for better readability
               fontWeight: 'medium',
               whiteSpace: 'nowrap',
               color: isDeclined ? eventColor : textColor, // Use event color for declined events text
@@ -933,7 +1075,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <Typography 
             variant="caption" 
             sx={{ 
-              fontSize: '0.65rem',
+              fontSize: '0.7rem', // Slightly increased for better readability
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -1086,8 +1228,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const renderDayView = () => {
     const dayEvents = getEventsForDay(selectedDate);
     const now = new Date();
+    
+    // Calculate current time indicator position
     const currentTimePosition = timeToPixels(now) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-    const isCurrentTimeVisible = now.getHours() >= DAY_START_HOUR && now.getHours() <= DAY_END_HOUR;
+    
+    // Fix: Ensure current time is only visible if it's actually within the displayed range
+    const currentHour = now.getHours();
+    const isCurrentTimeVisible = currentHour >= DAY_START_HOUR && currentHour < DAY_END_HOUR;
+    
+    // Log for debugging
+    console.log(`Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
+    
     const eventPositions = calculateEventPositions(dayEvents);
     
     return (
@@ -1308,7 +1459,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     // Calculate current time indicator position
     const currentTimePosition = timeToPixels(now) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-    const isCurrentTimeVisible = now.getHours() >= DAY_START_HOUR && now.getHours() <= DAY_END_HOUR;
+    
+    // Fix: Ensure current time is only visible if it's actually within the displayed range
+    const currentHour = now.getHours();
+    const isCurrentTimeVisible = currentHour >= DAY_START_HOUR && currentHour < DAY_END_HOUR;
+    
+    // Log for debugging
+    console.log(`Week view - Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
     
     return (
       <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
@@ -1319,8 +1476,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           position: 'sticky',
           left: 0,
           backgroundColor: 'background.paper',
-          zIndex: 2
+          zIndex: 2,
+          display: 'flex',
+          flexDirection: 'column'
         }}>
+          {/* Empty header space to align with day headers */}
+          <Box sx={{ 
+            height: '50px', 
+            borderBottom: 1,
+            borderColor: 'divider',
+            backgroundColor: '#f9f9f9'
+          }} />
+          
+          {/* Time labels */}
           {TIME_LABELS.map((hour) => (
             <Box 
               key={hour} 
@@ -1335,7 +1503,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 pt: 1
               }}
             >
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                 {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
               </Typography>
             </Box>
@@ -1345,70 +1513,106 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         {/* Day columns */}
         <Grid item xs={11}>
           <Grid container>
-        {/* Days header */}
-        <Grid container>
-          {weekDays.map((date, index) => (
-            <Grid 
-              item 
-              key={index} 
-              sx={{ 
-                    width: `${100 / 7}%`,
-                p: 1, 
-                textAlign: 'center',
-                fontWeight: 'medium',
-                borderBottom: 1,
-                    borderRight: 1,
-                    borderColor: 'divider',
-                    backgroundColor: date.getDate() === today.getDate() && 
-                                  date.getMonth() === today.getMonth() && 
-                                  date.getFullYear() === today.getFullYear() ? 'rgba(1, 108, 158, 0.05)' : 'transparent'
-              }}
-            >
-              <Typography 
-                variant="subtitle2" 
-                sx={{ 
-                  fontFamily: 'Poppins',
-                  display: 'block'
-                }}
-              >
-                {date.toLocaleDateString('en-US', { weekday: isMobile ? 'short' : 'long' })}
-              </Typography>
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  fontFamily: 'Poppins',
-                  fontWeight: 'bold',
-                  color: date.getDate() === today.getDate() && 
-                         date.getMonth() === today.getMonth() && 
-                            date.getFullYear() === today.getFullYear() ? '#016C9E' : 'inherit'
-                }}
-              >
-                {date.getDate()}
-              </Typography>
+            {/* Days header */}
+            <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9' }}>
+              {weekDays.map((date, index) => {
+                const isToday = date.getDate() === today.getDate() && 
+                              date.getMonth() === today.getMonth() && 
+                              date.getFullYear() === today.getFullYear();
+                return (
+                  <Grid 
+                    item 
+                    key={index} 
+                    sx={{ 
+                      width: `${100 / 7}%`,
+                      p: 0.5, 
+                      textAlign: 'center',
+                      fontWeight: 'medium',
+                      borderBottom: 1,
+                      borderRight: index < 6 ? 1 : 0,
+                      borderColor: 'divider',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 0.5
+                    }}>
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          fontFamily: 'inherit',
+                          color: 'text.secondary',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                      </Typography>
+                      
+                      {/* Date number with conditional blue circle for today */}
+                      {isToday ? (
+                        <Box sx={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          backgroundColor: '#1056F5',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              fontWeight: 'medium',
+                              color: 'white',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            {date.getDate()}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 'medium',
+                            color: 'text.primary',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          {date.getDate()}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Grid>
+                );
+              })}
             </Grid>
-          ))}
-        </Grid>
         
             {/* Days content */}
             <Grid container>
               {weekDays.map((date, dayIndex) => {
-            const dayEvents = getEventsForDay(date);
+                const dayEvents = getEventsForDay(date);
                 const eventPositions = calculateEventPositions(dayEvents);
                 const isToday = date.getDate() === today.getDate() && 
                               date.getMonth() === today.getMonth() && 
                               date.getFullYear() === today.getFullYear();
-            
-            return (
-              <Grid 
-                item 
+                
+                return (
+                  <Grid 
+                    item 
                     key={dayIndex}
-                sx={{ 
+                    sx={{ 
                       width: `${100 / 7}%`,
                       position: 'relative',
-                      borderRight: 1,
-                  borderColor: 'divider',
+                      borderRight: dayIndex < 6 ? 1 : 0,
+                      borderColor: 'divider',
                       minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT,
-                      backgroundColor: isToday ? 'rgba(1, 108, 158, 0.05)' : 'transparent'
+                      backgroundColor: isToday ? 'rgba(1, 108, 158, 0.03)' : 'transparent'
                     }}
                   >
                     {/* Time grid lines */}
@@ -1424,28 +1628,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           borderBottom: 1,
                           borderColor: 'divider',
                           zIndex: 0,
-                          cursor: 'pointer',
-                          '&:hover': {
-                            backgroundColor: 'rgba(1, 108, 158, 0.05)'
-                          }
+                          cursor: 'pointer'
                         }}
                         onClick={(e) => {
-                          // Only call handleEventClick if there is an event at this index
-                          if (dayEvents[hourIndex]) {
-                            handleEventClick(dayEvents[hourIndex], e);
-                          } else {
-                            // Handle empty slot click - could open event creation modal instead
-                            // For now, just prevent the error by not calling handleEventClick
-                            console.log(`Clicked on empty time slot: ${hour}:00`);
-                            
-                            // Optionally, you could open the event creation modal here
-                            // with the time pre-filled based on the clicked hour
-                            const clickedDate = new Date(selectedDate);
-                            clickedDate.setHours(hour, 0, 0, 0);
-                            setClickedDate(clickedDate);
-                            setClickedTime({ hour, minute: 0 });
-                            setIsEventModalOpen(true);
-                          }
+                          // Handle empty slot click
+                          const clickedDate = new Date(date);
+                          clickedDate.setHours(hour, 0, 0, 0);
+                          setClickedDate(clickedDate);
+                          setClickedTime({ hour, minute: 0 });
+                          setIsEventModalOpen(true);
                         }}
                       />
                     ))}
@@ -1471,23 +1662,36 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       
                       const eventColor = getEventColor(event);
                       const textColor = getEventTextColor(eventColor);
+                      
+                      // Check if this is the active/clicked event
+                      const isActive = activeEventId === event.id;
+                      
+                      // Check if the event is declined
+                      const isDeclined = event.attendees?.some(attendee => 
+                        (attendee.self === true && attendee.responseStatus === 'declined')
+                      );
                     
-                    return (
+                      return (
                         <WeekEventCard
-                        key={event.id}
+                          key={event.id}
                           bgcolor={eventColor}
                           top={startPx}
                           height={height}
                           width={width}
                           left={left}
-                        onClick={(e) => handleEventClick(event, e)}
-                        sx={{
-                            zIndex: (activeEventId === event.id) ? 100 : (zIndex || 1), // Bring to front when clicked
-                            border: isNested || columnsInSlot > 1 ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
-                            boxShadow: (activeEventId === event.id) ? '0 4px 12px rgba(0,0,0,0.3)' : (isNested || columnsInSlot > 1 ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
-                            transform: (activeEventId === event.id) ? 'scale(1.02)' : 'none',
-                            filter: (activeEventId === event.id) ? 'brightness(1.05)' : 'none',
-                            // No hover effects that change z-index
+                          onClick={(e) => handleEventClick(event, e)}
+                          sx={{
+                            zIndex: isActive ? 100 : (zIndex || 1),
+                            border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
+                            borderRadius: '4px',
+                            boxShadow: isActive 
+                              ? '0 3px 8px rgba(0,0,0,0.2)' 
+                              : '0 1px 2px rgba(0,0,0,0.1)',
+                            backgroundColor: isDeclined ? 'white' : eventColor,
+                            '&:hover': {
+                              boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                              filter: 'brightness(1.03)'
+                            }
                           }}
                         >
                           {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
@@ -1850,7 +2054,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         p: 0,
         borderRadius: 2,
         overflow: 'hidden',
-        height: '100%',
+        height: '100%', // Ensure the paper takes full height of its container
         display: 'flex',
         flexDirection: 'column'
       }}
@@ -1987,11 +2191,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <ToggleButtonGroup
             value={viewMode}
             exclusive
-            onChange={(event, newValue) => {
-              if (newValue !== null) {
-                setViewMode(newValue);
-              }
-            }}
+            onChange={handleViewModeChange} 
             size="small"
             sx={{
               '& .MuiToggleButton-root': {
@@ -2024,7 +2224,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       </Box>
       
       {/* Calendar content */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <Box 
+        ref={scrollContainerRef}
+        sx={{ 
+          flexGrow: 1, 
+          overflow: 'auto',
+          height: 'calc(100% - 130px)', // Ensure the content area has a defined height
+          minHeight: '400px' // Set a minimum height so it's always scrollable
+        }}
+      >
         {error ? (
           <Box sx={{ 
             height: '100%', 
