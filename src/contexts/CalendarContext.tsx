@@ -126,7 +126,21 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setError(null);
     
     try {
+      // Log the event data being sent, including attendees if present
+      console.log('Creating event with event data:', JSON.stringify(event, null, 2));
+      
+      if (event.attendees) {
+        console.log(`Event has ${event.attendees.length} attendees:`, 
+          event.attendees.map(a => a.email).join(', '));
+      } else {
+        console.log('Event has no attendees array defined');
+      }
+      
       const newEvent = await createCalendarEvent('primary', event);
+      
+      // Log the returned event
+      console.log('Event created successfully, returned data:', JSON.stringify(newEvent, null, 2));
+      
       // Update events state with the new event
       setEvents(prevEvents => [...prevEvents, newEvent]);
       return newEvent;

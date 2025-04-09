@@ -365,181 +365,75 @@ const getColorIdFromEventType = (eventType: string | undefined): string | undefi
 };
 
 // Create a new calendar event
-export const createCalendarEvent = async (
-  calendarId: string = 'primary',
-  event: Omit<CalendarEvent, 'id'> & { 
-    eventType?: string;
-    outOfOfficeProperties?: any;
-    focusTimeProperties?: any;
-    workingLocationProperties?: any;
-  }
-): Promise<CalendarEvent> => {
+export const createCalendarEvent = async (calendarId: string, event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> => {
   try {
-    console.log('Creating new calendar event:', event);
+    console.log('Creating calendar event with full details:', JSON.stringify(event, null, 2));
     
-    // Format the start and end times as objects according to Google Calendar API format
-    const formatDateTime = (isoString: string, isAllDay: boolean | undefined) => {
-      const date = new Date(isoString);
-      if (isAllDay) {
-        // For all-day events, just use the date part
-        return {
-          date: date.toISOString().split('T')[0]
-        };
-      } else {
-        // For timed events, use dateTime with timeZone
-        return {
-          dateTime: date.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        };
-      }
-    };
-    
-    // Map our event model to the format expected by the backend
     const requestBody: any = {
-      summary: event.title, // Map 'title' to required 'summary' field
-      start: formatDateTime(event.start, event.isAllDay),
-      end: formatDateTime(event.end, event.isAllDay),
+      summary: event.title,
+      description: event.description || '',
+      location: event.location || '',
+      colorId: event.colorId || '',
     };
-    
-    // Only add these fields if they are defined
-    if (event.description) requestBody.description = event.description;
-    if (event.location) requestBody.location = event.location;
-    if (event.colorId) requestBody.colorId = event.colorId;
-    
-    // Handle special event types
-    if (event.eventType) {
-      requestBody.eventType = event.eventType;
+
+    // Always initialize attendees as an empty array if not defined
+    requestBody.attendees = [];
+
+    // Format start and end dates
+    if (event.isAllDay) {
+      // For all-day events, use date format without time
+      const startDate = new Date(event.start);
+      const endDate = new Date(event.end);
       
-      // Add special properties based on event type
-      if (event.eventType === 'outOfOffice') {
-        // IMPORTANT: Out of Office events must NOT be all-day events
-        // Format exactly as required by the Google Calendar API
-        const startDate = new Date(event.start);
-        const endDate = new Date(event.end);
-        
-        // Using exact format required by API with "Z" for UTC time
-        // and specific Europe/London timezone
-        requestBody.start = {
-          dateTime: startDate.toISOString(), // This includes the Z at the end
-          timeZone: "Europe/London"
-        };
-        
-        requestBody.end = {
-          dateTime: endDate.toISOString(), // This includes the Z at the end
-          timeZone: "Europe/London"
-        };
-        
-        // Do not include description at the top level for Out of Office events
-        delete requestBody.description;
-        
-        // Structure outOfOfficeProperties exactly as required by the API
-        requestBody.outOfOfficeProperties = {
-          autoDeclineMode: "declineAllConflictingInvitations",
-          declineMessage: event.description || "Out of Office"
-        };
-      } 
-      else if (event.eventType === 'focusTime') {
-        // IMPORTANT: Focus Time events must use the specific format required by Google Calendar API
-        const startDate = new Date(event.start);
-        const endDate = new Date(event.end);
-        
-        // Format datetime strings with timezone information
-        requestBody.start = {
-          dateTime: startDate.toISOString(),
-          timeZone: "Europe/London"
-        };
-        
-        requestBody.end = {
-          dateTime: endDate.toISOString(),
-          timeZone: "Europe/London"
-        };
-        
-        // Do not include description at the top level for Focus Time events
-        delete requestBody.description;
-        
-        // Structure focusTimeProperties exactly as required by the API
-        requestBody.focusTimeProperties = {
-          chatStatus: "doNotDisturb",
-          autoDeclineMode: "declineOnlyNewConflictingInvitations",
-          declineMessage: event.description || "Declined because I am in focus time."
-        };
-      }
-      else if (event.eventType === 'workingLocation') {
-        // Structure workingLocationProperties as a nested object
-        requestBody.workingLocationProperties = {
-          type: 'custom'
-        };
-        
-        // Set custom location if available
-        if (event.location) {
-          requestBody.workingLocationProperties.customLocation = event.location;
-        }
-      }
-    }
-    
-    // Log the actual request being sent
-    console.log('Sending event request with body:', JSON.stringify(requestBody, null, 2));
-    
-    // Use the direct endpoint as specified
-    const response = await apiRequest<any>(
-      'https://app2.operosus.com/api/calendar/events', 
-      {
-        method: 'POST',
-        body: requestBody
-      }
-    ).catch(error => {
-      console.error('API request failed with error:', error);
-      console.error('Request body that caused the error:', JSON.stringify(requestBody, null, 2));
-      throw error;
-    });
-    
-    console.log('Event creation response:', response);
-    
-    // Handle different response formats
-    let createdEvent: CalendarEvent;
-    if (response.data?.event) {
-      createdEvent = {
-        id: response.data.event.id,
-        title: response.data.event.summary || event.title, // Map summary back to title
-        start: event.start, // Use original values since response might not include full details
-        end: event.end,
-        location: event.location,
-        description: event.description,
-        colorId: event.colorId,
-        isAllDay: event.isAllDay,
-        eventType: event.eventType // Include event type in the created event
+      // Format as YYYY-MM-DD for all-day events
+      requestBody.start = {
+        date: startDate.toISOString().split('T')[0],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       };
-    } else if (response.data) {
-      // If the response.data contains the event data directly
-      createdEvent = {
-        id: response.data.id || `temp-${Math.random().toString(36).substring(2, 9)}`,
-        title: response.data.summary || event.title, // Map summary back to title
-        start: event.start,
-        end: event.end,
-        location: event.location,
-        description: event.description,
-        colorId: event.colorId,
-        isAllDay: event.isAllDay,
-        eventType: event.eventType // Include event type in the created event
+      
+      requestBody.end = {
+        date: endDate.toISOString().split('T')[0],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       };
     } else {
-      // If no event data is returned, create a temporary event object
-      // This is not ideal but prevents the app from breaking
-      createdEvent = {
-        id: `temp-${Math.random().toString(36).substring(2, 9)}`,
-        title: event.title,
-        start: event.start,
-        end: event.end,
-        location: event.location,
-        description: event.description,
-        colorId: event.colorId,
-        isAllDay: event.isAllDay,
-        eventType: event.eventType // Include event type in the created event
+      // For regular events, use dateTime format with timezone
+      requestBody.start = {
+        dateTime: event.start,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       };
-      console.warn('Could not find event in API response. Created temporary event:', createdEvent);
+      
+      requestBody.end = {
+        dateTime: event.end,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      };
     }
-    
-    return createdEvent;
+
+    // Add attendees if they exist
+    if (event.attendees && event.attendees.length > 0) {
+      console.log('Processing attendees for API request:', JSON.stringify(event.attendees, null, 2));
+      
+      requestBody.attendees = event.attendees.map(attendee => ({
+        email: attendee.email,
+        ...(attendee.optional !== undefined && { optional: attendee.optional }),
+        ...(attendee.responseStatus && { responseStatus: attendee.responseStatus })
+      }));
+      
+      console.log('Formatted attendees for API request:', JSON.stringify(requestBody.attendees, null, 2));
+    } else {
+      console.log('No attendees provided for this event');
+    }
+
+    console.log('Final request body for API:', JSON.stringify(requestBody, null, 2));
+
+    const response = await apiRequest<any>(`/calendar/${calendarId}/events`, {
+      method: 'POST',
+      body: requestBody,
+    });
+
+    console.log('API response for event creation:', JSON.stringify(response, null, 2));
+
+    // Map the API response back to our CalendarEvent format
+    return mapApiEventToCalendarEvent(response);
   } catch (error) {
     console.error('Error creating calendar event:', error);
     throw error;

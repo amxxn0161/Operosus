@@ -16,12 +16,23 @@ import {
   InputLabel,
   IconButton,
   FormHelperText,
-  Alert
+  Alert,
+  Chip,
+  Paper
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { format } from 'date-fns';
 import { CalendarEvent } from '../services/calendarService';
 import { useCalendar } from '../contexts/CalendarContext';
+
+// Add interface for attendee type
+interface Attendee {
+  email: string;
+  optional?: boolean;
+  responseStatus?: 'needsAction' | 'declined' | 'tentative' | 'accepted';
+}
 
 interface EventCreationModalProps {
   open: boolean;
@@ -77,6 +88,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [doNotDisturb, setDoNotDisturb] = useState(true);
   const [autoDeclineMeetings, setAutoDeclineMeetings] = useState(true);
   
+  // New attendees state
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [newAttendeeEmail, setNewAttendeeEmail] = useState('');
+  const [newAttendeeOptional, setNewAttendeeOptional] = useState(false);
+  const [attendeeError, setAttendeeError] = useState<string | null>(null);
+  
   // Form validation
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,6 +136,43 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  // Function to validate and add an attendee
+  const addAttendee = () => {
+    // Reset error
+    setAttendeeError(null);
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newAttendeeEmail)) {
+      setAttendeeError('Please enter a valid email address');
+      return;
+    }
+    
+    // Check if email already exists in attendees
+    if (attendees.some(attendee => attendee.email === newAttendeeEmail)) {
+      setAttendeeError('This email has already been added');
+      return;
+    }
+    
+    // Add new attendee
+    const newAttendee: Attendee = {
+      email: newAttendeeEmail,
+      responseStatus: 'needsAction',
+      optional: newAttendeeOptional
+    };
+    
+    setAttendees([...attendees, newAttendee]);
+    
+    // Reset input fields
+    setNewAttendeeEmail('');
+    setNewAttendeeOptional(false);
+  };
+  
+  // Function to remove an attendee
+  const removeAttendee = (email: string) => {
+    setAttendees(attendees.filter(attendee => attendee.email !== email));
+  };
+
   const handleSubmit = async () => {
     // Clear any previous API errors
     setApiError(null);
@@ -134,6 +188,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       const startDateTime = new Date(`${startDate}T${isAllDay ? '00:00:00' : startTime}`);
       const endDateTime = new Date(`${endDate}T${isAllDay ? '23:59:59' : endTime}`);
       
+      // Log the attendees before creating the event object
+      console.log(`About to create event with ${attendees.length} attendees:`, 
+        JSON.stringify(attendees, null, 2));
+      
       // Create base event object
       const newEvent: any = {
         title,
@@ -148,6 +206,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       
       // For all events, explicitly set isAllDay property
       newEvent.isAllDay = isAllDay;
+      
+      // Add attendees if there are any - ensure it's always an array
+      newEvent.attendees = attendees.length > 0 ? [...attendees] : [];
       
       // Handle special event types
       if (eventType === 'outOfOffice') {
@@ -264,6 +325,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setAutoDeclineMeetings(true);
     setErrors({});
     setApiError(null);
+    setAttendees([]);
+    setNewAttendeeEmail('');
+    setNewAttendeeOptional(false);
+    setAttendeeError(null);
     
     // Call onClose prop
     onClose();
@@ -579,6 +644,107 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             InputLabelProps={{ shrink: true }}
             placeholder={eventType === 'outOfOffice' ? 'I am out of office' : 'Add details about this event'}
           />
+          
+          {/* Attendees section */}
+          {eventType !== 'outOfOffice' && eventType !== 'focusTime' && eventType !== 'workingLocation' && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                Attendees
+              </Typography>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                gap: 2
+              }}>
+                {/* Add attendee form */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  gap: 2,
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap'
+                }}>
+                  <TextField
+                    label="Email"
+                    placeholder="Enter attendee email"
+                    value={newAttendeeEmail}
+                    onChange={(e) => setNewAttendeeEmail(e.target.value)}
+                    error={!!attendeeError}
+                    helperText={attendeeError}
+                    sx={{ flexGrow: 1 }}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox 
+                        checked={newAttendeeOptional} 
+                        onChange={(e) => setNewAttendeeOptional(e.target.checked)} 
+                      />
+                    }
+                    label="Optional"
+                  />
+                  <Button
+                    variant="outlined"
+                    startIcon={<PersonAddIcon />}
+                    onClick={addAttendee}
+                    sx={{ 
+                      minWidth: 'auto',
+                      height: '40px'
+                    }}
+                    disabled={!newAttendeeEmail.trim()}
+                  >
+                    Add
+                  </Button>
+                </Box>
+                
+                {/* Attendees list */}
+                {attendees.length > 0 && (
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 2, 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      gap: 1,
+                      backgroundColor: 'rgba(1, 108, 158, 0.05)'
+                    }}
+                  >
+                    {attendees.map((attendee) => (
+                      <Box 
+                        key={attendee.email}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          p: 1,
+                          borderRadius: '4px',
+                          backgroundColor: 'white'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography>{attendee.email}</Typography>
+                          {attendee.optional && (
+                            <Chip 
+                              label="Optional" 
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem' }}
+                            />
+                          )}
+                        </Box>
+                        <IconButton 
+                          size="small"
+                          onClick={() => removeAttendee(attendee.email)}
+                          sx={{ color: '#d32f2f' }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Paper>
+                )}
+              </Box>
+            </Box>
+          )}
           
           {/* Focus Time specific options */}
           {eventType === 'focusTime' && (

@@ -782,6 +782,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Update the renderWeekView and renderDayView event rendering to improve title visibility
   // Inside the renderWeekView function, update the event rendering:
   const renderEventContent = (event: CalendarEvent, eventColor: string, textColor: string, height: number, isNested?: boolean) => {
+    // Check if the current user has declined this event
+    const isDeclined = event.attendees?.some(attendee => 
+      (attendee.self === true && attendee.responseStatus === 'declined')
+    );
+
+    // Calculate border styling for declined events
+    const declinedStyle = isDeclined ? {
+      backgroundColor: 'white',
+      border: `${eventColor}`,
+      opacity: 0.9
+    } : {};
+
     // Special handling for Out of Office events
     if (event.eventType === 'outOfOffice') {
       return (
@@ -791,7 +803,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           flexDirection: 'column',
           overflow: 'hidden',
           width: '100%',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          ...declinedStyle
         }}>
           <Typography 
             variant="subtitle2" 
@@ -804,7 +817,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               fontSize: '0.85rem',
               lineHeight: 1.2,
               pl: 0.5,
-              textAlign: 'center'
+              textAlign: 'center',
+              textDecoration: isDeclined ? 'line-through' : 'none'
             }}
           >
             Out of office
@@ -817,7 +831,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 color: '#5F6368',
                 textAlign: 'center',
                 fontStyle: 'italic',
-                mt: 0.5
+                mt: 0.5,
+                textDecoration: isDeclined ? 'line-through' : 'none'
               }}
             >
               {event.description}
@@ -829,18 +844,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     // For very small events, skip the time display
     if (height < 30) {
-              return (
+      return (
         <Box sx={{ 
           height: '100%', 
           display: 'flex', 
           alignItems: 'center',
           overflow: 'hidden',
-          width: '100%'
+          width: '100%',
+          ...declinedStyle
         }}>
           <Typography 
             variant="subtitle2" 
-                  sx={{ 
-              color: textColor,
+            sx={{ 
+              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
               fontWeight: isNested ? 'bold' : 'medium',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -848,7 +864,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               fontSize: isNested ? '0.85rem' : '0.8rem', // Slightly larger font for nested events
               lineHeight: 1.2,
               pl: 0.5,
-              width: '100%'
+              width: '100%',
+              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
             }}
           >
             {event.title}
@@ -859,27 +876,28 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     // For normal sized events, show the title and time
     return (
-                  <Box sx={{ 
+      <Box sx={{ 
         height: '100%',
-                    display: 'flex',
+        display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        width: '100%'
+        width: '100%',
+        ...declinedStyle
       }}>
         {/* Title and time in a horizontal layout */}
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'row',
           justifyContent: 'space-between',
-                    alignItems: 'center',
+          alignItems: 'center',
           width: '100%',
           mb: 0.2
         }}>
           <Typography 
             variant="subtitle2" 
             sx={{
-              color: textColor,
-                      fontWeight: isNested ? 'bold' : 'medium', 
+              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
+              fontWeight: isNested ? 'bold' : 'medium', 
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -887,11 +905,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               lineHeight: 1.2,
               pl: 0.5,
               flexGrow: 1,
-              mr: 1 // Add margin to separate from time
+              mr: 1, // Add margin to separate from time
+              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
             }}
           >
-                      {event.title}
-                    </Typography>
+            {event.title}
+          </Typography>
           
           <Typography 
             variant="caption" 
@@ -899,14 +918,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               fontSize: '0.65rem', 
               fontWeight: 'medium',
               whiteSpace: 'nowrap',
-              color: textColor,
-              opacity: 0.85,
+              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
               flexShrink: 0,
-              pr: 0.5
+              pr: 0.5,
+              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
             }}
           >
             {formatTime(event.start)}-{formatTime(event.end)}
-                  </Typography>
+          </Typography>
         </Box>
         
         {/* Only show location if there's enough height */}
@@ -918,14 +937,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              color: textColor,
+              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
               mt: 0.2,
-              pl: 0.5
+              pl: 0.5,
+              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
             }}
           >
             📍 {event.location}
-                    </Typography>
-                  )}
+          </Typography>
+        )}
       </Box>
     );
   };
@@ -1074,7 +1094,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
         <Typography variant="h6" gutterBottom>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </Typography>
+        </Typography>
         
         <Divider sx={{ my: 2 }} />
         
@@ -1096,7 +1116,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               >
                 <Typography variant="caption" color="text.secondary">
                   {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
-                    </Typography>
+                </Typography>
               </Box>
             ))}
           </Box>
@@ -1259,6 +1279,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         transform: isActive ? 'scale(1.02)' : 'none',
                         filter: isActive ? 'brightness(1.05)' : 'none',
                         // No hover effects that change z-index
+                        
+                        // Override styles for declined events
+                        ...(event.attendees?.some(attendee => (attendee.self === true && attendee.responseStatus === 'declined')) && {
+                          bgcolor: 'white',
+                          border: `0.5px dashed ${eventColor}`,
+                          boxShadow: 'none'
+                        })
                       }}
                     >
                       {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}

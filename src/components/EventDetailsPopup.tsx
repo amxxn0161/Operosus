@@ -521,6 +521,11 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   // Check if this is a focus time event
   const isFocusTimeEvent = event.eventType === 'focusTime';
 
+  // Check if the current user has declined this event
+  const isDeclinedByCurrentUser = event.attendees?.some(attendee => 
+    (attendee.self === true && attendee.responseStatus?.toLowerCase() === 'declined')
+  );
+
   return (
     <>
       <Popover
@@ -565,7 +570,15 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                 mt: 0.5 
               }} 
             />
-            <Typography variant="h6" sx={{ fontWeight: 500, flex: 1 }}>
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                fontWeight: 500, 
+                flex: 1,
+                textDecoration: isDeclinedByCurrentUser ? 'line-through' : 'none',
+                opacity: isDeclinedByCurrentUser ? 0.6 : 1
+              }}
+            >
               {event.summary || event.title}
             </Typography>
             
@@ -591,6 +604,21 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* Date and time */}
           <Box sx={{ px: 3, pb: 2 }}>
+            {isDeclinedByCurrentUser && (
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  color: '#D32F2F', 
+                  mb: 0.5, 
+                  fontWeight: 'medium',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                ● Declined
+              </Typography>
+            )}
             <Typography variant="body2" color="text.secondary">
               {formatEventDate()} · {formatEventTime()}
             </Typography>
