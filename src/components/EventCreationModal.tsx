@@ -87,6 +87,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [isAllDay, setIsAllDay] = useState(false);
   const [doNotDisturb, setDoNotDisturb] = useState(true);
   const [autoDeclineMeetings, setAutoDeclineMeetings] = useState(true);
+  const [addGoogleMeet, setAddGoogleMeet] = useState(false);
   
   // New attendees state
   const [attendees, setAttendees] = useState<Attendee[]>([]);
@@ -283,7 +284,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       
       // Add event using context function (which handles API call)
       try {
-        await addEvent(newEvent);
+        // Pass the addGoogleMeet parameter to tell the backend to create a Google Meet link
+        await addEvent(newEvent, addGoogleMeet);
         // Close modal and reset form
         handleClose();
       } catch (apiError: any) {
@@ -323,6 +325,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setIsAllDay(false);
     setDoNotDisturb(true);
     setAutoDeclineMeetings(true);
+    setAddGoogleMeet(false);
     setErrors({});
     setApiError(null);
     setAttendees([]);
@@ -695,6 +698,21 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                     Add
                   </Button>
                 </Box>
+                
+                {/* Google Meet option */}
+                <FormControlLabel
+                  control={
+                    <Checkbox 
+                      checked={addGoogleMeet} 
+                      onChange={(e) => setAddGoogleMeet(e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Typography variant="body2">Add Google Meet video conferencing</Typography>
+                    </Box>
+                  }
+                />
                 
                 {/* Attendees list */}
                 {attendees.length > 0 && (

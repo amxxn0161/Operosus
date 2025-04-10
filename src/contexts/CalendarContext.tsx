@@ -23,7 +23,7 @@ interface CalendarContextType {
   fetchEvents: () => Promise<void>;
   setSelectedDate: (date: Date) => void;
   setViewMode: (mode: 'day' | 'week' | 'month' | 'all') => void;
-  addEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<CalendarEvent>;
+  addEvent: (event: Omit<CalendarEvent, 'id'>, addGoogleMeet?: boolean) => Promise<CalendarEvent>;
   updateEvent: (eventId: string, event: Partial<Omit<CalendarEvent, 'id'>>) => Promise<CalendarEvent>;
   removeEvent: (eventId: string) => Promise<boolean>;
   refreshCalendarData: () => Promise<void>;
@@ -125,13 +125,14 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Add a new event
-  const addEvent = async (event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> => {
+  const addEvent = async (event: Omit<CalendarEvent, 'id'>, addGoogleMeet: boolean = false): Promise<CalendarEvent> => {
     setIsLoading(true);
     setError(null);
     
     try {
       // Log the event data being sent, including attendees if present
       console.log('Creating event with event data:', JSON.stringify(event, null, 2));
+      console.log('Adding Google Meet:', addGoogleMeet);
       
       if (event.attendees) {
         console.log(`Event has ${event.attendees.length} attendees:`, 
@@ -140,7 +141,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         console.log('Event has no attendees array defined');
       }
       
-      const newEvent = await createCalendarEvent('primary', event);
+      const newEvent = await createCalendarEvent('primary', event, addGoogleMeet);
       
       // Log the returned event
       console.log('Event created successfully, returned data:', JSON.stringify(newEvent, null, 2));

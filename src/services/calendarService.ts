@@ -345,6 +345,32 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
       eventType = 'default';
     }
   }
+
+  // Handle conference data (Google Meet link)
+  let conferenceData = undefined;
+  let hangoutLink = undefined;
+
+  // Extract conferenceData from different possible locations in the API response
+  if (apiEvent.conferenceData) {
+    // Direct conference data
+    conferenceData = apiEvent.conferenceData;
+    console.log('Found conferenceData in event object');
+  } else if (apiEvent.data?.event?.conferenceData) {
+    // Nested in data.event
+    conferenceData = apiEvent.data.event.conferenceData;
+    console.log('Found conferenceData in data.event object');
+  }
+
+  // Extract hangoutLink from different possible locations in the API response
+  if (apiEvent.hangoutLink) {
+    // Direct hangoutLink
+    hangoutLink = apiEvent.hangoutLink;
+    console.log('Found hangoutLink in event object:', hangoutLink);
+  } else if (apiEvent.data?.event?.hangoutLink) {
+    // Nested in data.event
+    hangoutLink = apiEvent.data.event.hangoutLink;
+    console.log('Found hangoutLink in data.event object:', hangoutLink);
+  }
   
   // Log the mapped event data
   const mappedEvent = {
@@ -366,8 +392,8 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
     ...(apiEvent.visibility !== undefined && { visibility: apiEvent.visibility }),
     ...(apiEvent.recurringEventId && { recurringEventId: apiEvent.recurringEventId }),
     ...(apiEvent.eventType && { eventType: apiEvent.eventType }),
-    ...(apiEvent.hangoutLink && { hangoutLink: apiEvent.hangoutLink }),
-    ...(apiEvent.conferenceData && { conferenceData: apiEvent.conferenceData })
+    ...(hangoutLink && { hangoutLink: hangoutLink }),
+    ...(conferenceData && { conferenceData: conferenceData })
   };
   
   console.log('Mapped to calendar event:', mappedEvent);
@@ -394,9 +420,14 @@ const getColorIdFromEventType = (eventType: string | undefined): string | undefi
 };
 
 // Create a new calendar event
-export const createCalendarEvent = async (calendarId: string, event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> => {
+export const createCalendarEvent = async (
+  calendarId: string, 
+  event: Omit<CalendarEvent, 'id'>,
+  addGoogleMeet: boolean = false
+): Promise<CalendarEvent> => {
   try {
     console.log('Creating calendar event with full details:', JSON.stringify(event, null, 2));
+    console.log('Adding Google Meet:', addGoogleMeet);
     
     const requestBody: any = {
       summary: event.title,
@@ -450,6 +481,14 @@ export const createCalendarEvent = async (calendarId: string, event: Omit<Calend
       console.log('Formatted attendees for API request:', JSON.stringify(requestBody.attendees, null, 2));
     } else {
       console.log('No attendees provided for this event');
+    }
+    
+    // Add Google Meet video conferencing if requested
+    if (addGoogleMeet) {
+      requestBody.conferenceData = {
+        createRequest: true
+      };
+      console.log('Adding Google Meet video conferencing to event');
     }
 
     console.log(`Final request body for API (${new Date().toISOString()}):`, JSON.stringify(requestBody, null, 2));
