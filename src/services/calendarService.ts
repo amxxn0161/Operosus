@@ -1,5 +1,28 @@
 import { apiRequest, ApiOptions } from './apiUtils';
 
+export interface ConferenceEntryPoint {
+  entryPointType: 'video' | 'phone' | 'more' | string;
+  uri: string;
+  label?: string;
+  pin?: string | null;
+  accessCode?: string | null;
+  meetingCode?: string | null;
+  passcode?: string | null;
+  password?: string | null;
+}
+
+export interface ConferenceSolution {
+  name?: string;
+  iconUri?: string;
+}
+
+export interface ConferenceData {
+  entryPoints?: ConferenceEntryPoint[];
+  conferenceSolution?: ConferenceSolution;
+  conferenceId?: string;
+  notes?: string;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -36,6 +59,10 @@ export interface CalendarEvent {
   visibility?: string | null;
   recurringEventId?: string;
   recurrence?: string[]; // For recurring event patterns (RRULE, EXRULE, etc.)
+  
+  // Conference data fields - Google Meet integration
+  hangoutLink?: string; // Direct link to Google Meet
+  conferenceData?: ConferenceData; // Detailed conference data
 }
 
 export interface CalendarList {
@@ -338,7 +365,9 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
     ...(apiEvent.status && { status: apiEvent.status }),
     ...(apiEvent.visibility !== undefined && { visibility: apiEvent.visibility }),
     ...(apiEvent.recurringEventId && { recurringEventId: apiEvent.recurringEventId }),
-    ...(apiEvent.eventType && { eventType: apiEvent.eventType })
+    ...(apiEvent.eventType && { eventType: apiEvent.eventType }),
+    ...(apiEvent.hangoutLink && { hangoutLink: apiEvent.hangoutLink }),
+    ...(apiEvent.conferenceData && { conferenceData: apiEvent.conferenceData })
   };
   
   console.log('Mapped to calendar event:', mappedEvent);

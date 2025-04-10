@@ -350,19 +350,48 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     return '';
   };
 
-  // Get meeting link from htmlLink or description
-  const getMeetingLink = (): string | null => {
-    // Try to use htmlLink first if it's a Google Meet link
-    if (event.htmlLink && event.htmlLink.includes('meet.google.com')) {
-      return event.htmlLink;
+  // Get Google Meet link from event data
+  const getMeetLink = (): { url: string, label: string } | null => {
+    // Check for hangoutLink first (direct Google Meet link)
+    if (event.hangoutLink) {
+      return {
+        url: event.hangoutLink,
+        label: event.hangoutLink.replace('https://', '')
+      };
     }
     
-    // Fall back to parsing description
-    if (event.description) {
-      const meetRegex = /meet\.google\.com\/[a-z0-9\-]+/g;
-      const matches = event.description.match(meetRegex);
-      if (matches && matches.length > 0) {
-        return matches[0];
+    // Check conferenceData for Google Meet links
+    if (event.conferenceData?.entryPoints) {
+      // Find video entry point (Google Meet)
+      const videoEntry = event.conferenceData.entryPoints.find(
+        entry => entry.entryPointType === 'video'
+      );
+      
+      if (videoEntry?.uri) {
+        return {
+          url: videoEntry.uri,
+          label: videoEntry.label || videoEntry.uri.replace('https://', '')
+        };
+      }
+    }
+    
+    // No Google Meet link found
+    return null;
+  };
+
+  // Get phone details from conferenceData
+  const getPhoneDetails = (): { number: string, pin: string | null } | null => {
+    if (event.conferenceData?.entryPoints) {
+      // Find phone entry point
+      const phoneEntry = event.conferenceData.entryPoints.find(
+        entry => entry.entryPointType === 'phone'
+      );
+      
+      if (phoneEntry?.uri) {
+        return {
+          number: phoneEntry.label || phoneEntry.uri.replace('tel:', ''),
+          pin: phoneEntry.pin ?? null
+        };
       }
     }
     
@@ -503,12 +532,8 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     return [];
   };
 
-  const meetingUrl = getMeetingLink();
-  const hasPhoneDetails = event.description?.includes('PIN:');
-  // Only use the phone details if explicitly mentioned in the event description
-  const phoneDetails = event.description?.includes('PIN:') ? 
-    event.description.match(/\(\w+\)\s+[+\d\s]+PIN:\s+[\d\s#]+/)?.[0] : null;
-  
+  const meetLink = getMeetLink();
+  const phoneDetails = getPhoneDetails();
   const guestList = getGuestList();
   const agendaItems = getAgendaItems();
   const organizer = getOrganizer();
@@ -525,6 +550,22 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const isDeclinedByCurrentUser = event.attendees?.some(attendee => 
     (attendee.self === true && attendee.responseStatus?.toLowerCase() === 'declined')
   );
+
+  // Function to copy text to clipboard
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setSnackbarMessage('Meeting link copied to clipboard');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+      })
+      .catch(err => {
+        console.error('Failed to copy text: ', err);
+        setSnackbarMessage('Failed to copy meeting link');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      });
+  };
 
   return (
     <>
@@ -630,48 +671,41 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           </Box>
           
           {/* Google Meet section */}
-          {meetingUrl && (
+          {meetLink && (
             <Box sx={{ px: 3, pb: 2 }}>
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  mb: 1,
-                  justifyContent: 'space-between'
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar 
-                    sx={{ 
-                      width: 20, 
-                      height: 20, 
-                      mr: 1,
-                      bgcolor: '#1A73E8'
-                    }}
-                  >
-                    <VideocamIcon fontSize="small" sx={{ width: 14, height: 14 }} />
-                  </Avatar>
-                  <Button 
-                    variant="contained" 
-                    sx={{ 
-                      bgcolor: '#1A73E8', 
-                      color: 'white',
-                      '&:hover': { bgcolor: '#1557b0' },
-                      textTransform: 'none',
-                      px: 2,
-                      fontSize: '0.85rem',
-                      borderRadius: 1
-                    }}
-                  >
-                    Join with Google Meet
-                  </Button>
-                </Box>
-                <IconButton size="small">
-                  <ContentCopyIcon fontSize="small" sx={{ width: 18, height: 18 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Avatar 
+                  src="https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v6/web-512dp/logo_meet_2020q4_color_2x_web_512dp.png" 
+                  alt="Google Meet"
+                  sx={{ width: 20, height: 20, mr: 1 }}
+                >
+                  <VideocamIcon fontSize="small" />
+                </Avatar>
+                <Button 
+                  variant="contained" 
+                  href={meetLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ 
+                    bgcolor: '#1A73E8', 
+                    color: 'white',
+                    '&:hover': { bgcolor: '#1557b0' },
+                    textTransform: 'none',
+                    px: 2
+                  }}
+                >
+                  Join with Google Meet
+                </Button>
+                <IconButton 
+                  size="small" 
+                  sx={{ ml: 1 }}
+                  onClick={() => copyToClipboard(meetLink.url)}
+                >
+                  <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 3, fontSize: '0.8rem' }}>
-                {meetingUrl}
+              <Typography variant="body2" color="text.secondary" sx={{ ml: 3 }}>
+                {meetLink.label}
               </Typography>
             </Box>
           )}
@@ -708,7 +742,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                   fontSize: '0.8rem' 
                 }}
               >
-                {phoneDetails}
+                {phoneDetails.number}{phoneDetails.pin ? ` PIN: ${phoneDetails.pin}` : ''}
               </Typography>
             </Box>
           )}
