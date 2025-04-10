@@ -16,7 +16,9 @@ import {
   Avatar,
   useMediaQuery,
   useTheme,
-  Tooltip
+  Tooltip,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +27,9 @@ import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SortIcon from '@mui/icons-material/Sort';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 
 // Type for the admin journal entry based on the API response
 interface AdminJournalEntry {
@@ -60,6 +65,7 @@ const AdminJournal: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isExtraSmall = useMediaQuery('(max-width:400px)');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -72,7 +78,8 @@ const AdminJournal: React.FC = () => {
     const userEmail = localStorage.getItem('userEmail');
     const isAdminUser = Boolean(userEmail && (
       userEmail === 'dc@operosus.com' || 
-      userEmail === 'as@operosus.com'
+      userEmail === 'as@operosus.com' ||
+      userEmail === 'kerry.operosus@gmail.com'
     ));
     
     // Redirect to dashboard if not an admin
@@ -98,7 +105,11 @@ const AdminJournal: React.FC = () => {
         }
         
         const data = await response.json();
-        setEntries(data);
+        // Sort entries based on current sort order
+        const sortedData = [...data].sort((a, b) => 
+          sortOrder === 'newest' ? b.id - a.id : a.id - b.id
+        );
+        setEntries(sortedData);
       } catch (err) {
         console.error('Error fetching admin journal entries:', err);
         setError('Failed to load admin journal entries. Please try again.');
@@ -108,7 +119,7 @@ const AdminJournal: React.FC = () => {
     };
     
     fetchAdminEntries();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, sortOrder]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -174,6 +185,17 @@ const AdminJournal: React.FC = () => {
     setPage(0);
   }, [entries.length]);
 
+  // Handle sort order change
+  const handleSortOrderChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newSortOrder: 'newest' | 'oldest' | null,
+  ) => {
+    if (newSortOrder !== null) {
+      setSortOrder(newSortOrder);
+      setPage(0); // Reset to first page when changing sort order
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box sx={{ 
@@ -210,6 +232,42 @@ const AdminJournal: React.FC = () => {
       </Box>
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body2" sx={{ mr: 1, fontFamily: 'Poppins', color: 'text.secondary' }}>
+              Sort by:
+            </Typography>
+            <ToggleButtonGroup
+              value={sortOrder}
+              exclusive
+              onChange={handleSortOrderChange}
+              aria-label="sort order"
+              size="small"
+            >
+              <ToggleButton value="newest" aria-label="newest first">
+                <Tooltip title="Newest first">
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ArrowDownwardIcon fontSize="small" sx={{ mr: 0.5 }} />
+                    <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, fontFamily: 'Poppins' }}>
+                      Newest
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value="oldest" aria-label="oldest first">
+                <Tooltip title="Oldest first">
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ArrowUpwardIcon fontSize="small" sx={{ mr: 0.5 }} />
+                    <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, fontFamily: 'Poppins' }}>
+                      Oldest
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </Box>
+
         {loading ? (
           <Box sx={{ 
             height: 200, 
