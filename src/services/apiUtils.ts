@@ -5,7 +5,7 @@ import { checkAuthState } from './authService';
 const API_BASE_URL = 'https://app2.operosus.com';
 
 export interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: any;
   timeoutMs?: number;
 }

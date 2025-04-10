@@ -151,7 +151,7 @@ export const updateGoogleTaskList = async (
 ): Promise<GoogleTaskList | null> => {
   try {
     const response = await apiRequest<{ status: string; data: { taskList: GoogleTaskList } }>(`/api/google/tasklists/${taskListId}`, {
-      method: 'PUT',
+      method: 'POST',
       body: { title }
     });
     
