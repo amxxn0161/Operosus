@@ -452,9 +452,9 @@ export const createCalendarEvent = async (calendarId: string, event: Omit<Calend
       console.log('No attendees provided for this event');
     }
 
-    console.log('Final request body for API:', JSON.stringify(requestBody, null, 2));
+    console.log(`Final request body for API (${new Date().toISOString()}):`, JSON.stringify(requestBody, null, 2));
 
-    const response = await apiRequest<any>(`/calendar/${calendarId}/events`, {
+    const response = await apiRequest<any>(`/api/calendar/events`, {
       method: 'POST',
       body: requestBody,
     });
@@ -483,7 +483,27 @@ export const updateCalendarEvent = async (
   }
 ): Promise<CalendarEvent | null> => {
   try {
-    console.log(`Updating calendar event with ID: ${eventId}`, updatedFields);
+    console.log(`Updating calendar event with ID: ${eventId}`, JSON.stringify(updatedFields, null, 2));
+    
+    // Add detailed logging for date/time values
+    if (updatedFields.start) {
+      console.log('START TIME INPUT VALUES:');
+      console.log('Original ISO string:', updatedFields.start);
+      console.log('Parsed Date object:', new Date(updatedFields.start));
+      console.log('Local string representation:', new Date(updatedFields.start).toString());
+      console.log('Local time format:', new Date(updatedFields.start).toLocaleTimeString());
+      console.log('UTC ISO string from Date object:', new Date(updatedFields.start).toISOString());
+    }
+    
+    if (updatedFields.end) {
+      console.log('END TIME INPUT VALUES:');
+      console.log('Original ISO string:', updatedFields.end);
+      console.log('Parsed Date object:', new Date(updatedFields.end));
+      console.log('Local string representation:', new Date(updatedFields.end).toString());
+      console.log('Local time format:', new Date(updatedFields.end).toLocaleTimeString());
+      console.log('UTC ISO string from Date object:', new Date(updatedFields.end).toISOString());
+    }
+    
     if (attendeeOperations) {
       console.log('With attendee operations:', JSON.stringify(attendeeOperations, null, 2));
     }
@@ -511,35 +531,73 @@ export const updateCalendarEvent = async (
       requestBody.location = updatedFields.location;
     }
     
-    // For start and end times, we need to use a simpler format that PHP can convert to Google Calendar types
+    // Use a structure that matches what the Google Calendar API expects
     if (updatedFields.start) {
-      // For all-day events, just send a simple date string
       if (updatedFields.isAllDay) {
+        // For all-day events
         const startDate = new Date(updatedFields.start);
-        const dateString = startDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-        requestBody.start_date = dateString; // Use a flattened format
-        requestBody.is_all_day = true;
+        const dateString = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        // Use nested object structure as expected by Google Calendar API
+        requestBody.start = {
+          date: dateString,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
       } else {
-        // For regular events, send the ISO string directly
-        requestBody.start_datetime = new Date(updatedFields.start).toISOString();
+        // For regular events with time
+        const inputStart = new Date(updatedFields.start);
+        
+        // Format date manually to preserve local time
+        const year = inputStart.getFullYear();
+        const month = String(inputStart.getMonth() + 1).padStart(2, '0');
+        const day = String(inputStart.getDate()).padStart(2, '0');
+        const hours = String(inputStart.getHours()).padStart(2, '0');
+        const minutes = String(inputStart.getMinutes()).padStart(2, '0');
+        
+        // Use nested object structure with proper property names as expected by Google Calendar API
+        requestBody.start = {
+          dateTime: `${year}-${month}-${day}T${hours}:${minutes}:00`,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
+        
+        console.log('START TIME CONVERSION:');
+        console.log('Input Date Object:', inputStart);
+        console.log('Structured for API:', requestBody.start);
       }
     }
     
     if (updatedFields.end) {
-      // For all-day events, just send a simple date string
       if (updatedFields.isAllDay) {
+        // For all-day events
         const endDate = new Date(updatedFields.end);
-        const dateString = endDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-        requestBody.end_date = dateString; // Use a flattened format
+        const dateString = endDate.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        // Use nested object structure as expected by Google Calendar API
+        requestBody.end = {
+          date: dateString,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
       } else {
-        // For regular events, send the ISO string directly
-        requestBody.end_datetime = new Date(updatedFields.end).toISOString();
+        // For regular events with time
+        const inputEnd = new Date(updatedFields.end);
+        
+        // Format date manually to preserve local time
+        const year = inputEnd.getFullYear();
+        const month = String(inputEnd.getMonth() + 1).padStart(2, '0');
+        const day = String(inputEnd.getDate()).padStart(2, '0');
+        const hours = String(inputEnd.getHours()).padStart(2, '0');
+        const minutes = String(inputEnd.getMinutes()).padStart(2, '0');
+        
+        // Use nested object structure with proper property names as expected by Google Calendar API
+        requestBody.end = {
+          dateTime: `${year}-${month}-${day}T${hours}:${minutes}:00`,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        };
+        
+        console.log('END TIME CONVERSION:');
+        console.log('Input Date Object:', inputEnd);
+        console.log('Structured for API:', requestBody.end);
       }
-    }
-    
-    // Include timezone if needed for non-all-day events
-    if ((updatedFields.start || updatedFields.end) && !updatedFields.isAllDay) {
-      requestBody.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     }
     
     // Include visibility if it's being updated
@@ -580,7 +638,7 @@ export const updateCalendarEvent = async (
         JSON.stringify(requestBody.attendeeOperations, null, 2));
     }
     
-    console.log('Sending update request with body:', JSON.stringify(requestBody, null, 2));
+    console.log(`Final request body for API (${new Date().toISOString()}):`, JSON.stringify(requestBody, null, 2));
     
     // Make the API request
     const response = await apiRequest<any>(url, {

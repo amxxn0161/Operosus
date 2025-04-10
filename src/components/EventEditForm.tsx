@@ -177,6 +177,15 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
         // Log the event ID to confirm we're updating the correct event
         console.log(`Updating event with ID: ${event.id}`);
         
+        // Log date/time values
+        console.log('FORM VALUES BEING SENT:');
+        console.log('startDateTime (Date object):', startDateTime);
+        console.log('startDateTime (ISO string):', startDateTime?.toISOString());
+        console.log('startDateTime (local string):', startDateTime?.toString());
+        console.log('endDateTime (Date object):', endDateTime);
+        console.log('endDateTime (ISO string):', endDateTime?.toISOString());
+        console.log('endDateTime (local string):', endDateTime?.toString());
+        
         // Update existing event
         await updateEvent(event.id, {
           title,
