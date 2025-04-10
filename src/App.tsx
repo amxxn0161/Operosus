@@ -8,19 +8,19 @@ import '@fontsource/poppins/700.css';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { JournalProvider } from './contexts/JournalContext';
-import { TaskProvider } from './contexts/TaskContext';
 import { CalendarProvider } from './contexts/CalendarContext';
 import { AIAssistantProvider } from './contexts/AIAssistantContext';
+import { GoogleTasksProvider } from './contexts/GoogleTasksContext';
 import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Journal from './pages/Journal';
 import EntryDetail from './pages/EntryDetail';
 import Worksheet from './pages/Worksheet';
-import Tasks from './pages/Tasks';
 import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
 import AdminJournal from './pages/AdminJournal';
+import GoogleTasks from './pages/GoogleTasks';
 import Layout from './components/Layout';
 import MockDataToggle from './components/MockDataToggle';
 import AIAssistant from './components/AIAssistant';
@@ -232,9 +232,9 @@ const App: React.FC = () => {
       <CssBaseline />
       <AuthProvider>
         <JournalProvider>
-          <TaskProvider>
-            <CalendarProvider>
-              <AIAssistantProvider>
+          <CalendarProvider>
+            <AIAssistantProvider>
+              <GoogleTasksProvider>
                 <Router>
                   <Routes>
                     <Route path="/login" element={<Login />} />
@@ -242,11 +242,6 @@ const App: React.FC = () => {
                       <Route index element={<Navigate replace to="/dashboard" />} />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/journal" element={<Journal />} />
-                      <Route path="/tasks" element={
-                        <ProtectedRoute>
-                          <Tasks />
-                        </ProtectedRoute>
-                      } />
                       <Route path="/entry/:entryId" element={
                         <ProtectedRoute>
                           <EntryDetail />
@@ -262,6 +257,11 @@ const App: React.FC = () => {
                           <AllEntries />
                         </ProtectedRoute>
                       } />
+                      <Route path="/google-tasks" element={
+                        <ProtectedRoute>
+                          <GoogleTasks />
+                        </ProtectedRoute>
+                      } />
                       <Route path="/diagnostic" element={<DiagnosticPage />} />
                       <Route path="/admin-journal" element={
                         <ProtectedRoute>
@@ -273,9 +273,9 @@ const App: React.FC = () => {
                   {/* AI Assistant is available globally */}
                   <AIAssistant />
                 </Router>
-              </AIAssistantProvider>
-            </CalendarProvider>
-          </TaskProvider>
+              </GoogleTasksProvider>
+            </AIAssistantProvider>
+          </CalendarProvider>
         </JournalProvider>
       </AuthProvider>
     </ThemeProvider>

@@ -24,8 +24,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
-import { useTask } from '../contexts/TaskContext';
-import { useMockData as useTaskMockData } from '../services/taskService';
+import { useCalendar } from '../contexts/CalendarContext';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
 import { JournalEntry } from '../services/journalService';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -33,7 +33,6 @@ import CoffeeIcon from '@mui/icons-material/Coffee';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 import { 
   LineChart, 
   Line, 
@@ -51,9 +50,7 @@ import {
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import CalendarView from '../components/CalendarView';
-import { useCalendar } from '../contexts/CalendarContext';
 import AIWelcomeNotification from '../components/AIWelcomeNotification';
-import { useAIAssistant } from '../contexts/AIAssistantContext';
 
 // Dummy data for initial display
 const initialStats = {
@@ -77,7 +74,6 @@ interface DistractionData {
 const Dashboard: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
-  const { tasks, loading: tasksLoading, error: tasksError, refreshTasks } = useTask();
   const { events, isConnected, connectCalendar } = useCalendar();
   const { updateScreenContext } = useAIAssistant();
   const navigate = useNavigate();
@@ -305,8 +301,7 @@ const Dashboard: React.FC = () => {
         recentEntries: entries.slice(0, 3).map(entry => ({
           date: entry.date,
           productivityScore: entry.productivityScore
-        })),
-        pendingTasks: tasks ? tasks.filter(task => !task.completed).length : 0
+        }))
       };
       
       updateScreenContext({
@@ -323,7 +318,7 @@ const Dashboard: React.FC = () => {
         currentData: { noData: true, suggestJournalEntry: true }
       });
     }
-  }, [entries, tasks, updateScreenContext]);
+  }, [entries, updateScreenContext]);
 
   const processDistractionData = (journalEntries: JournalEntry[]) => {
     // Create a counter for distractions
@@ -475,8 +470,7 @@ const Dashboard: React.FC = () => {
     setIsRefreshing(true);
     try {
       await Promise.all([
-        refreshEntries(),
-        refreshTasks()
+        refreshEntries()
       ]);
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -1039,261 +1033,6 @@ const Dashboard: React.FC = () => {
                     )}
                   </Paper>
                 </Grid>
- 
-                {/* Task Progress section - hidden for now */}
-                {/* <Grid item xs={12}>
-                  <Paper
-                    sx={{
-                      p: 4,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      height: 'fit-content',
-                      bgcolor: 'white',
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                      <AssignmentIcon sx={{ mr: 1.5, color: 'primary.main', fontSize: 28 }} />
-                      <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                        Task Progress
-                      </Typography>
-                      {useTaskMockData && (
-                        <Chip 
-                          label="Sample Data" 
-                          size="small" 
-                          color="primary" 
-                          variant="outlined" 
-                          sx={{ fontSize: '0.7rem', ml: 2 }}
-                        />
-                      )}
-                    </Box>
-                    {tasksLoading ? (
-                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
-                        <CircularProgress />
-                      </Box>
-                    ) : tasksError ? (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column',
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        py: 2 
-                      }}>
-                        <Typography variant="body1" color="error" sx={{ mb: 1 }}>
-                          Error loading tasks
-                        </Typography>
-                        <Button 
-                          onClick={refreshTasks}
-                          variant="outlined"
-                          size="small"
-                        >
-                          Retry
-                        </Button>
-                      </Box>
-                    ) : tasks.length > 0 ? (
-                      <>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                          <Box sx={{ position: 'relative', display: 'inline-flex', mr: 3 }}>
-                            <CircularProgress
-                              variant="determinate"
-                              value={tasks.length > 0 ? (tasks.filter(t => t.completed === 1).length / tasks.length) * 100 : 0}
-                              size={110}
-                              thickness={4}
-                              sx={{ color: 'primary.main' }}
-                            />
-                            <Box
-                              sx={{
-                                top: 0,
-                                left: 0,
-                                bottom: 0,
-                                right: 0,
-                                position: 'absolute',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <Typography 
-                                variant="h5" 
-                                component="div" 
-                                sx={{ 
-                                  fontWeight: 'bold',
-                                  fontFamily: 'Poppins',
-                                  color: 'primary.main'
-                                }}
-                              >
-                                {tasks.length > 0 ? Math.round((tasks.filter(t => t.completed === 1).length / tasks.length) * 100) : 0}%
-                              </Typography>
-                            </Box>
-                          </Box>
-                          <Box>
-                            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins', mb: 0.5 }}>
-                              Completed Tasks
-                            </Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-                              {tasks.filter(t => t.completed === 1).length}/{tasks.length}
-                            </Typography>
-                          </Box>
-                        </Box>
-                        <Box sx={{ flexGrow: 1, mt: 1, mb: 1 }}>
-                          <List sx={{ py: 1 }}>
-                            {tasks.slice(0, 3).map((task) => (
-                              <ListItem key={task.id} sx={{ px: 0, py: 1.5 }}>
-                                <ListItemIcon sx={{ minWidth: 40 }}>
-                                  <CheckCircleOutlineIcon
-                                    sx={{
-                                      color: task.completed === 1 ? 'primary.main' : 'text.disabled',
-                                      fontSize: 24,
-                                    }}
-                                  />
-                                </ListItemIcon>
-                                <ListItemText 
-                                  primary={
-                                    <Typography
-                                      variant="body1"
-                                      sx={{ 
-                                        fontFamily: 'Poppins',
-                                        fontSize: '1rem',
-                                        textDecoration: task.completed === 1 ? 'line-through' : 'none',
-                                        color: task.completed === 1 ? 'text.secondary' : 'text.primary',
-                                      }}
-                                    >
-                                      {task.title}
-                                    </Typography>
-                                  }
-                                />
-                              </ListItem>
-                            ))}
-                          </List>
-                          {tasks.length > 3 && (
-                            <Button
-                              onClick={() => navigate('/tasks')}
-                              sx={{ 
-                                mt: 1,
-                                color: 'primary.main',
-                                fontFamily: 'Poppins',
-                                textTransform: 'none',
-                                fontWeight: 'medium'
-                              }}
-                            >
-                              View all tasks
-                            </Button>
-                          )}
-                        </Box>
-                      </>
-                    ) : (
-                      <>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          justifyContent: 'center',
-                          mb: 4,
-                          mt: 2
-                        }}>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center',
-                            mr: 5
-                          }}>
-                            <Typography 
-                              variant="h4" 
-                              sx={{ 
-                                fontWeight: 'bold',
-                                fontFamily: 'Poppins',
-                                color: 'primary.main',
-                                textAlign: 'center'
-                              }}
-                            >
-                              0%
-                            </Typography>
-                            <Typography 
-                              variant="body1" 
-                              color="text.secondary" 
-                              sx={{ 
-                                fontFamily: 'Poppins', 
-                                textAlign: 'center',
-                                mt: 0.5
-                              }}
-                            >
-                              Progress
-                            </Typography>
-                          </Box>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center'
-                          }}>
-                            <Typography 
-                              variant="h4" 
-                              sx={{ 
-                                fontWeight: 'bold',
-                                fontFamily: 'Poppins',
-                                color: 'text.primary',
-                                textAlign: 'center'
-                              }}
-                            >
-                              0/0
-                            </Typography>
-                            <Typography 
-                              variant="body1" 
-                              color="text.secondary" 
-                              sx={{ 
-                                fontFamily: 'Poppins', 
-                                textAlign: 'center',
-                                mt: 0.5
-                              }}
-                            >
-                              Completed Tasks
-                            </Typography>
-                          </Box>
-                        </Box>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center', 
-                          justifyContent: 'center',
-                          pt: 1,
-                          pb: 3
-                        }}>
-                          <Box sx={{ 
-                            color: '#1056F5', 
-                            opacity: 0.7, 
-                            mb: 1.5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}>
-                            <AssignmentIcon sx={{ fontSize: 48 }} />
-                          </Box>
-                          <Typography 
-                            color="text.secondary" 
-                            sx={{ 
-                              textAlign: 'center',
-                              fontFamily: 'Poppins',
-                              mb: 2
-                            }}
-                          >
-                            No tasks added yet
-                          </Typography>
-                          <Button 
-                            variant="outlined"
-                            size="small"
-                            startIcon={<AddIcon />}
-                            onClick={() => navigate('/tasks')}
-                            sx={{ 
-                              color: '#1056F5',
-                              borderColor: '#1056F5',
-                              fontFamily: 'Poppins',
-                              textTransform: 'none'
-                            }}
-                          >
-                            Add a Task
-                          </Button>
-                        </Box>
-                      </>
-                    )}
-                  </Paper>
-                </Grid> */}
               </Grid>
             </Grid>
           </Grid>

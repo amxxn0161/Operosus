@@ -203,6 +203,24 @@ const Header: React.FC = () => {
           />
         </ListItemButton>
         
+        <ListItemButton 
+          onClick={() => handleNavigation('/google-tasks')}
+          selected={isActive('/google-tasks')}
+          sx={{ 
+            py: 1.5,
+            bgcolor: isActive('/google-tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+          }}
+        >
+          <AssignmentIcon sx={{ mr: 2, color: isActive('/google-tasks') ? 'primary.main' : 'text.secondary' }} />
+          <ListItemText 
+            primary="Google Tasks" 
+            primaryTypographyProps={{
+              fontWeight: 'bold',
+              color: isActive('/google-tasks') ? 'primary.main' : 'text.primary'
+            }}
+          />
+        </ListItemButton>
+        
         {/* Admin Journal Button - only shown for admins */}
         {isAdmin && (
           <ListItemButton 
@@ -372,6 +390,20 @@ const Header: React.FC = () => {
                   }}
                 >
                   Daily Journal
+                </Button>
+                <Button 
+                  component={Link}
+                  to="/google-tasks"
+                  sx={{ 
+                    fontFamily: 'Poppins',
+                    textTransform: 'none',
+                    color: '#333',
+                    fontSize: '1rem',
+                    mx: 1,
+                    fontWeight: isActive('/google-tasks') ? 'bold' : 'normal'
+                  }}
+                >
+                  Google Tasks
                 </Button>
                 {/* Admin Journal Button - only shown to admin users */}
                 {isAdmin && (

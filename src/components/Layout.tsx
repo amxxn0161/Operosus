@@ -14,7 +14,6 @@ const Layout: React.FC = () => {
     const pathToComponent: {[key: string]: string} = {
       '/dashboard': 'Dashboard',
       '/journal': 'Journal',
-      '/tasks': 'Tasks',
       '/all-entries': 'All Entries',
       '/entry': 'Entry Detail',
       '/worksheet': 'Worksheet',
