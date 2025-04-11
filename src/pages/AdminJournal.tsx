@@ -16,7 +16,8 @@ import {
   Avatar,
   useMediaQuery,
   useTheme,
-  Tooltip
+  Tooltip,
+  IconButton
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +26,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 
 // Type for the admin journal entry based on the API response
 interface AdminJournalEntry {
@@ -57,6 +60,7 @@ const AdminJournal: React.FC = () => {
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isExtraSmall = useMediaQuery('(max-width:400px)');
@@ -173,6 +177,20 @@ const AdminJournal: React.FC = () => {
     setPage(0);
   }, [entries.length]);
 
+  // Function to sort entries by date
+  const getSortedEntries = () => {
+    return [...entries].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+  };
+
+  // Toggle sort order
+  const toggleSortOrder = () => {
+    setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest');
+  };
+
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box sx={{ 
@@ -194,18 +212,20 @@ const AdminJournal: React.FC = () => {
         >
           Admin Journal Entries
         </Typography>
-        <Button 
-          variant="outlined"
-          onClick={() => navigate('/dashboard')}
-          startIcon={<ArrowBackIcon />}
-          sx={{ 
-            fontFamily: 'Poppins', 
-            textTransform: 'none',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          Back to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/dashboard')}
+            startIcon={<ArrowBackIcon />}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
@@ -247,7 +267,27 @@ const AdminJournal: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>USER</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
+                    <TableCell 
+                      onClick={toggleSortOrder}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontWeight: 'medium', 
+                        color: '#666',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': {
+                          color: '#1056F5'
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        DATE
+                        {sortOrder === 'newest' ? 
+                          <ArrowDownwardIcon fontSize="small" sx={{ fontSize: '1rem' }} /> : 
+                          <ArrowUpwardIcon fontSize="small" sx={{ fontSize: '1rem' }} />
+                        }
+                      </Box>
+                    </TableCell>
                     <TableCell align="center" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
                     <TableCell align="center" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>MEETINGS</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS</TableCell>
@@ -257,7 +297,7 @@ const AdminJournal: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {entries
+                  {getSortedEntries()
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                     .map((entry, index) => (
                     <TableRow 
