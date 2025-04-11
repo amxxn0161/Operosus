@@ -28,7 +28,10 @@ import {
   Snackbar,
   Alert,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  ButtonGroup,
+  Popover,
+  Stack
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided } from 'react-beautiful-dnd';
 import { 
@@ -44,10 +47,15 @@ import {
   Sort as SortIcon,
   Check as CheckIcon,
   Refresh as RefreshIcon,
-  AssignmentOutlined as AssignmentOutlinedIcon
+  AssignmentOutlined as AssignmentOutlinedIcon,
+  Today as TodayIcon,
+  DateRange as DateRangeIcon,
+  Close as CloseIcon,
+  AccessTime as AccessTimeIcon,
+  Loop as LoopIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
-import { format, isValid, parseISO } from 'date-fns';
+import { format, isValid, parseISO, addDays } from 'date-fns';
 
 const GoogleTasks: React.FC = () => {
   const theme = useTheme();
@@ -92,6 +100,11 @@ const GoogleTasks: React.FC = () => {
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   
+  // Due date related state
+  const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
+  const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const datePickerOpen = Boolean(datePickerAnchorEl);
+
   // Initialize default task list ID when data loads
   useEffect(() => {
     if (taskLists.length > 0 && !newTaskListId) {
@@ -162,6 +175,7 @@ const GoogleTasks: React.FC = () => {
   const handleAddTaskClick = (taskListId: string) => {
     setNewTaskListId(taskListId);
     setNewTaskTitle('');
+    setNewTaskDueDate(null);
     setNewTaskDialogOpen(true);
   };
 
@@ -169,7 +183,16 @@ const GoogleTasks: React.FC = () => {
   const handleCreateTask = async () => {
     if (newTaskTitle.trim() && newTaskListId) {
       try {
-        const result = await createTask(newTaskListId, { title: newTaskTitle.trim() });
+        const taskData: { title: string; notes?: string; due?: string } = { 
+          title: newTaskTitle.trim() 
+        };
+        
+        // Add due date if it exists
+        if (newTaskDueDate) {
+          taskData.due = newTaskDueDate;
+        }
+        
+        const result = await createTask(newTaskListId, taskData);
         if (result) {
           setNewTaskDialogOpen(false);
           showSnackbar('Task created successfully', 'success');
@@ -367,6 +390,92 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Check if a date is overdue (in the past)
+  const isOverdue = (dateString?: string | null): boolean => {
+    if (!dateString) return false;
+    
+    try {
+      const dueDate = parseISO(dateString);
+      if (!isValid(dueDate)) return false;
+      
+      // Set due date to end of day for comparison
+      const dueDateEndOfDay = new Date(dueDate);
+      dueDateEndOfDay.setHours(23, 59, 59, 999);
+      
+      // Compare with current date
+      return dueDateEndOfDay < new Date();
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Handle date picker open
+  const handleDatePickerOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setDatePickerAnchorEl(event.currentTarget);
+  };
+  
+  // Handle date picker close
+  const handleDatePickerClose = () => {
+    setDatePickerAnchorEl(null);
+  };
+  
+  // Set task due date
+  const handleSetDueDate = (dueDate: Date | null) => {
+    if (dueDate) {
+      // Format date to RFC3339 as expected by the API
+      const isoDate = dueDate.toISOString();
+      setNewTaskDueDate(isoDate);
+    } else {
+      setNewTaskDueDate(null);
+    }
+    handleDatePickerClose();
+  };
+  
+  // Set today as due date
+  const handleSetToday = () => {
+    handleSetDueDate(new Date());
+  };
+  
+  // Set tomorrow as due date
+  const handleSetTomorrow = () => {
+    const tomorrow = addDays(new Date(), 1);
+    handleSetDueDate(tomorrow);
+  };
+  
+  // Clear due date
+  const handleClearDueDate = () => {
+    setNewTaskDueDate(null);
+  };
+
+  // Format date for display in a concise way
+  const formatDisplayDate = (dateString?: string | null) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = parseISO(dateString);
+      if (!isValid(date)) return '';
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const dateToCheck = new Date(date);
+      dateToCheck.setHours(0, 0, 0, 0);
+      
+      if (dateToCheck.getTime() === today.getTime()) {
+        return 'Today';
+      } else if (dateToCheck.getTime() === tomorrow.getTime()) {
+        return 'Tomorrow';
+      } else {
+        return format(date, 'MMM d, yyyy');
+      }
+    } catch (e) {
+      return '';
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -489,7 +598,13 @@ const GoogleTasks: React.FC = () => {
                         }
                         secondary={
                           task.due && (
-                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                fontFamily: 'Poppins',
+                                color: isOverdue(task.due) ? 'error.main' : 'text.secondary'
+                              }}
+                            >
                               Due: {formatDate(task.due)}
                             </Typography>
                           )
@@ -611,7 +726,13 @@ const GoogleTasks: React.FC = () => {
                                       }
                                       secondary={
                                         task.due && (
-                                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                          <Typography 
+                                            variant="caption" 
+                                            sx={{ 
+                                              fontFamily: 'Poppins',
+                                              color: isOverdue(task.due) ? 'error.main' : 'text.secondary'
+                                            }}
+                                          >
                                             Due: {formatDate(task.due)}
                                           </Typography>
                                         )
@@ -892,6 +1013,118 @@ const GoogleTasks: React.FC = () => {
             onChange={(e) => setNewTaskTitle(e.target.value)}
             sx={{ mb: 2 }}
           />
+          
+          {/* Date selection options */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 1 }}>
+            {newTaskDueDate ? (
+              <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
+                <Button startIcon={<DateRangeIcon />}>
+                  {formatDisplayDate(newTaskDueDate)}
+                </Button>
+                <Button onClick={handleClearDueDate} sx={{ p: 0, minWidth: '30px' }}>
+                  <CloseIcon fontSize="small" />
+                </Button>
+              </ButtonGroup>
+            ) : (
+              <ButtonGroup variant="outlined" size="small">
+                <Button onClick={handleSetToday}>Today</Button>
+                <Button onClick={handleSetTomorrow}>Tomorrow</Button>
+                <Button onClick={handleDatePickerOpen}><DateRangeIcon fontSize="small" /></Button>
+              </ButtonGroup>
+            )}
+          </Box>
+          
+          {/* Date picker popover */}
+          <Popover
+            open={datePickerOpen}
+            anchorEl={datePickerAnchorEl}
+            onClose={handleDatePickerClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+          >
+            <Stack spacing={2} sx={{ p: 2, width: 300 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                April 2025
+              </Typography>
+              
+              <Grid container spacing={1}>
+                {/* Calendar days header */}
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                  <Grid item key={index} xs={12/7} sx={{ textAlign: 'center' }}>
+                    <Typography variant="body2">{day}</Typography>
+                  </Grid>
+                ))}
+                
+                {/* Example calendar days - in a real implementation, these would be generated */}
+                {[...Array(35)].map((_, index) => {
+                  const day = index - 2; // Adjust for month start day offset
+                  return (
+                    <Grid item xs={12/7} key={index} sx={{ textAlign: 'center' }}>
+                      {day > 0 && day <= 30 && (
+                        <IconButton 
+                          size="small" 
+                          sx={{ 
+                            borderRadius: '50%',
+                            width: 32, 
+                            height: 32,
+                            ...(day === 11 && { 
+                              bgcolor: 'primary.main',
+                              color: 'white',
+                              '&:hover': { bgcolor: 'primary.dark' }
+                            })
+                          }}
+                          onClick={() => {
+                            const date = new Date(2025, 3, day); // April 2025
+                            handleSetDueDate(date);
+                          }}
+                        >
+                          <Typography variant="body2">{day}</Typography>
+                        </IconButton>
+                      )}
+                    </Grid>
+                  );
+                })}
+              </Grid>
+              
+              <Divider />
+              
+              <Stack direction="row" spacing={1} alignItems="center">
+                <AccessTimeIcon fontSize="small" color="action" />
+                <Button 
+                  variant="text" 
+                  fullWidth 
+                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                >
+                  Set time
+                </Button>
+              </Stack>
+              
+              <Stack direction="row" spacing={1} alignItems="center">
+                <LoopIcon fontSize="small" color="action" />
+                <Button 
+                  variant="text" 
+                  fullWidth 
+                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                >
+                  Repeat
+                </Button>
+              </Stack>
+              
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                <Button onClick={handleDatePickerClose}>Cancel</Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleDatePickerClose}
+                  sx={{ bgcolor: 'primary.main' }}
+                >
+                  Done
+                </Button>
+              </Box>
+            </Stack>
+          </Popover>
+          
           {taskLists.length > 1 && (
             <TextField
               select
