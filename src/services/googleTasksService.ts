@@ -96,11 +96,17 @@ export const updateGoogleTask = async (
 // Delete a task
 export const deleteGoogleTask = async (taskListId: string, taskId: string): Promise<boolean> => {
   try {
-    await apiRequest<{ status: string }>(`/api/google/tasks/${taskListId}/tasks/${taskId}`, {
+    const response = await apiRequest<{ status: string }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
       method: 'DELETE'
     });
     
-    return true;
+    // Check if the request was successful
+    if (response.status === 'success') {
+      return true;
+    }
+    
+    console.warn('Delete task request failed:', response);
+    return false;
   } catch (error) {
     console.error('Failed to delete Google Task:', error);
     throw error;
