@@ -45,13 +45,13 @@ export const createGoogleTask = async (
   task: { title: string; notes?: string; due?: string; }
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { task: GoogleTask } }>(`/api/google/tasks/${taskListId}/tasks`, {
+    const response = await apiRequest<{ status: string; task: GoogleTask }>(`/api/google/tasklists/${taskListId}/tasks`, {
       method: 'POST',
       body: task
     });
     
-    if (response.status === 'success' && response.data && response.data.task) {
-      return response.data.task;
+    if (response.status === 'success' && response.task) {
+      return response.task;
     }
     
     return null;
@@ -68,13 +68,13 @@ export const updateGoogleTask = async (
   updates: Partial<GoogleTask>
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { task: GoogleTask } }>(`/api/google/tasks/${taskListId}/tasks/${taskId}`, {
+    const response = await apiRequest<{ status: string; task: GoogleTask }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
       method: 'PUT',
       body: updates
     });
     
-    if (response.status === 'success' && response.data && response.data.task) {
-      return response.data.task;
+    if (response.status === 'success' && response.task) {
+      return response.task;
     }
     
     return null;
@@ -87,7 +87,7 @@ export const updateGoogleTask = async (
 // Delete a task
 export const deleteGoogleTask = async (taskListId: string, taskId: string): Promise<boolean> => {
   try {
-    await apiRequest<{ status: string }>(`/api/google/tasks/${taskListId}/tasks/${taskId}`, {
+    await apiRequest<{ status: string }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
       method: 'DELETE'
     });
     
@@ -105,7 +105,7 @@ export const moveGoogleTask = async (
   taskId: string
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { task: GoogleTask } }>(`/api/google/tasks/move`, {
+    const response = await apiRequest<{ status: string; task: GoogleTask }>(`/api/google/tasklists/move`, {
       method: 'POST',
       body: {
         sourceTaskListId,
@@ -114,8 +114,8 @@ export const moveGoogleTask = async (
       }
     });
     
-    if (response.status === 'success' && response.data && response.data.task) {
-      return response.data.task;
+    if (response.status === 'success' && response.task) {
+      return response.task;
     }
     
     return null;
@@ -183,7 +183,7 @@ export const deleteGoogleTaskList = async (taskListId: string): Promise<boolean>
 // Clear completed tasks from a task list
 export const clearCompletedTasks = async (taskListId: string): Promise<boolean> => {
   try {
-    await apiRequest<{ status: string }>(`/api/google/tasks/${taskListId}/clear`, {
+    await apiRequest<{ status: string }>(`/api/google/tasklists/${taskListId}/clear`, {
       method: 'POST'
     });
     
