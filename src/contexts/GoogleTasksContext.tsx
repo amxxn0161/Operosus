@@ -251,22 +251,42 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   ): Promise<EnhancedGoogleTask | null> => {
     try {
       setError(null);
-      const movedTask = await moveGoogleTask(sourceTaskListId, targetTaskListId, taskId);
+      
+      // Find the original task to get its properties
+      let originalTask: EnhancedGoogleTask | undefined;
+      taskLists.forEach(list => {
+        if (list.id === sourceTaskListId) {
+          const task = list.tasks.find(t => t.id === taskId);
+          if (task) originalTask = task;
+        }
+      });
+
+      // If we can't find the task, return null
+      if (!originalTask) {
+        console.error("Could not find original task to move");
+        return null;
+      }
+      
+      // Create task data to send to the API
+      const taskData = {
+        title: originalTask.title,
+        status: originalTask.status,
+        notes: originalTask.notes,
+        due: originalTask.due
+      };
+      
+      const movedTask = await moveGoogleTask(
+        sourceTaskListId, 
+        targetTaskListId, 
+        taskId,
+        taskData
+      );
       
       if (movedTask) {
-        // Find the original task to preserve local properties
-        let originalTask: EnhancedGoogleTask | undefined;
-        taskLists.forEach(list => {
-          if (list.id === sourceTaskListId) {
-            const task = list.tasks.find(t => t.id === taskId);
-            if (task) originalTask = task;
-          }
-        });
-        
         // Create enhanced task with preserved local properties
         const enhancedTask: EnhancedGoogleTask = {
           ...movedTask,
-          starred: originalTask?.starred || false
+          starred: originalTask.starred || false
         };
         
         // Update state by removing from source and adding to target
@@ -283,7 +303,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
         );
         
         // Update starred tasks if the task is starred
-        if (originalTask?.starred) {
+        if (originalTask.starred) {
           updateStarredTasks(
             taskLists.map(list => {
               if (list.id === sourceTaskListId) {

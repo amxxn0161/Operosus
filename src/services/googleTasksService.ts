@@ -77,13 +77,22 @@ export const updateGoogleTask = async (
   updates: Partial<GoogleTask>
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { task: GoogleTask } }>(`/api/google/tasks/${taskListId}/tasks/${taskId}`, {
+    const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
       method: 'PUT',
       body: updates
     });
     
-    if (response.status === 'success' && response.data && response.data.task) {
-      return response.data.task;
+    // Check for both response formats
+    if (response.status === 'success') {
+      // If task is directly in the response
+      if (response.task) {
+        return response.task;
+      }
+      // If task is nested in data.task (original format)
+      if (response.data && response.data.task) {
+        return response.data.task;
+      }
+      console.warn('Task updated successfully but unexpected response format:', response);
     }
     
     return null;
@@ -117,23 +126,60 @@ export const deleteGoogleTask = async (taskListId: string, taskId: string): Prom
 export const moveGoogleTask = async (
   sourceTaskListId: string, 
   targetTaskListId: string, 
-  taskId: string
+  taskId: string,
+  taskData?: {
+    title: string;
+    status: string;
+    notes?: string;
+    due?: string;
+  }
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { task: GoogleTask } }>(`/api/google/tasks/move`, {
+    // Check if we have the task data needed to create a copy
+    if (!taskData || !taskData.title) {
+      console.error('Cannot move task: missing task data');
+      return null;
+    }
+    
+    // Step 1: Create a new task with the same data in the target list
+    const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${targetTaskListId}/tasks`, {
       method: 'POST',
       body: {
-        sourceTaskListId,
-        targetTaskListId,
-        taskId
+        title: taskData.title,
+        status: taskData.status,
+        notes: taskData.notes,
+        due: taskData.due
       }
     });
     
-    if (response.status === 'success' && response.data && response.data.task) {
-      return response.data.task;
+    let newTask: GoogleTask | null = null;
+    
+    // Check for both response formats for the new task
+    if (newTaskResponse.status === 'success') {
+      if (newTaskResponse.task) {
+        newTask = newTaskResponse.task;
+      } else if (newTaskResponse.data && newTaskResponse.data.task) {
+        newTask = newTaskResponse.data.task;
+      } else {
+        console.warn('Task creation successful but unexpected response format:', newTaskResponse);
+        return null;
+      }
+    } else {
+      console.error('Failed to create task in target list:', newTaskResponse);
+      return null;
     }
     
-    return null;
+    // Step 2: Delete the original task
+    const deleteResponse = await apiRequest<{ status: string }>(`/api/google/tasklists/${sourceTaskListId}/tasks/${taskId}`, {
+      method: 'DELETE'
+    });
+    
+    if (deleteResponse.status !== 'success') {
+      console.warn('Created new task, but failed to delete original task:', deleteResponse);
+      // We still return the new task since the move was partially successful
+    }
+    
+    return newTask;
   } catch (error) {
     console.error('Failed to move Google Task:', error);
     throw error;
