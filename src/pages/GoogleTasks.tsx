@@ -52,7 +52,9 @@ import {
   DateRange as DateRangeIcon,
   Close as CloseIcon,
   AccessTime as AccessTimeIcon,
-  Loop as LoopIcon
+  Loop as LoopIcon,
+  CheckBox as CheckBoxIcon,
+  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -104,6 +106,19 @@ const GoogleTasks: React.FC = () => {
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
   const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLElement | null>(null);
   const datePickerOpen = Boolean(datePickerAnchorEl);
+
+  // Task menu state
+  const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedTask, setSelectedTask] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
+
+  // Task editing state
+  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState<boolean>(false);
+  const [editingTask, setEditingTask] = useState<{ taskListId: string; taskId: string; title: string; notes?: string; due?: string | null; status: string } | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState<string>('');
+  const [editTaskNotes, setEditTaskNotes] = useState<string>('');
+  const [editTaskDueDate, setEditTaskDueDate] = useState<string | null>(null);
+  const [editDatePickerAnchorEl, setEditDatePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const editDatePickerOpen = Boolean(editDatePickerAnchorEl);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -422,8 +437,12 @@ const GoogleTasks: React.FC = () => {
   // Set task due date
   const handleSetDueDate = (dueDate: Date | null) => {
     if (dueDate) {
+      // Fix timezone issue by setting time to noon of the selected day
+      const fixedDate = new Date(dueDate);
+      fixedDate.setHours(12, 0, 0, 0);
+      
       // Format date to RFC3339 as expected by the API
-      const isoDate = dueDate.toISOString();
+      const isoDate = fixedDate.toISOString();
       setNewTaskDueDate(isoDate);
     } else {
       setNewTaskDueDate(null);
@@ -474,6 +493,138 @@ const GoogleTasks: React.FC = () => {
     } catch (e) {
       return '';
     }
+  };
+
+  // Open task edit dialog
+  const handleTaskClick = (taskListId: string, task: EnhancedGoogleTask) => {
+    setEditingTask({
+      taskListId,
+      taskId: task.id,
+      title: task.title,
+      notes: task.notes || '',
+      due: task.due || null,
+      status: task.status
+    });
+    setEditTaskTitle(task.title);
+    setEditTaskNotes(task.notes || '');
+    setEditTaskDueDate(task.due || null);
+    setEditTaskDialogOpen(true);
+  };
+
+  // Open task options menu
+  const handleTaskMenuOpen = (event: React.MouseEvent<HTMLElement>, taskListId: string, task: EnhancedGoogleTask) => {
+    event.stopPropagation();
+    setTaskMenuAnchorEl(event.currentTarget);
+    setSelectedTask({ taskListId, task });
+  };
+
+  // Close task options menu
+  const handleTaskMenuClose = () => {
+    setTaskMenuAnchorEl(null);
+    setSelectedTask(null);
+  };
+
+  // Handle edit task from menu
+  const handleEditTaskFromMenu = () => {
+    if (selectedTask) {
+      handleTaskClick(selectedTask.taskListId, selectedTask.task);
+      handleTaskMenuClose();
+    }
+  };
+
+  // Handle delete task from menu
+  const handleDeleteTaskFromMenu = async () => {
+    if (selectedTask) {
+      try {
+        const result = await deleteTask(selectedTask.taskListId, selectedTask.task.id);
+        if (result) {
+          showSnackbar('Task deleted successfully', 'success');
+        } else {
+          showSnackbar('Failed to delete task', 'error');
+        }
+        handleTaskMenuClose();
+      } catch (err) {
+        showSnackbar('Error deleting task', 'error');
+      }
+    }
+  };
+
+  // Update an existing task
+  const handleUpdateTask = async () => {
+    if (editingTask && editTaskTitle.trim()) {
+      try {
+        const taskData: { 
+          title: string; 
+          notes?: string; 
+          due?: string;
+          status?: string;
+        } = { 
+          title: editTaskTitle.trim() 
+        };
+        
+        // Add notes if not empty
+        if (editTaskNotes.trim()) {
+          taskData.notes = editTaskNotes.trim();
+        }
+        
+        // Add due date if it exists
+        if (editTaskDueDate) {
+          taskData.due = editTaskDueDate;
+        }
+        
+        const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
+        if (result) {
+          setEditTaskDialogOpen(false);
+          showSnackbar('Task updated successfully', 'success');
+        } else {
+          showSnackbar('Failed to update task', 'error');
+        }
+      } catch (err) {
+        showSnackbar('Error updating task', 'error');
+      }
+    }
+  };
+
+  // Handle edit date picker open
+  const handleEditDatePickerOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setEditDatePickerAnchorEl(event.currentTarget);
+  };
+  
+  // Handle edit date picker close
+  const handleEditDatePickerClose = () => {
+    setEditDatePickerAnchorEl(null);
+  };
+  
+  // Set task due date in edit mode
+  const handleSetEditDueDate = (dueDate: Date | null) => {
+    if (dueDate) {
+      // Fix timezone issue by setting time to noon of the selected day
+      const fixedDate = new Date(dueDate);
+      fixedDate.setHours(12, 0, 0, 0);
+      
+      // Format date to RFC3339 as expected by the API
+      const isoDate = fixedDate.toISOString();
+      setEditTaskDueDate(isoDate);
+    } else {
+      setEditTaskDueDate(null);
+    }
+    handleEditDatePickerClose();
+  };
+  
+  // Set today as due date in edit mode
+  const handleSetEditToday = () => {
+    handleSetEditDueDate(new Date());
+  };
+  
+  // Set tomorrow as due date in edit mode
+  const handleSetEditTomorrow = () => {
+    const tomorrow = addDays(new Date(), 1);
+    handleSetEditDueDate(tomorrow);
+  };
+  
+  // Clear due date in edit mode
+  const handleClearEditDueDate = () => {
+    setEditTaskDueDate(null);
   };
 
   return (
@@ -577,7 +728,10 @@ const GoogleTasks: React.FC = () => {
                       <ListItemIcon sx={{ minWidth: '40px' }}>
                         <Checkbox
                           checked={task.status === 'completed'}
-                          onChange={() => taskList && handleToggleTaskComplete(taskList.id, task.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            taskList && handleToggleTaskComplete(taskList.id, task.id);
+                          }}
                           edge="start"
                           sx={{ 
                             color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
@@ -612,10 +766,20 @@ const GoogleTasks: React.FC = () => {
                       />
                       <IconButton
                         edge="end"
-                        onClick={() => taskList && handleToggleTaskStar(taskList.id, task.id)}
-                        sx={{ color: '#FFD700' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          taskList && handleToggleTaskStar(taskList.id, task.id);
+                        }}
+                        sx={{ color: '#FFD700', mr: 1 }}
                       >
                         <StarIcon />
+                      </IconButton>
+                      <IconButton
+                        edge="end"
+                        onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
+                        size="small"
+                      >
+                        <MoreVertIcon fontSize="small" />
                       </IconButton>
                     </ListItem>
                   );
@@ -705,7 +869,10 @@ const GoogleTasks: React.FC = () => {
                                     <ListItemIcon sx={{ minWidth: '40px' }}>
                                       <Checkbox
                                         checked={task.status === 'completed'}
-                                        onChange={() => handleToggleTaskComplete(taskList.id, task.id)}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleTaskComplete(taskList.id, task.id);
+                                        }}
                                         edge="start"
                                         sx={{ 
                                           color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
@@ -740,10 +907,20 @@ const GoogleTasks: React.FC = () => {
                                     />
                                     <IconButton
                                       edge="end"
-                                      onClick={() => handleToggleTaskStar(taskList.id, task.id)}
-                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleTaskStar(taskList.id, task.id);
+                                      }}
+                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
                                     >
                                       {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                    </IconButton>
+                                    <IconButton
+                                      edge="end"
+                                      onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
+                                      size="small"
+                                    >
+                                      <MoreVertIcon fontSize="small" />
                                     </IconButton>
                                   </ListItem>
                                 )}
@@ -817,7 +994,10 @@ const GoogleTasks: React.FC = () => {
                                   <ListItemIcon sx={{ minWidth: '40px' }}>
                                     <Checkbox
                                       checked={true}
-                                      onChange={() => handleToggleTaskComplete(taskList.id, task.id)}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleTaskComplete(taskList.id, task.id);
+                                      }}
                                       edge="start"
                                       sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
                                     />
@@ -844,10 +1024,20 @@ const GoogleTasks: React.FC = () => {
                                   />
                                   <IconButton
                                     edge="end"
-                                    onClick={() => handleToggleTaskStar(taskList.id, task.id)}
-                                    sx={{ color: task.starred ? '#FFD700' : 'action.disabled' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleTaskStar(taskList.id, task.id);
+                                    }}
+                                    sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
                                   >
                                     {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                  </IconButton>
+                                  <IconButton
+                                    edge="end"
+                                    onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
+                                    size="small"
+                                  >
+                                    <MoreVertIcon fontSize="small" />
                                   </IconButton>
                                 </ListItem>
                               ))}
@@ -954,6 +1144,71 @@ const GoogleTasks: React.FC = () => {
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>
           <ListItemText>Delete list</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Task Options Menu */}
+      <Menu
+        anchorEl={taskMenuAnchorEl}
+        open={Boolean(taskMenuAnchorEl)}
+        onClose={handleTaskMenuClose}
+        PaperProps={{
+          sx: { 
+            width: 'auto',
+            minWidth: '180px',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.12)',
+            borderRadius: '8px',
+            mt: 0.5
+          }
+        }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem 
+          onClick={handleEditTaskFromMenu}
+          sx={{ 
+            py: 1.5,
+            px: 2
+          }}
+        >
+          <ListItemIcon>
+            <EditIcon 
+              fontSize="small" 
+              sx={{ color: 'text.primary' }} 
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Edit task" 
+            primaryTypographyProps={{ 
+              fontFamily: 'Poppins', 
+              fontWeight: 'regular',
+              fontSize: '0.9rem'
+            }} 
+          />
+        </MenuItem>
+        <Divider />
+        <MenuItem 
+          onClick={handleDeleteTaskFromMenu}
+          sx={{ 
+            py: 1.5,
+            px: 2,
+            color: '#e53935'
+          }}
+        >
+          <ListItemIcon>
+            <DeleteIcon 
+              fontSize="small" 
+              sx={{ color: '#e53935' }} 
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Delete task" 
+            primaryTypographyProps={{ 
+              fontFamily: 'Poppins', 
+              fontWeight: 'regular',
+              fontSize: '0.9rem'
+            }} 
+          />
         </MenuItem>
       </Menu>
 
@@ -1244,6 +1499,176 @@ const GoogleTasks: React.FC = () => {
             onClick={handleUpdateTaskList} 
             variant="contained"
             disabled={!editTaskListTitle.trim()}
+            sx={{ 
+              fontFamily: 'Poppins',
+              backgroundColor: '#1056F5',
+              '&:hover': {
+                backgroundColor: '#0D47D9',
+              },
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Task Dialog */}
+      <Dialog 
+        open={editTaskDialogOpen} 
+        onClose={() => setEditTaskDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+          Edit Task
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Task"
+            fullWidth
+            variant="outlined"
+            value={editTaskTitle}
+            onChange={(e) => setEditTaskTitle(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          
+          <TextField
+            margin="dense"
+            label="Description"
+            fullWidth
+            multiline
+            rows={3}
+            variant="outlined"
+            value={editTaskNotes}
+            onChange={(e) => setEditTaskNotes(e.target.value)}
+            sx={{ mb: 2 }}
+            placeholder="Add details"
+          />
+          
+          {/* Date selection options for edit dialog */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 1 }}>
+            {editTaskDueDate ? (
+              <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
+                <Button startIcon={<DateRangeIcon />}>
+                  {formatDisplayDate(editTaskDueDate)}
+                </Button>
+                <Button onClick={handleClearEditDueDate} sx={{ p: 0, minWidth: '30px' }}>
+                  <CloseIcon fontSize="small" />
+                </Button>
+              </ButtonGroup>
+            ) : (
+              <ButtonGroup variant="outlined" size="small">
+                <Button onClick={handleSetEditToday}>Today</Button>
+                <Button onClick={handleSetEditTomorrow}>Tomorrow</Button>
+                <Button onClick={handleEditDatePickerOpen}><DateRangeIcon fontSize="small" /></Button>
+              </ButtonGroup>
+            )}
+          </Box>
+          
+          {/* Date picker popover for edit dialog */}
+          <Popover
+            open={editDatePickerOpen}
+            anchorEl={editDatePickerAnchorEl}
+            onClose={handleEditDatePickerClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+          >
+            <Stack spacing={2} sx={{ p: 2, width: 300 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                April 2025
+              </Typography>
+              
+              <Grid container spacing={1}>
+                {/* Calendar days header */}
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                  <Grid item key={index} xs={12/7} sx={{ textAlign: 'center' }}>
+                    <Typography variant="body2">{day}</Typography>
+                  </Grid>
+                ))}
+                
+                {/* Example calendar days - in a real implementation, these would be generated */}
+                {[...Array(35)].map((_, index) => {
+                  const day = index - 2; // Adjust for month start day offset
+                  return (
+                    <Grid item xs={12/7} key={index} sx={{ textAlign: 'center' }}>
+                      {day > 0 && day <= 30 && (
+                        <IconButton 
+                          size="small" 
+                          sx={{ 
+                            borderRadius: '50%',
+                            width: 32, 
+                            height: 32,
+                            ...(day === 11 && { 
+                              bgcolor: 'primary.main',
+                              color: 'white',
+                              '&:hover': { bgcolor: 'primary.dark' }
+                            })
+                          }}
+                          onClick={() => {
+                            const date = new Date(2025, 3, day); // April 2025
+                            handleSetEditDueDate(date);
+                          }}
+                        >
+                          <Typography variant="body2">{day}</Typography>
+                        </IconButton>
+                      )}
+                    </Grid>
+                  );
+                })}
+              </Grid>
+              
+              <Divider />
+              
+              <Stack direction="row" spacing={1} alignItems="center">
+                <AccessTimeIcon fontSize="small" color="action" />
+                <Button 
+                  variant="text" 
+                  fullWidth 
+                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                >
+                  Set time
+                </Button>
+              </Stack>
+              
+              <Stack direction="row" spacing={1} alignItems="center">
+                <LoopIcon fontSize="small" color="action" />
+                <Button 
+                  variant="text" 
+                  fullWidth 
+                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                >
+                  Repeat
+                </Button>
+              </Stack>
+              
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                <Button onClick={handleEditDatePickerClose}>Cancel</Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleEditDatePickerClose}
+                  sx={{ bgcolor: 'primary.main' }}
+                >
+                  Done
+                </Button>
+              </Box>
+            </Stack>
+          </Popover>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setEditTaskDialogOpen(false)}
+            sx={{ fontFamily: 'Poppins' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUpdateTask} 
+            variant="contained"
+            disabled={!editTaskTitle.trim()}
             sx={{ 
               fontFamily: 'Poppins',
               backgroundColor: '#1056F5',
