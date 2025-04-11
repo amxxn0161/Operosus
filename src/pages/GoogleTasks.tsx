@@ -85,6 +85,7 @@ const GoogleTasks: React.FC = () => {
 
   // State for task operations
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
+  const [newTaskNotes, setNewTaskNotes] = useState<string>('');
   const [newTaskListId, setNewTaskListId] = useState<string>('');
   const [newTaskDialogOpen, setNewTaskDialogOpen] = useState<boolean>(false);
   const [selectedTaskList, setSelectedTaskList] = useState<string | null>(null);
@@ -104,8 +105,11 @@ const GoogleTasks: React.FC = () => {
   
   // Due date related state
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
+  const [newTaskDueTime, setNewTaskDueTime] = useState<string | null>(null);
   const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLElement | null>(null);
   const datePickerOpen = Boolean(datePickerAnchorEl);
+  const [timePickerAnchorEl, setTimePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const timePickerOpen = Boolean(timePickerAnchorEl);
 
   // Task menu state
   const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -117,8 +121,11 @@ const GoogleTasks: React.FC = () => {
   const [editTaskTitle, setEditTaskTitle] = useState<string>('');
   const [editTaskNotes, setEditTaskNotes] = useState<string>('');
   const [editTaskDueDate, setEditTaskDueDate] = useState<string | null>(null);
+  const [editTaskDueTime, setEditTaskDueTime] = useState<string | null>(null);
   const [editDatePickerAnchorEl, setEditDatePickerAnchorEl] = useState<HTMLElement | null>(null);
   const editDatePickerOpen = Boolean(editDatePickerAnchorEl);
+  const [editTimePickerAnchorEl, setEditTimePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const editTimePickerOpen = Boolean(editTimePickerAnchorEl);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -190,7 +197,9 @@ const GoogleTasks: React.FC = () => {
   const handleAddTaskClick = (taskListId: string) => {
     setNewTaskListId(taskListId);
     setNewTaskTitle('');
+    setNewTaskNotes('');
     setNewTaskDueDate(null);
+    setNewTaskDueTime(null);
     setNewTaskDialogOpen(true);
   };
 
@@ -198,24 +207,79 @@ const GoogleTasks: React.FC = () => {
   const handleCreateTask = async () => {
     if (newTaskTitle.trim() && newTaskListId) {
       try {
-        const taskData: { title: string; notes?: string; due?: string } = { 
-          title: newTaskTitle.trim() 
+        let taskTitle = newTaskTitle.trim();
+        let taskNotes = newTaskNotes.trim();
+        let hasExplicitTimeSet = false;
+        
+        // If time is set, we'll send it to the backend which will add it to notes
+        if (newTaskDueTime) {
+          hasExplicitTimeSet = true;
+          // No longer adding time to title - it will be in notes section
+        }
+        
+        const taskData: { 
+          title: string; 
+          notes?: string; 
+          due?: string;
+          timezone?: string;
+          time_in_notes?: boolean;
+        } = { 
+          title: taskTitle,
+          timezone: getUserTimezone(),
+          time_in_notes: true // Add this parameter for the backend
         };
         
-        // Add due date if it exists
-        if (newTaskDueDate) {
-          taskData.due = newTaskDueDate;
+        // Clean notes of any existing time entries and add if not empty
+        if (taskNotes) {
+          // Remove any existing time entries from notes to prevent duplication
+          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
+          taskData.notes = cleanedNotes;
         }
         
-        const result = await createTask(newTaskListId, taskData);
-        if (result) {
-          setNewTaskDialogOpen(false);
-          showSnackbar('Task created successfully', 'success');
-        } else {
-          showSnackbar('Failed to create task', 'error');
+        // Add the ISO date string if date is set
+        if (newTaskDueDate) {
+          // Create a new date object from the state
+          const dueDate = new Date(newTaskDueDate);
+          let dueString = dueDate.toISOString();
+          
+          // If time is also set, replace the time part of the ISO string
+          if (hasExplicitTimeSet && newTaskDueTime) {
+            // Parse the time in 24h format
+            const [hours, minutes] = newTaskDueTime.split(':');
+            
+            // Create a new date with the selected time
+            const dueWithTime = new Date(dueDate);
+            dueWithTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+            
+            // Replace with the new ISO string
+            dueString = dueWithTime.toISOString();
+          }
+          
+          taskData.due = dueString;
         }
-      } catch (err) {
-        showSnackbar('Error creating task', 'error');
+        
+        setIsRefreshing(true);
+        const createdTask = await createTask(newTaskListId, taskData);
+        setIsRefreshing(false);
+        
+        if (createdTask) {
+          // Reset fields
+          setNewTaskTitle('');
+          setNewTaskNotes('');
+          setNewTaskDueDate(null);
+          setNewTaskDueTime(null);
+          setNewTaskDialogOpen(false);
+          
+          // Show success message
+          showSnackbar('Task created successfully', 'success');
+          
+          // Refresh the list
+          await refreshTaskLists();
+        }
+      } catch (error) {
+        console.error('Error creating task:', error);
+        setIsRefreshing(false);
+        showSnackbar('Failed to create task', 'error');
       }
     }
   };
@@ -399,6 +463,7 @@ const GoogleTasks: React.FC = () => {
       const date = parseISO(dateString);
       if (!isValid(date)) return '';
       
+      // Always show just the date part (time will appear in the title)
       return format(date, 'MMM d, yyyy');
     } catch (e) {
       return '';
@@ -434,6 +499,36 @@ const GoogleTasks: React.FC = () => {
     setDatePickerAnchorEl(null);
   };
   
+  // Handle time picker open
+  const handleTimePickerOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setTimePickerAnchorEl(event.currentTarget);
+  };
+  
+  // Handle time picker close
+  const handleTimePickerClose = () => {
+    setTimePickerAnchorEl(null);
+  };
+  
+  // Set task due time
+  const handleSetDueTime = (time: string | null) => {
+    if (time) {
+      // Ensure time is properly formatted with leading zeros
+      const [hours, minutes] = time.split(':').map(Number);
+      // Format as HH:MM with leading zeros
+      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      console.log(`Setting due time from ${time} to formatted: ${formattedTime}`);
+      setNewTaskDueTime(formattedTime);
+    } else {
+      setNewTaskDueTime(null);
+    }
+    handleTimePickerClose();
+  };
+  
+  // Clear due time
+  const handleClearDueTime = () => {
+    setNewTaskDueTime(null);
+  };
+  
   // Set task due date
   const handleSetDueDate = (dueDate: Date | null) => {
     if (dueDate) {
@@ -467,7 +562,7 @@ const GoogleTasks: React.FC = () => {
   };
 
   // Format date for display in a concise way
-  const formatDisplayDate = (dateString?: string | null) => {
+  const formatDisplayDate = (dateString?: string | null, timeString?: string | null) => {
     if (!dateString) return '';
     
     try {
@@ -483,13 +578,26 @@ const GoogleTasks: React.FC = () => {
       const dateToCheck = new Date(date);
       dateToCheck.setHours(0, 0, 0, 0);
       
+      let displayDate = '';
       if (dateToCheck.getTime() === today.getTime()) {
-        return 'Today';
+        displayDate = 'Today';
       } else if (dateToCheck.getTime() === tomorrow.getTime()) {
-        return 'Tomorrow';
+        displayDate = 'Tomorrow';
       } else {
-        return format(date, 'MMM d, yyyy');
+        displayDate = format(date, 'MMM d, yyyy');
       }
+      
+      // Add time if provided
+      if (timeString) {
+        const [hours, minutes] = timeString.split(':').map(Number);
+        const timeDate = new Date();
+        timeDate.setHours(hours, minutes, 0, 0);
+        const formattedTime = format(timeDate, 'h:mm a'); // 1:30 PM format
+        
+        return `${displayDate}, ${formattedTime}`;
+      }
+      
+      return displayDate;
     } catch (e) {
       return '';
     }
@@ -497,17 +605,73 @@ const GoogleTasks: React.FC = () => {
 
   // Open task edit dialog
   const handleTaskClick = (taskListId: string, task: EnhancedGoogleTask) => {
+    // Time is now stored in notes, not in title
+    let timeString = null;
+    let notes = task.notes || '';
+    
+    // Find all time entries in the notes, and use the most recent (last) one
+    const timeMatches = [...notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
+    if (timeMatches.length > 0) {
+      // Use the last time entry (most recently added)
+      const lastMatch = timeMatches[timeMatches.length - 1];
+      timeString = lastMatch[1];
+    }
+    
     setEditingTask({
       taskListId,
       taskId: task.id,
       title: task.title,
-      notes: task.notes || '',
+      notes: notes,
       due: task.due || null,
       status: task.status
     });
+    
     setEditTaskTitle(task.title);
-    setEditTaskNotes(task.notes || '');
+    setEditTaskNotes(notes);
     setEditTaskDueDate(task.due || null);
+    
+    // If we found time in the notes, convert it to 24h format for the time picker
+    if (timeString) {
+      // Parse the time string (e.g., "3:00 AM" or "07:30")
+      const timeParts = timeString.match(/(\d{1,2}):(\d{2})(?:\s?([AP]M))?/i);
+      
+      if (timeParts) {
+        let hours = parseInt(timeParts[1], 10);
+        const minutes = timeParts[2];
+        const period = timeParts[3];
+        
+        // Convert to 24-hour format if AM/PM is present
+        if (period) {
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+        }
+        
+        // Format as HH:MM with leading zeros
+        const time24h = `${hours.toString().padStart(2, '0')}:${minutes}`;
+        setEditTaskDueTime(time24h);
+      } else {
+        // If there's an issue parsing, default to null
+        setEditTaskDueTime(null);
+      }
+    } else if (task.due) {
+      // If no time in notes but due date exists, check if the API returned non-midnight time
+      const dueDate = new Date(task.due);
+      const hours = dueDate.getHours();
+      const minutes = dueDate.getMinutes();
+      
+      // Only set time if hours/minutes are not defaults (midnight or noon)
+      if ((hours !== 0 && hours !== 12) || minutes !== 0) {
+        setEditTaskDueTime(`${hours.toString().padStart(2, '0')}:${minutes === 0 ? '00' : minutes.toString().padStart(2, '0')}`);
+      } else {
+        setEditTaskDueTime(null);
+      }
+    } else {
+      setEditTaskDueTime(null);
+    }
+    
     setEditTaskDialogOpen(true);
   };
 
@@ -549,27 +713,67 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Helper function to remove existing time entries from notes
+  const cleanNotesOfTimeEntries = (notes: string): string => {
+    if (!notes) return '';
+    
+    // Remove all "Due Time: XX:XX" entries (including any following line breaks)
+    return notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '').trim();
+  };
+
   // Update an existing task
   const handleUpdateTask = async () => {
     if (editingTask && editTaskTitle.trim()) {
       try {
+        let taskTitle = editTaskTitle.trim();
+        let hasExplicitTimeSet = false;
+        
+        // If time is set, we'll send it to the backend to add to notes
+        if (editTaskDueTime) {
+          hasExplicitTimeSet = true;
+          // No longer adding time to title - it will be in notes section
+        }
+        
         const taskData: { 
           title: string; 
           notes?: string; 
           due?: string;
           status?: string;
+          timezone?: string;
+          time_in_notes?: boolean;
         } = { 
-          title: editTaskTitle.trim() 
+          title: taskTitle,
+          timezone: getUserTimezone(),
+          time_in_notes: true // Add this parameter for backend
         };
         
-        // Add notes if not empty
+        // Clean notes of any existing time entries and add if not empty
         if (editTaskNotes.trim()) {
-          taskData.notes = editTaskNotes.trim();
+          // Remove any existing time entries from notes to prevent duplication
+          const cleanedNotes = cleanNotesOfTimeEntries(editTaskNotes);
+          taskData.notes = cleanedNotes;
         }
         
         // Add due date if it exists
         if (editTaskDueDate) {
-          taskData.due = editTaskDueDate;
+          // Create a new date object from the state
+          const dueDate = new Date(editTaskDueDate);
+          let dueString = dueDate.toISOString();
+          
+          // If time is also set, replace the time part of the ISO string
+          if (hasExplicitTimeSet && editTaskDueTime) {
+            // Parse the time in 24h format
+            const [hours, minutes] = editTaskDueTime.split(':');
+            
+            // Create a new date with the selected time
+            const dueWithTime = new Date(dueDate);
+            dueWithTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+            
+            // Replace with the new ISO string
+            dueString = dueWithTime.toISOString();
+          }
+          
+          taskData.due = dueString;
         }
         
         const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
@@ -593,6 +797,16 @@ const GoogleTasks: React.FC = () => {
   // Handle edit date picker close
   const handleEditDatePickerClose = () => {
     setEditDatePickerAnchorEl(null);
+  };
+  
+  // Handle edit time picker open
+  const handleEditTimePickerOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setEditTimePickerAnchorEl(event.currentTarget);
+  };
+  
+  // Handle edit time picker close
+  const handleEditTimePickerClose = () => {
+    setEditTimePickerAnchorEl(null);
   };
   
   // Set task due date in edit mode
@@ -625,6 +839,68 @@ const GoogleTasks: React.FC = () => {
   // Clear due date in edit mode
   const handleClearEditDueDate = () => {
     setEditTaskDueDate(null);
+  };
+  
+  // Set task due time in edit mode
+  const handleSetEditDueTime = (time: string | null) => {
+    if (time) {
+      // Ensure time is properly formatted with leading zeros
+      const [hours, minutes] = time.split(':').map(Number);
+      // Format as HH:MM with leading zeros
+      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      console.log(`Setting edit due time from ${time} to formatted: ${formattedTime}`);
+      setEditTaskDueTime(formattedTime);
+    } else {
+      setEditTaskDueTime(null);
+    }
+    handleEditTimePickerClose();
+  };
+  
+  // Clear due time in edit mode
+  const handleClearEditDueTime = () => {
+    setEditTaskDueTime(null);
+  };
+
+  // Format 24-hour time to 12-hour format with AM/PM
+  const formatTimeFor12Hour = (time24h: string): string => {
+    const [hours, minutes] = time24h.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  // Get the user's current timezone in IANA format (e.g., "America/New_York")
+  const getUserTimezone = (): string => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch (e) {
+      console.error('Error getting timezone:', e);
+      return 'UTC'; // Default to UTC if unable to get timezone
+    }
+  };
+
+  // Format the due information, showing both date and notes with time
+  const formatDueInfoWithNotes = (task: EnhancedGoogleTask) => {
+    let dueInfo = [];
+    
+    // Add the due date if present
+    if (task.due) {
+      dueInfo.push(`Due: ${formatDate(task.due)}`);
+    }
+    
+    // Check if notes contain time information
+    if (task.notes) {
+      // Find all time entries in the notes
+      const timeMatches = [...task.notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
+      
+      // If we found any time entries, use the last one (most recently added)
+      if (timeMatches.length > 0) {
+        const lastMatch = timeMatches[timeMatches.length - 1];
+        dueInfo.push(lastMatch[0]);
+      }
+    }
+    
+    return dueInfo.join(' | ');
   };
 
   return (
@@ -751,17 +1027,41 @@ const GoogleTasks: React.FC = () => {
                           </Typography>
                         }
                         secondary={
-                          task.due && (
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                fontFamily: 'Poppins',
-                                color: isOverdue(task.due) ? 'error.main' : 'text.secondary'
-                              }}
-                            >
-                              Due: {formatDate(task.due)}
-                            </Typography>
-                          )
+                          <>
+                            {/* Show due date and time information from notes */}
+                            {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
+                                  display: 'block'
+                                }}
+                              >
+                                {formatDueInfoWithNotes(task)}
+                              </Typography>
+                            )}
+                            
+                            {/* Show other notes content if any (excluding the time information) */}
+                            {task.notes && !task.notes.includes("Due Time") && (
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: 'text.secondary',
+                                  display: 'block',
+                                  mt: 0.5,
+                                  // Limit to 2 lines with ellipsis
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical'
+                                }}
+                              >
+                                {task.notes}
+                              </Typography>
+                            )}
+                          </>
                         }
                       />
                       <IconButton
@@ -892,17 +1192,41 @@ const GoogleTasks: React.FC = () => {
                                         </Typography>
                                       }
                                       secondary={
-                                        task.due && (
-                                          <Typography 
-                                            variant="caption" 
-                                            sx={{ 
-                                              fontFamily: 'Poppins',
-                                              color: isOverdue(task.due) ? 'error.main' : 'text.secondary'
-                                            }}
-                                          >
-                                            Due: {formatDate(task.due)}
-                                          </Typography>
-                                        )
+                                        <>
+                                          {/* Show due date and time information from notes */}
+                                          {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
+                                            <Typography 
+                                              variant="caption" 
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
+                                                display: 'block'
+                                              }}
+                                            >
+                                              {formatDueInfoWithNotes(task)}
+                                            </Typography>
+                                          )}
+                                          
+                                          {/* Show other notes content if any (excluding the time information) */}
+                                          {task.notes && !task.notes.includes("Due Time") && (
+                                            <Typography 
+                                              variant="caption" 
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: 'text.secondary',
+                                                display: 'block',
+                                                mt: 0.5,
+                                                // Limit to 2 lines with ellipsis
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical'
+                                              }}
+                                            >
+                                              {task.notes}
+                                            </Typography>
+                                          )}
+                                        </>
                                       }
                                     />
                                     <IconButton
@@ -1269,12 +1593,25 @@ const GoogleTasks: React.FC = () => {
             sx={{ mb: 2 }}
           />
           
+          <TextField
+            margin="dense"
+            label="Description"
+            fullWidth
+            multiline
+            rows={3}
+            variant="outlined"
+            value={newTaskNotes}
+            onChange={(e) => setNewTaskNotes(e.target.value)}
+            sx={{ mb: 2 }}
+            placeholder="Add details"
+          />
+          
           {/* Date selection options */}
           <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 1 }}>
             {newTaskDueDate ? (
               <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
                 <Button startIcon={<DateRangeIcon />}>
-                  {formatDisplayDate(newTaskDueDate)}
+                  {formatDisplayDate(newTaskDueDate, newTaskDueTime)}
                 </Button>
                 <Button onClick={handleClearDueDate} sx={{ p: 0, minWidth: '30px' }}>
                   <CloseIcon fontSize="small" />
@@ -1351,8 +1688,12 @@ const GoogleTasks: React.FC = () => {
                   variant="text" 
                   fullWidth 
                   sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                  onClick={handleTimePickerOpen}
                 >
-                  Set time
+                  {newTaskDueTime ? format(new Date().setHours(
+                    Number(newTaskDueTime.split(':')[0]), 
+                    Number(newTaskDueTime.split(':')[1])
+                  ), 'h:mm a') : 'Set time'}
                 </Button>
               </Stack>
               
@@ -1372,6 +1713,76 @@ const GoogleTasks: React.FC = () => {
                 <Button 
                   variant="contained" 
                   onClick={handleDatePickerClose}
+                  sx={{ bgcolor: 'primary.main' }}
+                >
+                  Done
+                </Button>
+              </Box>
+            </Stack>
+          </Popover>
+          
+          {/* Time picker popover */}
+          <Popover
+            open={timePickerOpen}
+            anchorEl={timePickerAnchorEl}
+            onClose={handleTimePickerClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+          >
+            <Stack spacing={1} sx={{ p: 2, width: 200, maxHeight: 400, overflow: 'auto' }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                Set time
+              </Typography>
+              
+              {/* Time options in 30-minute increments */}
+              {[...Array(24)].map((_, hour) => (
+                <React.Fragment key={hour}>
+                  <MenuItem
+                    onClick={() => handleSetDueTime(`${hour}:00`)}
+                    dense
+                    sx={{ 
+                      minHeight: '36px',
+                      py: 0.5,
+                      px: 2,
+                      borderRadius: 1,
+                      ...(newTaskDueTime === `${hour}:00` && { 
+                        bgcolor: 'primary.light',
+                        '&:hover': { bgcolor: 'primary.light' }
+                      })
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {format(new Date().setHours(hour, 0), 'h:mm a')}
+                    </Typography>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => handleSetDueTime(`${hour}:30`)}
+                    dense
+                    sx={{ 
+                      minHeight: '36px',
+                      py: 0.5,
+                      px: 2,
+                      borderRadius: 1,
+                      ...(newTaskDueTime === `${hour}:30` && { 
+                        bgcolor: 'primary.light',
+                        '&:hover': { bgcolor: 'primary.light' }
+                      })
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {format(new Date().setHours(hour, 30), 'h:mm a')}
+                    </Typography>
+                  </MenuItem>
+                </React.Fragment>
+              ))}
+              
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                <Button onClick={handleClearDueTime}>Clear</Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleTimePickerClose}
                   sx={{ bgcolor: 'primary.main' }}
                 >
                   Done
@@ -1552,7 +1963,7 @@ const GoogleTasks: React.FC = () => {
             {editTaskDueDate ? (
               <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
                 <Button startIcon={<DateRangeIcon />}>
-                  {formatDisplayDate(editTaskDueDate)}
+                  {formatDisplayDate(editTaskDueDate, editTaskDueTime)}
                 </Button>
                 <Button onClick={handleClearEditDueDate} sx={{ p: 0, minWidth: '30px' }}>
                   <CloseIcon fontSize="small" />
@@ -1629,8 +2040,12 @@ const GoogleTasks: React.FC = () => {
                   variant="text" 
                   fullWidth 
                   sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                  onClick={handleEditTimePickerOpen}
                 >
-                  Set time
+                  {editTaskDueTime ? format(new Date().setHours(
+                    Number(editTaskDueTime.split(':')[0]), 
+                    Number(editTaskDueTime.split(':')[1])
+                  ), 'h:mm a') : 'Set time'}
                 </Button>
               </Stack>
               
@@ -1650,6 +2065,76 @@ const GoogleTasks: React.FC = () => {
                 <Button 
                   variant="contained" 
                   onClick={handleEditDatePickerClose}
+                  sx={{ bgcolor: 'primary.main' }}
+                >
+                  Done
+                </Button>
+              </Box>
+            </Stack>
+          </Popover>
+          
+          {/* Time picker popover for edit dialog */}
+          <Popover
+            open={editTimePickerOpen}
+            anchorEl={editTimePickerAnchorEl}
+            onClose={handleEditTimePickerClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+          >
+            <Stack spacing={1} sx={{ p: 2, width: 200, maxHeight: 400, overflow: 'auto' }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                Set time
+              </Typography>
+              
+              {/* Time options in 30-minute increments */}
+              {[...Array(24)].map((_, hour) => (
+                <React.Fragment key={hour}>
+                  <MenuItem
+                    onClick={() => handleSetEditDueTime(`${hour}:00`)}
+                    dense
+                    sx={{ 
+                      minHeight: '36px',
+                      py: 0.5,
+                      px: 2,
+                      borderRadius: 1,
+                      ...(editTaskDueTime === `${hour}:00` && { 
+                        bgcolor: 'primary.light',
+                        '&:hover': { bgcolor: 'primary.light' }
+                      })
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {format(new Date().setHours(hour, 0), 'h:mm a')}
+                    </Typography>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => handleSetEditDueTime(`${hour}:30`)}
+                    dense
+                    sx={{ 
+                      minHeight: '36px',
+                      py: 0.5,
+                      px: 2,
+                      borderRadius: 1,
+                      ...(editTaskDueTime === `${hour}:30` && { 
+                        bgcolor: 'primary.light',
+                        '&:hover': { bgcolor: 'primary.light' }
+                      })
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {format(new Date().setHours(hour, 30), 'h:mm a')}
+                    </Typography>
+                  </MenuItem>
+                </React.Fragment>
+              ))}
+              
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                <Button onClick={handleClearEditDueTime}>Clear</Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleEditTimePickerClose}
                   sx={{ bgcolor: 'primary.main' }}
                 >
                   Done
