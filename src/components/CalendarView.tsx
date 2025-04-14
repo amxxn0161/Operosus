@@ -21,11 +21,14 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
 import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useCalendar } from '../contexts/CalendarContext';
 import { CalendarEvent, getCalendarEventById } from '../services/calendarService';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isWithinInterval, addDays } from 'date-fns';
 import EventCreationModal from './EventCreationModal';
 import EventDetailsPopup from './EventDetailsPopup';
+import TaskDetailsPopup from './TaskDetailsPopup';
+import TaskListPopup from './TaskListPopup';
 
 // Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -155,7 +158,12 @@ const colorMap: ColorMap = {
 
 // Get color for event based on type
 const getEventColor = (event: CalendarEvent): string => {
-  // Check for special event types first
+  // Check for tasks first (highest priority)
+  if (event.eventType === 'task') {
+    return '#F29702'; // Orange for Tasks
+  }
+  
+  // Check for other special event types
   if (event.eventType) {
     if (event.eventType === 'outOfOffice') {
       return '#E8EAED'; // Light gray for Out of Office
@@ -303,6 +311,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // State for event details popup
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [popupAnchorEl, setPopupAnchorEl] = useState<HTMLElement | null>(null);
+  
+  // State for task details popup
+  const [selectedTask, setSelectedTask] = useState<CalendarEvent | null>(null);
+  const [taskPopupAnchorEl, setTaskPopupAnchorEl] = useState<HTMLElement | null>(null);
+  
+  // State for task list popup (multiple tasks)
+  const [tasksForDay, setTasksForDay] = useState<CalendarEvent[]>([]);
+  const [taskListPopupAnchorEl, setTaskListPopupAnchorEl] = useState<HTMLElement | null>(null);
   
   // Make sure we're loading the data when the component mounts
   useEffect(() => {
@@ -936,6 +952,70 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       opacity: 0.9
     } : {};
 
+    // Special handling for Task events
+    if (event.eventType === 'task') {
+      return (
+        <Box sx={{ 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden',
+          width: '100%',
+          justifyContent: 'center',
+          borderLeft: `4px solid ${eventColor}`,
+          borderRadius: '4px',
+          ...declinedStyle
+        }}>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            pl: 0.5
+          }}>
+            <TaskAltIcon 
+              sx={{ 
+                fontSize: '0.9rem', 
+                color: textColor,
+                mr: 0.5 
+              }} 
+            />
+            <Typography 
+              variant="subtitle2" 
+              sx={{
+                color: textColor,
+                fontWeight: 'bold', 
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                fontSize: '0.8rem',
+                lineHeight: 1.2
+              }}
+            >
+              {event.title}
+            </Typography>
+          </Box>
+          {event.description && height > 30 && (
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                fontSize: '0.7rem',
+                color: textColor,
+                pl: 2.5, // Align with the icon
+                mt: 0.2,
+                fontStyle: 'italic',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical'
+              }}
+            >
+              {event.description.split('\n')[0]} {/* Show only first line of description */}
+            </Typography>
+          )}
+        </Box>
+      );
+    }
+
     // Special handling for Out of Office events
     if (event.eventType === 'outOfOffice') {
       return (
@@ -1102,7 +1182,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     e.stopPropagation(); // Prevent grid click handlers
     
-    // Store the clicked element as anchor for the popup
+    // Handle differently for task events
+    if (event.eventType === 'task') {
+      setSelectedTask(event);
+      setTaskPopupAnchorEl(e.currentTarget as HTMLElement);
+      return;
+    }
+    
+    // Regular event handling
     setPopupAnchorEl(e.currentTarget as HTMLElement);
     
     try {
@@ -1117,68 +1204,50 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         if (fullEventDetails.id === event.id) {
           console.log(`Successfully received specific event details for ID ${event.id}:`, fullEventDetails);
           console.log(`Event title: ${fullEventDetails.title}`);
-          console.log(`Event summary: ${fullEventDetails.summary}`);
-          
-          // Log attendees if available to verify data is correctly structured
-          if (fullEventDetails.attendees && fullEventDetails.attendees.length > 0) {
-            console.log(`Event has ${fullEventDetails.attendees.length} attendees:`, 
-              fullEventDetails.attendees.map(a => a.email).join(', '));
-          }
-          
-          // Toggle clicked state - if same event, unselect it
-          if (activeEventId === event.id) {
-            setActiveEventId(null);
-            setSelectedEvent(null);
-          } else {
-            setActiveEventId(event.id);
-            setSelectedEvent(fullEventDetails); // Use the full event details from API
-          }
+          setSelectedEvent(fullEventDetails);
         } else {
-          // We got an event, but it's not the one we requested - this shouldn't happen
-          console.error(`API returned the wrong event. Requested ID: ${event.id}, Got ID: ${fullEventDetails.id}`);
-          // Fall back to the basic event info
-          if (activeEventId === event.id) {
-            setActiveEventId(null);
-            setSelectedEvent(null);
-          } else {
-            setActiveEventId(event.id);
-            setSelectedEvent(event);
-          }
+          console.error(`Received event ID ${fullEventDetails.id} does not match requested ID ${event.id}`);
+          setSelectedEvent(event); // Fallback to the event we have
         }
       } else {
-        console.warn(`Failed to fetch details for event ID: ${event.id}, falling back to basic event info`);
-        // Fall back to the basic event info we already have
-        if (activeEventId === event.id) {
-          setActiveEventId(null);
-          setSelectedEvent(null);
-        } else {
-          setActiveEventId(event.id);
-          setSelectedEvent(event);
-        }
+        console.warn(`Failed to fetch specific event details for ID ${event.id}; using event from context`);
+        setSelectedEvent(event); // Fallback to the event we have
       }
     } catch (error) {
-      console.error(`Error fetching details for event ID: ${event.id}:`, error);
-      
-      // Fall back to the basic event info we already have
-      if (activeEventId === event.id) {
-        setActiveEventId(null);
-        setSelectedEvent(null);
-      } else {
-        setActiveEventId(event.id);
-        setSelectedEvent(event);
-      }
-    }
-    
-    // Call the parent click handler if provided
-    if (onEventClick) {
-      onEventClick(event);
+      console.error('Error fetching event details:', error);
+      setSelectedEvent(event); // Fallback to the event we have
     }
   };
   
-  // Function to close the event details popup
+  // Handle clicking on a day cell that has tasks
+  const handleTaskGroupClick = (tasks: CalendarEvent[], e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent grid click handlers
+    setTasksForDay(tasks);
+    setTaskListPopupAnchorEl(e.currentTarget as HTMLElement);
+  };
+  
+  // Close regular event popup
   const handleClosePopup = () => {
     setPopupAnchorEl(null);
-    // We keep the activeEventId to maintain the visual focus state
+    setSelectedEvent(null);
+  };
+  
+  // Close task detail popup
+  const handleCloseTaskPopup = () => {
+    setTaskPopupAnchorEl(null);
+    setSelectedTask(null);
+  };
+  
+  // Close task list popup
+  const handleCloseTaskListPopup = () => {
+    setTaskListPopupAnchorEl(null);
+    setTasksForDay([]);
+  };
+  
+  // Handle click on task from task list popup
+  const handleTaskFromListClick = (task: CalendarEvent, e: React.MouseEvent) => {
+    handleCloseTaskListPopup();
+    handleEventClick(task, e);
   };
 
   // Handler function for deleting events
@@ -1236,10 +1305,32 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const currentHour = now.getHours();
     const isCurrentTimeVisible = currentHour >= DAY_START_HOUR && currentHour < DAY_END_HOUR;
     
+    // Function to separate tasks from other events
+    const separateTasksAndEvents = (events: CalendarEvent[]): {
+      tasks: CalendarEvent[];
+      regularEvents: CalendarEvent[];
+    } => {
+      const tasks: CalendarEvent[] = [];
+      const regularEvents: CalendarEvent[] = [];
+      
+      events.forEach(event => {
+        if (event.eventType === 'task') {
+          tasks.push(event);
+        } else {
+          regularEvents.push(event);
+        }
+      });
+      
+      return { tasks, regularEvents };
+    };
+    
+    // Separate tasks from regular events
+    const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+    
     // Log for debugging
     console.log(`Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
     
-    const eventPositions = calculateEventPositions(dayEvents);
+    const eventPositions = calculateEventPositions(regularEvents);
     
     return (
       <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
@@ -1292,22 +1383,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   }
                 }}
                 onClick={(e) => {
-                  // Only call handleEventClick if there is an event at this index
-                  if (dayEvents[index]) {
-                    handleEventClick(dayEvents[index], e);
-                  } else {
-                    // Handle empty slot click - could open event creation modal instead
-                    // For now, just prevent the error by not calling handleEventClick
-                    console.log(`Clicked on empty time slot: ${hour}:00`);
-                    
-                    // Optionally, you could open the event creation modal here
-                    // with the time pre-filled based on the clicked hour
-                    const clickedDate = new Date(selectedDate);
-                    clickedDate.setHours(hour, 0, 0, 0);
-                    setClickedDate(clickedDate);
-                    setClickedTime({ hour, minute: 0 });
-                    setIsEventModalOpen(true);
-                  }
+                  // Handle empty slot click - opening event creation modal
+                  const clickedDate = new Date(selectedDate);
+                  clickedDate.setHours(hour, 0, 0, 0);
+                  setClickedDate(clickedDate);
+                  setClickedTime({ hour, minute: 0 });
+                  setIsEventModalOpen(true);
                 }}
               />
             ))}
@@ -1321,8 +1402,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               />
             )}
             
-            {/* Events */}
-            {dayEvents.length === 0 ? (
+            {/* No events or tasks message */}
+            {regularEvents.length === 0 && tasks.length === 0 ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
                 <Typography variant="body1" color="text.secondary">
                   No events scheduled for this day
@@ -1330,6 +1411,52 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               </Box>
             ) : (
               <Box sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
+                {/* Tasks group indicator - at 9am position if there are tasks */}
+                {tasks.length > 0 && (
+                  <WeekEventCard
+                    bgcolor="#F29702" // Orange for tasks
+                    top={timeToPixels(new Date(new Date().setHours(9, 0, 0, 0))) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)))}
+                    height={40}
+                    width="95%"
+                    left="2.5%"
+                    onClick={(e) => handleTaskGroupClick(tasks, e)}
+                    sx={{
+                      zIndex: 10,
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      borderRadius: '4px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      '&:hover': {
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                        filter: 'brightness(1.03)'
+                      }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', pl: 1 }}>
+                      <TaskAltIcon 
+                        sx={{ 
+                          fontSize: '0.8rem', 
+                          color: 'white',
+                          mr: 0.5 
+                        }} 
+                      />
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          fontSize: '0.8rem', 
+                          fontWeight: 'medium',
+                          color: 'white',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
+                        {tasks.length} pending {tasks.length === 1 ? 'task' : 'tasks'}
+                      </Typography>
+                    </Box>
+                  </WeekEventCard>
+                )}
+
+                {/* Regular events */}
                 {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
                   const start = new Date(event.start);
                   const end = new Date(event.end);
@@ -1337,7 +1464,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   // Calculate position and size
                   const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                   const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-                  const height = Math.max(endPx - startPx, 30);
+                  const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
                   
                   const eventColor = getEventColor(event);
                   const textColor = getEventTextColor(eventColor);
@@ -1345,73 +1472,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   // Check if this is the active/clicked event
                   const isActive = activeEventId === event.id;
                   
-                  // Special styling for Out of Office events
-                  if (event.eventType === 'outOfOffice') {
-                    return (
-                      <WeekEventCard
-                        key={event.id}
-                        bgcolor="#E8EAED" // Light gray background for Out of Office
-                        top={startPx}
-                        height={height}
-                        width={width}
-                        left={left}
-                        onClick={(e) => handleEventClick(event, e)}
-                        sx={{ 
-                          zIndex: isActive ? 100 : (zIndex || 1),
-                          border: '1px dashed #5F6368', // Dashed border for Out of Office
-                          boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.3)' : 'none', // Less shadow
-                          transform: isActive ? 'scale(1.02)' : 'none',
-                          opacity: 0.9, // Slightly transparent
-                          borderRadius: '4px',
-                          '&:hover': {
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                            opacity: 1
-                          }
-                        }}
-                      >
-                        <Box sx={{ 
-                          height: '100%', 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          overflow: 'hidden',
-                          width: '100%',
-                          justifyContent: 'center'
-                        }}>
-                          <Typography 
-                            variant="subtitle2" 
-                            sx={{
-                              color: '#5F6368', // Standard gray text for OOO events
-                              fontWeight: 'bold', 
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              fontSize: '0.85rem',
-                              lineHeight: 1.2,
-                              pl: 0.5,
-                              textAlign: 'center'
-                            }}
-                          >
-                            Out of office
-                          </Typography>
-                          {event.description && height > 30 && (
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                fontSize: '0.7rem',
-                                color: '#5F6368',
-                                textAlign: 'center',
-                                fontStyle: 'italic',
-                                mt: 0.5
-                              }}
-                            >
-                              {event.description}
-                            </Typography>
-                          )}
-                        </Box>
-                      </WeekEventCard>
-                    );
-                  }
-                  
+                  // Check if the event is declined
+                  const isDeclined = event.attendees?.some(attendee => 
+                    (attendee.self === true && attendee.responseStatus === 'declined')
+                  );
+                
                   return (
                     <WeekEventCard
                       key={event.id}
@@ -1421,22 +1486,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       width={width}
                       left={left}
                       onClick={(e) => handleEventClick(event, e)}
-                      sx={{ 
-                        zIndex: isActive ? 100 : (zIndex || 1), // Bring to front when clicked
-                        border: isNested || columnsInSlot > 1 ? '2px solid white' : '1px solid rgba(0,0,0,0.05)',
+                      sx={{
+                        zIndex: isActive ? 100 : (zIndex || 1),
+                        border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
+                        borderRadius: '4px',
                         boxShadow: isActive 
-                          ? '0 4px 12px rgba(0,0,0,0.3)' 
-                          : (isNested || columnsInSlot > 1 ? '0 2px 5px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.15)'),
-                        transform: isActive ? 'scale(1.02)' : 'none',
-                        filter: isActive ? 'brightness(1.05)' : 'none',
-                        // No hover effects that change z-index
-                        
-                        // Override styles for declined events
-                        ...(event.attendees?.some(attendee => (attendee.self === true && attendee.responseStatus === 'declined')) && {
-                          bgcolor: 'white',
-                          border: `0.5px dashed ${eventColor}`,
-                          boxShadow: 'none'
-                        })
+                          ? '0 3px 8px rgba(0,0,0,0.2)' 
+                          : '0 1px 2px rgba(0,0,0,0.1)',
+                        backgroundColor: isDeclined ? 'white' : eventColor,
+                        '&:hover': {
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                          filter: 'brightness(1.03)'
+                        }
                       }}
                     >
                       {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
@@ -1464,11 +1525,33 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const currentHour = now.getHours();
     const isCurrentTimeVisible = currentHour >= DAY_START_HOUR && currentHour < DAY_END_HOUR;
     
+    // Function to separate tasks from other events
+    const separateTasksAndEvents = (events: CalendarEvent[]): {
+      tasks: CalendarEvent[];
+      regularEvents: CalendarEvent[];
+    } => {
+      const tasks: CalendarEvent[] = [];
+      const regularEvents: CalendarEvent[] = [];
+      
+      events.forEach(event => {
+        if (event.eventType === 'task') {
+          tasks.push(event);
+        } else {
+          regularEvents.push(event);
+        }
+      });
+      
+      return { tasks, regularEvents };
+    };
+    
     // Log for debugging
     console.log(`Week view - Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
     
+    // Define height for the task row
+    const TASK_ROW_HEIGHT = 60;
+    
     return (
-      <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
+      <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
         {/* Time labels column */}
         <Grid item xs={1} sx={{ 
           borderRight: 1, 
@@ -1487,6 +1570,24 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             borderColor: 'divider',
             backgroundColor: '#f9f9f9'
           }} />
+          
+          {/* Task row label */}
+          <Box sx={{ 
+            height: TASK_ROW_HEIGHT, 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            pr: 1
+          }}>
+            <Typography variant="caption" color="text.secondary" sx={{ 
+              fontSize: '0.7rem',
+              fontWeight: 'medium' 
+            }}>
+              Tasks
+            </Typography>
+          </Box>
           
           {/* Time labels */}
           {TIME_LABELS.map((hour) => (
@@ -1592,12 +1693,94 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 );
               })}
             </Grid>
+            
+            {/* Tasks row */}
+            <Grid container sx={{ height: TASK_ROW_HEIGHT, borderBottom: 1, borderColor: 'divider' }}>
+              {weekDays.map((date, dayIndex) => {
+                const dayEvents = getEventsForDay(date);
+                const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+                const isToday = date.getDate() === today.getDate() && 
+                              date.getMonth() === today.getMonth() && 
+                              date.getFullYear() === today.getFullYear();
+                
+                return (
+                  <Grid 
+                    item 
+                    key={`task-${dayIndex}`}
+                    sx={{ 
+                      width: `${100 / 7}%`,
+                      height: TASK_ROW_HEIGHT,
+                      position: 'relative',
+                      borderRight: dayIndex < 6 ? 1 : 0,
+                      borderColor: 'divider',
+                      backgroundColor: isToday ? 'rgba(1, 108, 158, 0.03)' : 'transparent',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {tasks.length > 0 && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          width: '90%',
+                          height: 40,
+                          backgroundColor: '#F29702',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          '&:hover': {
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                            filter: 'brightness(1.03)'
+                          }
+                        }}
+                        onClick={(e) => handleTaskGroupClick(tasks, e)}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', px: 1 }}>
+                          <TaskAltIcon 
+                            sx={{ 
+                              fontSize: '0.8rem', 
+                              color: 'white',
+                              mr: 0.5 
+                            }} 
+                          />
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              fontSize: '0.8rem', 
+                              fontWeight: 'medium',
+                              color: 'white',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+                  </Grid>
+                );
+              })}
+            </Grid>
         
-            {/* Days content */}
+            {/* Days content - Time grid */}
             <Grid container>
               {weekDays.map((date, dayIndex) => {
                 const dayEvents = getEventsForDay(date);
-                const eventPositions = calculateEventPositions(dayEvents);
+                
+                // Separate tasks from regular events
+                const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+                
+                // Create positions only for regular events
+                const eventPositions = calculateEventPositions(regularEvents);
+                
                 const isToday = date.getDate() === today.getDate() && 
                               date.getMonth() === today.getMonth() && 
                               date.getFullYear() === today.getFullYear();
@@ -1650,7 +1833,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       />
                     )}
                     
-                    {/* Events */}
+                    {/* Regular Events */}
                     {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
                       const start = new Date(event.start);
                       const end = new Date(event.end);
@@ -1730,6 +1913,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       });
     };
     
+    // Function to separate tasks from other events
+    const separateTasksAndEvents = (events: CalendarEvent[]): {
+      tasks: CalendarEvent[];
+      regularEvents: CalendarEvent[];
+    } => {
+      const tasks: CalendarEvent[] = [];
+      const regularEvents: CalendarEvent[] = [];
+      
+      events.forEach(event => {
+        if (event.eventType === 'task') {
+          tasks.push(event);
+        } else {
+          regularEvents.push(event);
+        }
+      });
+      
+      return { tasks, regularEvents };
+    };
+    
     // Maximum events to show per day cell
     const MAX_EVENTS_PER_DAY = 2;
     
@@ -1746,290 +1948,221 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           const isToday = isSameDay(day, today);
           const dayEvents = getDayEvents(currentDay);
           
-          // Determine how many events to show and if there are more
-          const eventsToShow = dayEvents.slice(0, MAX_EVENTS_PER_DAY);
-          const hasMoreEvents = dayEvents.length > MAX_EVENTS_PER_DAY;
-          const moreEventsCount = dayEvents.length - MAX_EVENTS_PER_DAY;
+          // Separate tasks from regular events
+          const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
           
-          days.push(
-            <Grid 
-              item 
-              key={format(currentDay, 'yyyy-MM-dd')} 
-              xs={12/7}
-                        sx={{
-                p: 0.5,
-                border: 1,
-                borderColor: 'divider',
-                opacity: isCurrentMonth ? 1 : 0.4,
-                backgroundColor: isToday ? 'rgba(1, 108, 158, 0.08)' : 'transparent',
-                minHeight: '100px',
-                          display: 'flex', 
-                flexDirection: 'column',
-                '&:hover': {
-                  backgroundColor: isToday ? 'rgba(1, 108, 158, 0.12)' : 'rgba(1, 108, 158, 0.05)'
-                },
-                cursor: 'pointer',
-                transition: 'background-color 0.2s'
-              }}
-              onClick={(e) => {
-                setSelectedDate(new Date(currentDay));
-                setViewMode('day');
-              }}
-            >
-              {/* Date number in circle for today */}
-              <Box 
-                sx={{ 
-                          display: 'flex', 
-                  justifyContent: 'center',
-                          alignItems: 'center',
-                  mb: 0.5
-                }}
-              >
-                <Box 
-                  sx={{
-                    width: 24,
-                    height: 24,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '50%',
-                    backgroundColor: isToday ? '#016C9E' : 'transparent',
-                    transition: 'background-color 0.2s'
-                  }}
-                >
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                textAlign: 'center',
-                      fontWeight: isToday ? 'bold' : 'medium',
-                      color: isToday ? 'white' : 'inherit',
-                      fontFamily: 'Poppins',
-                      fontSize: '0.8rem'
-                    }}
-                  >
-                    {format(currentDay, 'd')}
-                  </Typography>
-                </Box>
-              </Box>
-              
-              {/* Events container */}
-              <Box sx={{ 
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                          overflow: 'hidden', 
-                pb: 0.5,
-                gap: 0.5
-              }}>
-                {/* Display limited events with improved spacing */}
-                {eventsToShow.map((event) => (
-                  <MonthEventCard 
-                    key={event.id}
-                    bgcolor={getEventColor(event)}
-                    onClick={(e) => handleEventClick(event, e)}
-                  >
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        fontSize: '0.75rem', 
-                fontWeight: 'medium',
-                        color: getEventTextColor(getEventColor(event)),
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        width: '100%',
-                        display: 'block',
-                        paddingLeft: '3px'
-                      }}
-                    >
-                            {event.title}
-                          </Typography>
-                  </MonthEventCard>
-                ))}
-                
-                {/* Show more indicator with improved styling */}
-                {hasMoreEvents && (
-                  <Box
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent triggering the day cell click
-                      // Change to day view for this date when clicking on "more"
-                      setSelectedDate(new Date(currentDay));
-                      setViewMode('day');
-                    }}
-                    sx={{
-                      backgroundColor: 'rgba(1, 108, 158, 0.08)',
-                      borderRadius: '4px',
-                      p: '2px 4px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                      '&:hover': {
-                        backgroundColor: 'rgba(1, 108, 158, 0.15)',
-                      }
-              }}
-            >
-              <Typography 
-                      variant="caption" 
-                sx={{ 
-                        color: '#071C73',
-                        fontSize: '0.65rem',
-                        fontWeight: 'medium',
-                  fontFamily: 'Poppins'
-                }}
-              >
-                      +{moreEventsCount} more
-                        </Typography>
-                  </Box>
-                )}
-                </Box>
-              </Grid>
-            );
+          // Sort events by start time
+          const sortedEvents = [...regularEvents].sort((a, b) => 
+            new Date(a.start).getTime() - new Date(b.start).getTime()
+          );
+          
+          days.push({
+            date: currentDay,
+            isCurrentMonth,
+            isToday,
+            events: sortedEvents,
+            tasks: tasks,
+            dayStr: format(day, 'd')
+          });
           
           day = addDays(day, 1);
         }
         
-        weeks.push(
-          <Grid container key={`week-${format(day, 'yyyy-MM-dd')}`}>
-            {days}
-      </Grid>
-    );
-        
+        weeks.push(days);
         days = [];
       }
       
       return weeks;
     };
     
+    const calendarGrid = generateCalendarGrid();
+    
     return (
-      <Grid container direction="column" sx={{ minHeight: 300 }}>
-        {/* Day names header */}
-        <Grid container>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-            <Grid 
-              item 
-              key={index} 
-              xs={12/7}
-              sx={{ 
-                p: 1, 
-                textAlign: 'center',
-                fontWeight: 'medium',
-                borderBottom: 1,
-                borderColor: 'divider'
-              }}
-            >
-              <Typography 
-                variant="subtitle2" 
-                sx={{ 
-                  fontFamily: 'Poppins'
-                }}
-              >
-                {day}
+      <Box>
+        {/* Weekday header */}
+        <Grid container sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: '#f9f9f9' }}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName) => (
+            <Grid item key={dayName} xs sx={{ py: 1, textAlign: 'center' }}>
+              <Typography variant="caption" color="text.secondary" fontWeight="medium">
+                {dayName}
               </Typography>
             </Grid>
           ))}
         </Grid>
         
         {/* Calendar grid */}
-        {generateCalendarGrid()}
-      </Grid>
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateRows: `repeat(${calendarGrid.length}, 1fr)`,
+          height: `calc(100vh - 240px)`,
+          minHeight: 500,
+          maxHeight: 800
+        }}>
+          {calendarGrid.map((week, weekIndex) => (
+            <Box 
+              key={weekIndex} 
+              sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(7, 1fr)',
+                borderBottom: weekIndex < calendarGrid.length - 1 ? 1 : 0,
+                borderColor: 'divider'
+              }}
+            >
+              {week.map((day, dayIndex) => (
+                <Box 
+                  key={`${weekIndex}-${dayIndex}`}
+                  sx={{ 
+                    p: 0.5,
+                    position: 'relative',
+                    height: '100%',
+                    borderRight: dayIndex < 6 ? 1 : 0,
+                    borderColor: 'divider',
+                    backgroundColor: day.isToday ? 'rgba(1, 108, 158, 0.03)' : (day.isCurrentMonth ? 'transparent' : 'rgba(0, 0, 0, 0.02)'),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: day.isToday ? 'rgba(1, 108, 158, 0.05)' : 'rgba(0, 0, 0, 0.01)'
+                    }
+                  }}
+                  onClick={() => {
+                    setSelectedDate(day.date);
+                    setViewMode('day');
+                  }}
+                >
+                  {/* Date display at top right */}
+                  <Box sx={{ 
+                    mb: 0.5, 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start'
+                  }}>
+                    {day.isToday ? (
+                      <Box sx={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        backgroundColor: '#1056F5',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 'medium',
+                            color: 'white'
+                          }}
+                        >
+                          {day.dayStr}
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: 'medium',
+                          color: day.isCurrentMonth ? 'text.primary' : 'text.disabled'
+                        }}
+                      >
+                        {day.dayStr}
+                      </Typography>
+                    )}
+                  </Box>
+                  
+                  {/* Tasks indicator */}
+                  {day.tasks.length > 0 && (
+                    <Box 
+                      sx={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        mb: 0.5,
+                        px: 0.5,
+                        py: 0.25,
+                        borderRadius: 0.5,
+                        backgroundColor: '#F29702',
+                        width: 'fit-content'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTaskGroupClick(day.tasks, e);
+                      }}
+                    >
+                      <TaskAltIcon sx={{ fontSize: '0.7rem', color: 'white', mr: 0.5 }} />
+                      <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'white' }}>
+                        {day.tasks.length}
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {/* Event indicators */}
+                  {day.events.slice(0, MAX_EVENTS_PER_DAY).map((event, index) => {
+                    const eventColor = getEventColor(event);
+                    
+                    // Check if the event is declined
+                    const isDeclined = event.attendees?.some(attendee => 
+                      (attendee.self === true && attendee.responseStatus === 'declined')
+                    );
+                    
+                    return (
+                      <Box 
+                        key={event.id} 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          mb: 0.5,
+                          px: 0.5,
+                          py: 0.25,
+                          borderRadius: 0.5,
+                          backgroundColor: isDeclined ? 'transparent' : eventColor,
+                          border: isDeclined ? `1px dashed ${eventColor}` : 'none',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                          textOverflow: 'ellipsis',
+                          color: isDeclined ? 'text.primary' : getEventTextColor(eventColor)
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEventClick(event, e);
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                          {format(new Date(event.start), 'h:mm a')} {event.title}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                  
+                  {/* More events indicator */}
+                  {day.events.length > MAX_EVENTS_PER_DAY && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontSize: '0.7rem', 
+                        color: 'text.secondary',
+                        mt: 'auto'
+                      }}
+                    >
+                      +{day.events.length - MAX_EVENTS_PER_DAY} more
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          ))}
+        </Box>
+      </Box>
     );
   };
 
   // Render all events view
   const renderAllEventsView = () => {
-    // Sort events by start date
-    const sortedEvents = [...allEvents].sort((a, b) => {
-      return new Date(a.start).getTime() - new Date(b.start).getTime();
-    });
-            
-            return (
-      <Box sx={{ p: 2 }}>
-        <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Poppins', fontWeight: 'bold' }}>
-          All Events
-                </Typography>
-                
-        {sortedEvents.length > 0 ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {sortedEvents.map((event: CalendarEvent) => {
-              // Format the event date
-              const eventDate = new Date(event.start);
-              const formattedDate = eventDate.toLocaleDateString('en-US', { 
-                weekday: 'short', 
-                month: 'short', 
-                day: 'numeric', 
-                year: 'numeric' 
-              });
-                    
-                    return (
-                <Paper
-                        key={event.id}
-                  elevation={1}
-                        sx={{ 
-                    p: 2, 
-                    borderLeft: `4px solid ${getEventColor(event)}`,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      boxShadow: 3,
-                      transform: 'scale(1.01)',
-                      zIndex: 100
-                    }
-                  }}
-                  onClick={(e) => handleEventClick(event, e)}
-                      >
-                        <Box sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    mb: 1
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography variant="subtitle1" sx={{ 
-                        fontWeight: 'bold', 
-                        fontFamily: 'Poppins'
-                          }}>
-                            {event.title}
-                          </Typography>
-                        </Box>
-                    <Typography variant="caption" sx={{ 
-                      color: 'text.secondary', 
-                      fontFamily: 'Poppins',
-                      fontWeight: 'medium'
-                    }}>
-                      {formattedDate}
-                    </Typography>
-                  </Box>
-                  
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins' }}>
-                    {formatEventTime(event)}
-                  </Typography>
-                  
-                  {event.location && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
-                      Location: {event.location}
-                    </Typography>
-                  )}
-                  
-                  {event.description && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'Poppins', mt: 1 }}>
-                      {event.description}
-                    </Typography>
-                  )}
-                </Paper>
-                    );
-                  })}
-          </Box>
-        ) : (
-          <Box sx={{ 
-            height: 100, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center'
-          }}>
-            <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-              No events found
-                    </Typography>
-          </Box>
-                  )}
-                </Box>
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h5" sx={{ mb: 3 }}>All Upcoming Events</Typography>
+        <Typography variant="body1">This view is not implemented yet.</Typography>
+      </Box>
     );
   };
 
@@ -2295,6 +2428,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         onClose={handleClosePopup}
         onEdit={handleEditEvent}
         onDelete={handleDeleteEvent}
+      />
+      
+      {/* Task Details Popup */}
+      <TaskDetailsPopup
+        event={selectedTask}
+        anchorEl={taskPopupAnchorEl}
+        onClose={handleCloseTaskPopup}
+        onEdit={handleEditEvent}
+        onDelete={handleDeleteEvent}
+      />
+      
+      {/* Task List Popup */}
+      <TaskListPopup
+        tasks={tasksForDay}
+        anchorEl={taskListPopupAnchorEl}
+        onClose={handleCloseTaskListPopup}
+        onTaskClick={handleTaskFromListClick}
       />
     </Paper>
   );

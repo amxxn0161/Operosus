@@ -11,6 +11,50 @@ import {
   removeAttendeesFromEvent
 } from '../services/calendarService';
 import { useAuth } from './AuthContext';
+import { fetchGoogleTaskLists, GoogleTask, GoogleTaskList } from '../services/googleTasksService';
+
+// Convert Google Tasks to Calendar Events
+const convertTasksToEvents = (taskLists: GoogleTaskList[]): CalendarEvent[] => {
+  // Extract all tasks that have due dates and are not completed
+  const tasksWithDueDates = taskLists.flatMap(list => 
+    list.tasks
+      .filter(task => task.due && task.status !== 'completed')
+      .map(task => convertTaskToEvent(task, list.title))
+  );
+  
+  return tasksWithDueDates;
+};
+
+// Helper to convert a single task to a calendar event
+const convertTaskToEvent = (task: GoogleTask, listTitle: string): CalendarEvent => {
+  // Parse the due date
+  const dueDate = new Date(task.due || '');
+  
+  // Create a 1-hour event on the due date (from the due time to 1 hour later)
+  const startDate = dueDate;
+  const endDate = new Date(startDate);
+  endDate.setHours(endDate.getHours() + 1);
+  
+  // Extract time from notes if available
+  let timeInfo = '';
+  if (task.notes && task.notes.includes('Due Time:')) {
+    const timeMatch = task.notes.match(/Due Time: (\d{1,2}:\d{2})/);
+    if (timeMatch && timeMatch[1]) {
+      timeInfo = `(${timeMatch[1]})`;
+    }
+  }
+  
+  return {
+    id: `task-${task.id}`,
+    title: `${task.title} ${timeInfo} [Task]`,
+    start: startDate.toISOString(),
+    end: endDate.toISOString(),
+    description: task.notes || '',
+    colorId: '6', // Use a distinct color for tasks
+    eventType: 'task',
+    summary: `Task from ${listTitle}`
+  };
+};
 
 interface CalendarContextType {
   events: CalendarEvent[];
@@ -36,6 +80,7 @@ const CalendarContext = createContext<CalendarContextType | undefined>(undefined
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [taskEvents, setTaskEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'all'>('week');
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -56,6 +101,26 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       fetchEventsForViewMode();
     }
   }, [isAuthenticated, selectedDate, viewMode]);
+
+  // Fetch Google Tasks and convert them to events
+  const fetchGoogleTaskEvents = async () => {
+    try {
+      console.log('Fetching Google Tasks for calendar integration...');
+      const taskLists = await fetchGoogleTaskLists();
+      
+      // Convert tasks to calendar events
+      const taskEvents = convertTasksToEvents(taskLists);
+      console.log(`Converted ${taskEvents.length} tasks to calendar events`);
+      
+      // Update state with task events
+      setTaskEvents(taskEvents);
+      
+      return taskEvents;
+    } catch (error) {
+      console.error('Error fetching Google Tasks for calendar:', error);
+      return [];
+    }
+  };
 
   // Check if Google Calendar is connected
   const checkConnectionStatus = async () => {
@@ -96,20 +161,25 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       console.log(`Fetching events for ${viewMode} view with selected date ${selectedDate.toISOString()}`);
       
-      // Fetch events using the updated getCalendarEvents function
+      // Fetch regular calendar events
       const fetchedEvents = await getCalendarEvents(viewMode, selectedDate);
-      
       console.log(`Successfully fetched ${fetchedEvents.length} calendar events`);
       
+      // Fetch Google Tasks as events
+      const taskEvents = await fetchGoogleTaskEvents();
+      
+      // Combine regular events with task events
+      const allEvents = [...fetchedEvents, ...taskEvents];
+      
       // Check if we got any events back
-      if (fetchedEvents.length === 0) {
+      if (allEvents.length === 0) {
         console.log('No events returned from API, but this might be expected based on date range');
       } else {
-        console.log(`First event title: ${fetchedEvents[0].title}, start: ${fetchedEvents[0].start}`);
+        console.log(`Total events (including tasks): ${allEvents.length}`);
       }
       
       // Update state with the fetched events
-      setEvents(fetchedEvents);
+      setEvents(allEvents);
     } catch (error) {
       console.error('Error fetching calendar events:', error);
       setError('Failed to fetch calendar events');
@@ -266,10 +336,48 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Refresh all calendar data
+  // Public method to refresh all data
   const refreshCalendarData = async () => {
-    await checkConnectionStatus();
-    await fetchEventsForViewMode();
+    console.log('Refreshing all calendar data...');
+    
+    if (!isAuthenticated) {
+      console.log('Not authenticated, skipping refresh');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch all data in parallel
+      const [eventsPromise, tasksPromise] = await Promise.all([
+        getCalendarEvents(viewMode, selectedDate),
+        fetchGoogleTaskEvents()
+      ]);
+      
+      // Handle calendar events
+      const fetchedEvents = await eventsPromise;
+      console.log(`Successfully refreshed ${fetchedEvents.length} calendar events`);
+      
+      // Handle task events
+      const fetchedTaskEvents = await tasksPromise;
+      console.log(`Successfully refreshed ${fetchedTaskEvents.length} task events`);
+      
+      // Combine all events
+      const allEvents = [...fetchedEvents, ...fetchedTaskEvents];
+      
+      // Update the state
+      setEvents(allEvents);
+      
+      // Also check connection status in case it changed
+      await checkConnectionStatus();
+    } catch (error) {
+      console.error('Error refreshing calendar data:', error);
+      setError('Failed to refresh calendar data');
+      // Don't clear existing events on error
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const value: CalendarContextType = {

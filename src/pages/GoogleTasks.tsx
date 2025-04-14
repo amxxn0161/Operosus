@@ -127,6 +127,11 @@ const GoogleTasks: React.FC = () => {
   const [editTimePickerAnchorEl, setEditTimePickerAnchorEl] = useState<HTMLElement | null>(null);
   const editTimePickerOpen = Boolean(editTimePickerAnchorEl);
 
+  // Add state for tracking expanded/collapsed completed sections
+  const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
+    global: false
+  });
+
   // Initialize default task list ID when data loads
   useEffect(() => {
     if (taskLists.length > 0 && !newTaskListId) {
@@ -903,6 +908,14 @@ const GoogleTasks: React.FC = () => {
     return dueInfo.join(' | ');
   };
 
+  // Add function to toggle completed section for a specific task list
+  const toggleCompletedSection = (taskListId: string) => {
+    setExpandedCompletedSections(prev => ({
+      ...prev,
+      [taskListId]: !prev[taskListId]
+    }));
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1295,76 +1308,107 @@ const GoogleTasks: React.FC = () => {
                           {taskList.tasks.some(task => task.status === 'completed') && (
                             <>
                               <Divider sx={{ my: 2 }} />
-                              <Typography 
-                                variant="subtitle2" 
+                              <ListItem 
+                                button 
+                                onClick={() => toggleCompletedSection(taskList.id)}
                                 sx={{ 
-                                  fontFamily: 'Poppins', 
-                                  color: 'text.secondary',
-                                  fontWeight: 'medium',
-                                  mb: 1
+                                  py: 0.5, 
+                                  px: 1,
+                                  borderRadius: 1,
+                                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
                                 }}
                               >
-                                Completed
-                              </Typography>
-                              {taskList.tasks.filter(task => task.status === 'completed').map((task) => (
-                                <ListItem
-                                  key={task.id}
-                                  sx={{
-                                    py: 1,
-                                    borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                                    '&:last-child': { borderBottom: 'none' }
-                                  }}
-                                >
-                                  <ListItemIcon sx={{ minWidth: '40px' }}>
-                                    <Checkbox
-                                      checked={true}
-                                      onChange={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleTaskComplete(taskList.id, task.id);
+                                <ListItemIcon sx={{ minWidth: '24px' }}>
+                                  <IconButton 
+                                    size="small" 
+                                    sx={{ p: 0 }}
+                                  >
+                                    {expandedCompletedSections[taskList.id] ? (
+                                      <LoopIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                    ) : (
+                                      <LoopIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                </ListItemIcon>
+                                <ListItemText 
+                                  primary={
+                                    <Typography 
+                                      variant="subtitle2" 
+                                      sx={{ 
+                                        fontFamily: 'Poppins', 
+                                        color: 'text.secondary',
+                                        fontWeight: 'medium',
                                       }}
-                                      edge="start"
-                                      sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
-                                    />
-                                  </ListItemIcon>
-                                  <ListItemText
-                                    primary={
-                                      <Typography
-                                        sx={{
-                                          textDecoration: 'line-through',
-                                          color: 'text.secondary',
-                                          fontFamily: 'Poppins',
-                                        }}
-                                      >
-                                        {task.title}
-                                      </Typography>
-                                    }
-                                    secondary={
-                                      task.completed && (
-                                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                                          Completed: {formatDate(task.completed)}
-                                        </Typography>
-                                      )
-                                    }
-                                  />
-                                  <IconButton
-                                    edge="end"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleTaskStar(taskList.id, task.id);
+                                    >
+                                      Completed ({taskList.tasks.filter(task => task.status === 'completed').length})
+                                    </Typography>
+                                  }
+                                />
+                              </ListItem>
+                              
+                              {expandedCompletedSections[taskList.id] && (
+                                taskList.tasks.filter(task => task.status === 'completed').map((task) => (
+                                  <ListItem
+                                    key={task.id}
+                                    sx={{
+                                      py: 1,
+                                      borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                                      '&:last-child': { borderBottom: 'none' }
                                     }}
-                                    sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
                                   >
-                                    {task.starred ? <StarIcon /> : <StarBorderIcon />}
-                                  </IconButton>
-                                  <IconButton
-                                    edge="end"
-                                    onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
-                                    size="small"
-                                  >
-                                    <MoreVertIcon fontSize="small" />
-                                  </IconButton>
-                                </ListItem>
-                              ))}
+                                    <ListItemIcon sx={{ minWidth: '40px' }}>
+                                      <Checkbox
+                                        checked={true}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleTaskComplete(taskList.id, task.id);
+                                        }}
+                                        edge="start"
+                                        icon={<CheckBoxOutlineBlankIcon />}
+                                        checkedIcon={<CheckBoxIcon />}
+                                        sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
+                                      />
+                                    </ListItemIcon>
+                                    <ListItemText
+                                      primary={
+                                        <Typography
+                                          sx={{
+                                            textDecoration: 'line-through',
+                                            color: 'text.secondary',
+                                            fontFamily: 'Poppins',
+                                          }}
+                                        >
+                                          {task.title}
+                                        </Typography>
+                                      }
+                                      secondary={
+                                        task.completed && (
+                                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                            Completed: {formatDate(task.completed)}
+                                          </Typography>
+                                        )
+                                      }
+                                    />
+                                    <IconButton
+                                      edge="end"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleTaskStar(taskList.id, task.id);
+                                      }}
+                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                    >
+                                      {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                    </IconButton>
+                                    <IconButton
+                                      edge="end"
+                                      onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
+                                      size="small"
+                                    >
+                                      <MoreVertIcon fontSize="small" />
+                                    </IconButton>
+                                  </ListItem>
+                                ))
+                              )}
                             </>
                           )}
                         </List>
@@ -1426,6 +1470,124 @@ const GoogleTasks: React.FC = () => {
           )}
         </Grid>
       </DragDropContext>
+
+      {/* Global Completed Tasks Section */}
+      {!loading && taskLists.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Card sx={{ 
+            borderRadius: 2,
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+            overflow: 'visible'
+          }}>
+            <Box 
+              onClick={() => setExpandedCompletedSections(prev => ({
+                ...prev, 
+                global: !prev.global
+              }))}
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                p: 2,
+                cursor: 'pointer',
+                bgcolor: 'rgba(16, 86, 245, 0.08)'
+              }}
+            >
+              <IconButton size="small" sx={{ mr: 1, p: 0 }}>
+                {expandedCompletedSections.global ? (
+                  <LoopIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                ) : (
+                  <LoopIcon fontSize="small" />
+                )}
+              </IconButton>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+                Completed ({taskLists.flatMap(list => list.tasks.filter(task => task.status === 'completed')).length})
+              </Typography>
+            </Box>
+            
+            {expandedCompletedSections.global && (
+              <Box sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <List sx={{ py: 0 }}>
+                  {taskLists.flatMap(list => 
+                    list.tasks
+                      .filter(task => task.status === 'completed')
+                      .map(task => ({ task, listId: list.id, listTitle: list.title }))
+                  ).sort((a, b) => {
+                    // Sort by completion date, newest first
+                    const dateA = a.task.completed ? new Date(a.task.completed).getTime() : 0;
+                    const dateB = b.task.completed ? new Date(b.task.completed).getTime() : 0;
+                    return dateB - dateA;
+                  }).map(({ task, listId, listTitle }) => (
+                    <ListItem
+                      key={task.id}
+                      sx={{
+                        py: 1,
+                        borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                        '&:last-child': { borderBottom: 'none' }
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: '40px' }}>
+                        <Checkbox
+                          checked={true}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleTaskComplete(listId, task.id);
+                          }}
+                          edge="start"
+                          icon={<CheckBoxOutlineBlankIcon />}
+                          checkedIcon={<CheckBoxIcon />}
+                          sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
+                        />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={
+                          <Typography
+                            sx={{
+                              textDecoration: 'line-through',
+                              color: 'text.secondary',
+                              fontFamily: 'Poppins',
+                            }}
+                          >
+                            {task.title}
+                          </Typography>
+                        }
+                        secondary={
+                          <Box>
+                            {task.completed && (
+                              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins', display: 'block' }}>
+                                Completed: {formatDate(task.completed)}
+                              </Typography>
+                            )}
+                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins', display: 'block' }}>
+                              List: {listTitle}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      <IconButton
+                        edge="end"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTaskStar(listId, task.id);
+                        }}
+                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                      >
+                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                      </IconButton>
+                      <IconButton
+                        edge="end"
+                        onClick={(e) => handleTaskMenuOpen(e, listId, task)}
+                        size="small"
+                      >
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+          </Card>
+        </Box>
+      )}
 
       {/* Task List Options Menu */}
       <Menu

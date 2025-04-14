@@ -25,7 +25,7 @@ export interface GoogleTaskList {
 export const fetchGoogleTaskLists = async (): Promise<GoogleTaskList[]> => {
   try {
     console.log('Fetching Google Task lists from API...');
-    const response = await apiRequest<{ status: string; data: { taskLists: GoogleTaskList[] } }>('/api/google/tasks');
+    const response = await apiRequest<{ status: string; data: { taskLists: GoogleTaskList[] } }>('/api/google/tasks?showCompleted=true&showHidden=true');
     
     if (response.status === 'success' && response.data && response.data.taskLists) {
       console.log(`Fetched ${response.data.taskLists.length} task lists`);
