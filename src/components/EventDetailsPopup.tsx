@@ -24,7 +24,9 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
-  FormControl
+  FormControl,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -68,6 +70,8 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   onDelete
 }) => {
   const { fetchEvents } = useCalendar();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [rsvpStatus, setRsvpStatus] = useState<string>('Yes');
   const [isEditFormOpen, setIsEditFormOpen] = useState<boolean>(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -583,8 +587,8 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         }}
         PaperProps={{
           sx: { 
-            width: 400, 
-            maxHeight: '80vh',
+            width: isMobile ? '95vw' : 400, 
+            maxHeight: isMobile ? '90vh' : '80vh',
             overflowY: 'auto',
             borderRadius: 1.5,
             boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
@@ -593,14 +597,25 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       >
         <Paper elevation={0}>
           {/* Header with close button */}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1 }}>
-            <IconButton size="small" onClick={onClose} aria-label="close">
-              <CloseIcon fontSize="small" />
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: isMobile ? 1.5 : 1 }}>
+            <IconButton 
+              size={isMobile ? "medium" : "small"} 
+              onClick={onClose} 
+              aria-label="close"
+              sx={{ padding: isMobile ? 1 : 0.5 }} // Larger touch target on mobile
+            >
+              <CloseIcon fontSize={isMobile ? "medium" : "small"} />
             </IconButton>
           </Box>
           
           {/* Event title and color indicator */}
-          <Box sx={{ px: 3, pt: 1, pb: 2, display: 'flex', alignItems: 'flex-start' }}>
+          <Box sx={{ 
+            px: isMobile ? 2.5 : 3, 
+            pt: 1, 
+            pb: 2, 
+            display: 'flex', 
+            alignItems: 'flex-start' 
+          }}>
             <Box 
               sx={{ 
                 width: 12, 
@@ -612,7 +627,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               }} 
             />
             <Typography 
-              variant="h6" 
+              variant={isMobile ? "subtitle1" : "h6"} 
               sx={{ 
                 fontWeight: 500, 
                 flex: 1,
@@ -624,8 +639,12 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
             </Typography>
             
             {/* More options menu */}
-            <IconButton size="small" sx={{ ml: 1 }} onClick={handleMenuOpen}>
-              <MoreVertIcon fontSize="small" />
+            <IconButton 
+              size={isMobile ? "medium" : "small"} 
+              sx={{ ml: 1, padding: isMobile ? 1 : 0.5 }} 
+              onClick={handleMenuOpen}
+            >
+              <MoreVertIcon fontSize={isMobile ? "medium" : "small"} />
             </IconButton>
             <Menu
               anchorEl={menuAnchorEl}
@@ -644,7 +663,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           </Box>
           
           {/* Date and time */}
-          <Box sx={{ px: 3, pb: 2 }}>
+          <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
             {isDeclinedByCurrentUser && (
               <Typography 
                 variant="body2" 
@@ -652,7 +671,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                   color: '#D32F2F', 
                   mb: 0.5, 
                   fontWeight: 'medium',
-                  fontSize: '0.85rem',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
                   display: 'flex',
                   alignItems: 'center'
                 }}
@@ -660,11 +679,19 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                 ● Declined
               </Typography>
             )}
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ fontSize: isMobile ? '0.9rem' : '0.85rem' }}
+            >
               {formatEventDate()} · {formatEventTime()}
             </Typography>
             {formatRecurrence() && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ fontSize: isMobile ? '0.9rem' : '0.85rem' }}
+              >
                 {formatRecurrence()}
               </Typography>
             )}
@@ -672,12 +699,12 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* Google Meet section */}
           {meetLink && (
-            <Box sx={{ px: 3, pb: 2 }}>
+            <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Avatar 
                   src="https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v6/web-512dp/logo_meet_2020q4_color_2x_web_512dp.png" 
                   alt="Google Meet"
-                  sx={{ width: 20, height: 20, mr: 1 }}
+                  sx={{ width: isMobile ? 24 : 20, height: isMobile ? 24 : 20, mr: 1 }}
                 >
                   <VideocamIcon fontSize="small" />
                 </Avatar>
@@ -691,20 +718,31 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                     color: 'white',
                     '&:hover': { bgcolor: '#1557b0' },
                     textTransform: 'none',
-                    px: 2
+                    px: 2,
+                    py: isMobile ? 0.75 : 0.5,
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    minHeight: isMobile ? '36px' : '32px'
                   }}
                 >
                   Join with Google Meet
                 </Button>
                 <IconButton 
-                  size="small" 
+                  size={isMobile ? "medium" : "small"} 
                   sx={{ ml: 1 }}
                   onClick={() => copyToClipboard(meetLink.url)}
                 >
-                  <ContentCopyIcon fontSize="small" />
+                  <ContentCopyIcon fontSize={isMobile ? "medium" : "small"} />
                 </IconButton>
               </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 3 }}>
+              <Typography 
+                variant="body2" 
+                color="text.secondary" 
+                sx={{ 
+                  ml: 3, 
+                  fontSize: isMobile ? '0.875rem' : '0.8rem',
+                  wordBreak: 'break-all'
+                }}
+              >
                 {meetLink.label}
               </Typography>
             </Box>
@@ -712,15 +750,15 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* Phone details */}
           {phoneDetails && (
-            <Box sx={{ px: 3, pb: 2 }}>
+            <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
                 <PhoneIcon 
-                  fontSize="small" 
+                  fontSize={isMobile ? "small" : "small"} 
                   sx={{ 
                     mr: 1, 
                     color: '#1A73E8', 
-                    width: 18, 
-                    height: 18 
+                    width: isMobile ? 20 : 18, 
+                    height: isMobile ? 20 : 18 
                   }} 
                 />
                 <Typography 
@@ -728,7 +766,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                   color="primary" 
                   sx={{ 
                     fontWeight: 500,
-                    fontSize: '0.85rem'
+                    fontSize: isMobile ? '0.9rem' : '0.85rem'
                   }}
                 >
                   Join by phone
@@ -739,7 +777,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                 color="text.secondary" 
                 sx={{ 
                   ml: 3, 
-                  fontSize: '0.8rem' 
+                  fontSize: isMobile ? '0.875rem' : '0.8rem' 
                 }}
               >
                 {phoneDetails.number}{phoneDetails.pin ? ` PIN: ${phoneDetails.pin}` : ''}
@@ -749,10 +787,23 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* Location if available */}
           {event.location && (
-            <Box sx={{ px: 3, pb: 2 }}>
+            <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
-                <LocationOnIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary', mt: 0.5 }} />
-                <Typography variant="body2" color="text.secondary">
+                <LocationOnIcon 
+                  fontSize={isMobile ? "small" : "small"} 
+                  sx={{ 
+                    mr: 1, 
+                    color: 'text.secondary', 
+                    mt: 0.5,
+                    width: isMobile ? 20 : 18, 
+                    height: isMobile ? 20 : 18
+                  }} 
+                />
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ fontSize: isMobile ? '0.9rem' : '0.85rem' }}
+                >
                   {event.location}
                 </Typography>
               </Box>
@@ -761,21 +812,21 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           
           {/* Guest details */}
           {guestList.length > 0 && (
-            <Box sx={{ px: 3, pb: 2 }}>
+            <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <PeopleIcon 
-                  fontSize="small" 
+                  fontSize={isMobile ? "small" : "small"} 
                   sx={{ 
                     mr: 1, 
                     color: 'text.secondary',
-                    width: 18,
-                    height: 18
+                    width: isMobile ? 20 : 18, 
+                    height: isMobile ? 20 : 18
                   }} 
                 />
                 <Typography 
                   variant="body2" 
                   color="text.secondary"
-                  sx={{ fontSize: '0.85rem' }}
+                  sx={{ fontSize: isMobile ? '0.9rem' : '0.85rem' }}
                 >
                   {guestList.length} {guestList.length === 1 ? 'guest' : 'guests'}
                 </Typography>
@@ -900,25 +951,34 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           {!isFocusTimeEvent && (
             <>
               <Divider />
-              <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: isMobile ? 'column' : 'row' }}>
                 <Typography 
                   variant="body2" 
                   sx={{ 
                     mr: 2, 
-                    fontSize: '0.85rem'
+                    fontSize: '0.85rem',
+                    mb: isMobile ? 1.5 : 0,
+                    alignSelf: isMobile ? 'flex-start' : 'center'
                   }}
                 >
                   Going?
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  width: isMobile ? '100%' : 'auto'
+                }}>
                   <ToggleButtonGroup
                     value={rsvpStatus}
                     exclusive
                     onChange={handleRsvpToggleChange}
-                    size="small"
+                    size={isMobile ? "medium" : "small"}
                     sx={{
+                      flexGrow: isMobile ? 1 : 0,
                       '& .MuiToggleButton-root': {
-                        px: 2,
+                        px: isMobile ? 2 : 1.5,
+                        py: isMobile ? 0.75 : 0.5,
+                        flex: isMobile ? '1 1 0' : 'none',
                         textTransform: 'none',
                         fontSize: '0.85rem',
                         '&.Mui-selected': {
@@ -935,14 +995,16 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                   </ToggleButtonGroup>
                   <Button 
                     variant="contained" 
-                    size="small" 
+                    size={isMobile ? "medium" : "small"} 
                     onClick={handleOpenNoteDialog}
                     sx={{ 
                       ml: 1, 
                       bgcolor: '#1A73E8', 
                       '&:hover': { bgcolor: '#1557b0' },
-                      fontSize: '0.8rem',
-                      textTransform: 'none'
+                      fontSize: isMobile ? '0.9rem' : '0.8rem',
+                      textTransform: 'none',
+                      minHeight: isMobile ? '40px' : '36px',
+                      minWidth: isMobile ? '80px' : '64px'
                     }}
                   >
                     Update
@@ -951,17 +1013,18 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               </Box>
               
               {/* Add a note button */}
-              <Box sx={{ px: 2, pb: 2, display: 'flex', justifyContent: 'center' }}>
+              <Box sx={{ px: isMobile ? 2.5 : 2, pb: isMobile ? 2.5 : 2, display: 'flex', justifyContent: 'center' }}>
                 <Button 
                   variant="outlined" 
                   fullWidth
-                  size="small" 
+                  size={isMobile ? "medium" : "small"} 
                   onClick={handleDirectNoteDialog}
                   sx={{ 
                     textTransform: 'none',
-                    fontSize: '0.85rem',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
                     borderColor: '#dadce0',
                     color: '#3c4043',
+                    minHeight: isMobile ? '40px' : '36px',
                     '&:hover': {
                       borderColor: '#d2d5d9',
                       bgcolor: 'rgba(60, 64, 67, 0.04)'
@@ -997,14 +1060,15 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         PaperProps={{
           sx: { 
             borderRadius: 2,
-            width: 400
+            width: isMobile ? '95vw' : 400,
+            maxWidth: isMobile ? '95vw' : 400
           }
         }}
       >
-        <DialogTitle id="recurring-response-dialog-title" sx={{ pb: 1 }}>
+        <DialogTitle id="recurring-response-dialog-title" sx={{ pb: 1, pt: isMobile ? 2 : 1.5 }}>
           {recurringDialogMode === 'rsvp' ? 'RSVP to recurring event' : 'Add note to recurring event'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ pt: isMobile ? 1 : 0.5 }}>
           <FormControl component="fieldset">
             <RadioGroup
               aria-label="response-scope"
@@ -1014,29 +1078,35 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
             >
               <FormControlLabel 
                 value="single" 
-                control={<Radio />} 
+                control={<Radio size={isMobile ? "medium" : "small"} />} 
                 label="This event" 
+                sx={{ py: isMobile ? 0.75 : 0.5 }}
               />
               <FormControlLabel 
                 value="following" 
-                control={<Radio />} 
+                control={<Radio size={isMobile ? "medium" : "small"} />} 
                 label="This and following events" 
+                sx={{ py: isMobile ? 0.75 : 0.5 }}
               />
               <FormControlLabel 
                 value="all" 
-                control={<Radio />} 
+                control={<Radio size={isMobile ? "medium" : "small"} />} 
                 label="All events" 
+                sx={{ py: isMobile ? 0.75 : 0.5 }}
               />
             </RadioGroup>
           </FormControl>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: isMobile ? 3 : 2 }}>
           <Button 
             onClick={handleCloseRecurringDialog}
             sx={{ 
               color: '#1A73E8', 
               textTransform: 'none',
-              fontWeight: 500
+              fontWeight: 500,
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+              minHeight: isMobile ? '40px' : '36px',
+              px: isMobile ? 2.5 : 2
             }}
           >
             Cancel
@@ -1048,7 +1118,10 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               bgcolor: '#1A73E8', 
               '&:hover': { bgcolor: '#1557b0' },
               textTransform: 'none',
-              fontWeight: 500
+              fontWeight: 500,
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+              minHeight: isMobile ? '40px' : '36px',
+              px: isMobile ? 2.5 : 2
             }}
           >
             OK
@@ -1064,24 +1137,24 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         PaperProps={{
           sx: { 
             borderRadius: 2,
-            width: 400,
-            maxWidth: '90vw'
+            width: isMobile ? '95vw' : 400,
+            maxWidth: isMobile ? '95vw' : 400
           }
         }}
       >
         <DialogTitle 
           id="add-note-dialog-title" 
           sx={{ 
-            pt: 3, 
-            pb: 2,
-            px: 3,
-            fontSize: '1.5rem',
+            pt: isMobile ? 3.5 : 3, 
+            pb: isMobile ? 2.5 : 2,
+            px: isMobile ? 3.5 : 3,
+            fontSize: isMobile ? '1.6rem' : '1.5rem',
             fontWeight: 400
           }}
         >
           Add a note
         </DialogTitle>
-        <DialogContent sx={{ px: 3, pt: 1, pb: 3 }}>
+        <DialogContent sx={{ px: isMobile ? 3.5 : 3, pt: 1, pb: isMobile ? 3.5 : 3 }}>
           {/* Note input field styled to match Google Calendar */}
           <Box 
             component="div" 
@@ -1104,13 +1177,13 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               onChange={(e) => setResponseNote(e.target.value)}
               sx={{
                 width: '100%',
-                minHeight: '150px',
+                minHeight: isMobile ? '180px' : '150px',
                 p: 2,
                 border: 'none',
                 borderRadius: '8px',
                 resize: 'none',
                 fontFamily: 'inherit',
-                fontSize: '1rem',
+                fontSize: isMobile ? '1.1rem' : '1rem',
                 backgroundColor: 'transparent',
                 '&:focus': {
                   outline: 'none'
@@ -1127,10 +1200,11 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               px: 2,
-              py: 1.5,
+              py: isMobile ? 2 : 1.5,
               backgroundColor: '#f1f3f4',
               borderRadius: '4px',
               cursor: 'pointer',
+              minHeight: isMobile ? '48px' : '40px',
               '&:hover': {
                 backgroundColor: '#e8eaed'
               }
@@ -1144,16 +1218,26 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#1a73e8',
-                  mr: 1
+                  mr: 1,
+                  fontSize: isMobile ? '1.1rem' : '1rem'
                 }}
               >
                 ✓
               </Box>
-              <Typography sx={{ color: '#202124' }}>
+              <Typography sx={{ 
+                color: '#202124',
+                fontSize: isMobile ? '1rem' : '0.9rem'
+              }}>
                 RSVP: {rsvpStatus}
               </Typography>
             </Box>
-            <Box component="span" sx={{ color: '#5f6368' }}>
+            <Box 
+              component="span" 
+              sx={{ 
+                color: '#5f6368',
+                fontSize: isMobile ? '1rem' : '0.9rem'
+              }}
+            >
               ▼
             </Box>
           </Box>
@@ -1167,7 +1251,9 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               '& .MuiPaper-root': {
                 borderRadius: '8px',
                 boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)',
-                mt: 1
+                mt: 1,
+                width: isMobile ? '95vw' : 'auto',
+                maxWidth: isMobile ? '95vw' : 400
               }
             }}
             anchorOrigin={{
@@ -1179,9 +1265,20 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               horizontal: 'left',
             }}
           >
-            <MenuItem onClick={() => handleRsvpChange('Yes')} sx={{ py: 1.5, px: 2 }}>
-              <Box component="span" sx={{ color: '#1a73e8', mr: 2 }}>✓</Box>
-              Yes
+            <MenuItem onClick={() => handleRsvpChange('Yes')} sx={{ py: isMobile ? 2 : 1.5, px: isMobile ? 3 : 2 }}>
+              <Box 
+                component="span" 
+                sx={{ 
+                  color: '#1a73e8', 
+                  mr: 2,
+                  fontSize: isMobile ? '1.1rem' : '1rem'
+                }}
+              >
+                ✓
+              </Box>
+              <Typography sx={{ fontSize: isMobile ? '1rem' : '0.9rem' }}>
+                Yes
+              </Typography>
             </MenuItem>
             <MenuItem onClick={() => handleRsvpChange('Yes, in a meeting room')} sx={{ py: 1.5, px: 2 }}>
               <Box component="span" sx={{ mr: 2, width: '1em', display: 'inline-block' }}>🏢</Box>
@@ -1201,17 +1298,18 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
             </MenuItem>
           </Menu>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, display: 'flex', justifyContent: 'flex-end' }}>
+        <DialogActions sx={{ px: isMobile ? 3.5 : 3, pb: isMobile ? 3.5 : 3, display: 'flex', justifyContent: 'flex-end' }}>
           <Button 
             onClick={handleCloseNoteDialog}
             sx={{ 
               color: '#1A73E8', 
               textTransform: 'none',
-              fontSize: '0.875rem',
+              fontSize: isMobile ? '0.95rem' : '0.875rem',
               fontWeight: 500,
               letterSpacing: '0.25px',
-              px: 2,
-              py: 1
+              px: isMobile ? 2.5 : 2,
+              py: isMobile ? 1.25 : 1,
+              minHeight: isMobile ? '44px' : '36px'
             }}
           >
             Cancel
@@ -1223,12 +1321,13 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               bgcolor: '#1A73E8', 
               '&:hover': { bgcolor: '#1557b0' },
               textTransform: 'none',
-              fontSize: '0.875rem',
+              fontSize: isMobile ? '0.95rem' : '0.875rem',
               fontWeight: 500,
               borderRadius: '4px',
-              px: 3,
-              py: 1,
-              ml: 1
+              px: isMobile ? 3.5 : 3,
+              py: isMobile ? 1.25 : 1,
+              ml: 1,
+              minHeight: isMobile ? '44px' : '36px'
             }}
           >
             Send

@@ -124,7 +124,7 @@ export const getPreferredModel = (): string => {
   }
   
   // Try environment variable
-  return process.env.REACT_APP_OPENAI_MODEL || 'gpt-4o-mini';
+  return process.env.REACT_APP_OPENAI_MODEL || 'ft:gpt-4o-mini-2024-07-18:operosus:productivity-test:BIXbr2Lk';
 };
 
 // Message interface to match OpenAI's expected format

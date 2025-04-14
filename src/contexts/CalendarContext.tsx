@@ -19,14 +19,14 @@ const convertTasksToEvents = (taskLists: GoogleTaskList[]): CalendarEvent[] => {
   const tasksWithDueDates = taskLists.flatMap(list => 
     list.tasks
       .filter(task => task.due && task.status !== 'completed')
-      .map(task => convertTaskToEvent(task, list.title))
+      .map(task => convertTaskToEvent(task, list.title, list.id))
   );
   
   return tasksWithDueDates;
 };
 
 // Helper to convert a single task to a calendar event
-const convertTaskToEvent = (task: GoogleTask, listTitle: string): CalendarEvent => {
+const convertTaskToEvent = (task: GoogleTask, listTitle: string, listId?: string): CalendarEvent => {
   // Parse the due date
   const dueDate = new Date(task.due || '');
   
@@ -44,6 +44,9 @@ const convertTaskToEvent = (task: GoogleTask, listTitle: string): CalendarEvent 
     }
   }
   
+  // Determine the task list ID - use '@default' for My Tasks
+  const taskListId = listTitle === 'My Tasks' ? '@default' : listId || '';
+  
   return {
     id: `task-${task.id}`,
     title: `${task.title} ${timeInfo} [Task]`,
@@ -52,7 +55,8 @@ const convertTaskToEvent = (task: GoogleTask, listTitle: string): CalendarEvent 
     description: task.notes || '',
     colorId: '6', // Use a distinct color for tasks
     eventType: 'task',
-    summary: `Task from ${listTitle}`
+    summary: `Task from ${listTitle}`,
+    taskListId: taskListId // Store the task list ID for direct API access
   };
 };
 

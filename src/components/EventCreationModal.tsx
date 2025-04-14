@@ -18,7 +18,9 @@ import {
   FormHelperText,
   Alert,
   Chip,
-  Paper
+  Paper,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -48,6 +50,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   selectedTime
 }) => {
   const { addEvent } = useCalendar();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   // Calculate initial start and end times based on the selected time or default to current hour
   const getInitialStartTime = (): Date => {
@@ -404,16 +408,17 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
-          borderRadius: 2,
+          borderRadius: isMobile ? 0 : 2,
           overflow: 'visible',
-          maxHeight: '95vh' // Limit the maximum height to prevent overflow
+          maxHeight: isMobile ? '100vh' : '95vh' // Full height on mobile
         }
       }}
     >
       <DialogTitle sx={{ 
-        p: 2, 
+        p: isMobile ? 1.5 : 2, 
         backgroundColor: 'rgba(198, 232, 242, 0.3)',
         display: 'flex',
         justifyContent: 'space-between',
@@ -431,8 +436,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       </DialogTitle>
       
       <DialogContent sx={{ 
-        p: 3, 
-        pt: 3,
+        p: isMobile ? 2 : 3, 
+        pt: isMobile ? 2 : 3,
         mt: 0.5,
         position: 'relative',
         zIndex: 0,
@@ -451,7 +456,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         <Box component="form" sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          gap: 3 // Increased gap for more space between form elements
+          gap: isMobile ? 2 : 3 // Smaller gap on mobile
         }}>
           <TextField
             label="Event Title"
@@ -484,9 +489,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           
           <Box sx={{ 
             display: 'flex', 
-            gap: 2, 
+            gap: isMobile ? 1 : 2, 
             alignItems: 'flex-start',
-            flexWrap: 'wrap' // Allow wrapping on small screens
+            flexWrap: 'wrap', // Allow wrapping on small screens
+            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
           }}>
             <FormControlLabel
               control={
@@ -500,7 +506,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
               sx={{ ml: 0 }}
             />
             
-            <FormControl sx={{ minWidth: 150, flexGrow: 1 }}>
+            <FormControl sx={{ minWidth: isMobile ? '100%' : 150, flexGrow: 1 }}>
               <InputLabel>Event Type</InputLabel>
               <Select
                 value={eventType}
@@ -517,8 +523,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           
           <Box sx={{ 
             display: 'flex', 
-            gap: 2,
-            flexWrap: 'wrap' // Allow wrapping on small screens
+            gap: isMobile ? 1 : 2,
+            flexWrap: 'wrap', // Allow wrapping on small screens
+            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
           }}>
             <TextField
               label="Start Date"
@@ -533,7 +540,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
               }}
               sx={{
                 flexGrow: 1,
-                minWidth: '200px',
+                minWidth: isMobile ? '100%' : '200px',
                 '& .MuiFormLabel-asterisk': {
                   color: '#d32f2f'
                 },
@@ -558,7 +565,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }}
                 sx={{
                   flexGrow: 1,
-                  minWidth: '150px',
+                  minWidth: isMobile ? '100%' : '150px',
                   '& .MuiFormLabel-asterisk': {
                     color: '#d32f2f'
                   },
@@ -573,8 +580,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           
           <Box sx={{ 
             display: 'flex', 
-            gap: 2,
-            flexWrap: 'wrap' // Allow wrapping on small screens
+            gap: isMobile ? 1 : 2,
+            flexWrap: 'wrap',
+            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
           }}>
             <TextField
               label="End Date"
@@ -589,7 +597,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
               }}
               sx={{
                 flexGrow: 1,
-                minWidth: '200px',
+                minWidth: isMobile ? '100%' : '200px',
                 '& .MuiFormLabel-asterisk': {
                   color: '#d32f2f'
                 },
@@ -614,7 +622,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 }}
                 sx={{
                   flexGrow: 1,
-                  minWidth: '150px',
+                  minWidth: isMobile ? '100%' : '150px',
                   '& .MuiFormLabel-asterisk': {
                     color: '#d32f2f'
                   },
@@ -808,7 +816,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         </Box>
       </DialogContent>
       
-      <DialogActions sx={{ p: 2, justifyContent: 'flex-end', gap: 1 }}>
+      <DialogActions sx={{ p: isMobile ? 1.5 : 2, justifyContent: 'flex-end', gap: 1 }}>
         <Button
           onClick={handleClose}
           variant="outlined"

@@ -28,6 +28,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import SortIcon from '@mui/icons-material/Sort';
 
 // Type for the admin journal entry based on the API response
 interface AdminJournalEntry {
@@ -213,6 +214,18 @@ const AdminJournal: React.FC = () => {
           Admin Journal Entries
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={toggleSortOrder}
+            startIcon={<SortIcon />}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {sortOrder === 'newest' ? 'Oldest First' : 'Newest First'}
+          </Button>
           <Button 
             variant="outlined"
             onClick={() => navigate('/dashboard')}

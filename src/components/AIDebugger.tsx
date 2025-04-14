@@ -59,10 +59,15 @@ const AIDebugger: React.FC = () => {
     
     try {
       // Simple message array with the test query
-      const response = await sendOpenAIQuery([
-        { role: 'system', content: 'You are a helpful assistant focusing on productivity advice.' },
-        { role: 'user', content: testQuery }
-      ]);
+      const response = await sendOpenAIQuery(
+        [
+          { role: 'system', content: 'You are a helpful assistant focusing on productivity advice.' },
+          { role: 'user', content: testQuery }
+        ],
+        'ft:gpt-4o-mini-2024-07-18:operosus:productivity-test:BIXbr2Lk', // Using fine-tuned model
+        0.7,  // temperature
+        1000  // maxTokens
+      );
       
       if (response) {
         addLog('Received OpenAI response successfully');

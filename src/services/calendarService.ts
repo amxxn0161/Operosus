@@ -33,6 +33,7 @@ export interface CalendarEvent {
   colorId?: string;
   isAllDay?: boolean;
   eventType?: string;
+  taskListId?: string;
   
   // API-specific fields that we pass through
   summary?: string;

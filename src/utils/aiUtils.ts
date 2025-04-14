@@ -64,7 +64,12 @@ export const processAIQuery = async (
     }
     
     // Call OpenAI
-    const responseContent = await sendOpenAIQuery(openaiMessages);
+    const responseContent = await sendOpenAIQuery(
+      openaiMessages,
+      'ft:gpt-4o-mini-2024-07-18:operosus:productivity-test:BIXbr2Lk',
+      0.7,
+      1000
+    );
     
     if (responseContent) {
       return {

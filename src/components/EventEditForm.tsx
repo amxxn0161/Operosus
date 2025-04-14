@@ -19,7 +19,9 @@ import {
   ListItem,
   ListItemText,
   Paper,
-  Grid
+  Grid,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -44,6 +46,8 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
   onSave
 }) => {
   const { updateEvent, isLoading, addAttendeesToEvent, removeAttendeesFromEvent } = useCalendar();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   // Form state
   const [title, setTitle] = useState<string>('');
@@ -244,25 +248,50 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
       onClose={onClose}
       fullWidth
       maxWidth="sm"
+      fullScreen={isMobile}
       aria-labelledby="edit-event-dialog-title"
+      PaperProps={{
+        sx: {
+          borderRadius: isMobile ? 0 : 2,
+          overflow: 'visible',
+          maxHeight: isMobile ? '100vh' : '95vh', // Full height on mobile
+          display: 'flex',
+          flexDirection: 'column'
+        }
+      }}
     >
-      <DialogTitle id="edit-event-dialog-title">
-        Edit Event
+      <DialogTitle 
+        id="edit-event-dialog-title"
+        sx={{ 
+          p: isMobile ? 1.5 : 2,
+          backgroundColor: 'rgba(198, 232, 242, 0.3)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+          position: isMobile ? 'sticky' : 'relative',
+          top: 0,
+          zIndex: 1200
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#071C73' }}>
+          Edit Event
+        </Typography>
         <IconButton
           aria-label="close"
           onClick={onClose}
-          sx={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-          }}
+          size="small"
         >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
       
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden' }}>
+        <DialogContent sx={{ 
+          p: isMobile ? 2 : 3,
+          overflowY: 'auto',
+          flexGrow: 1
+        }}>
           {formError && (
             <Typography color="error" variant="body2" sx={{ mb: 2 }}>
               {formError}
@@ -306,6 +335,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                   textField: {
                     fullWidth: true,
                     margin: 'normal',
+                    size: isMobile ? 'small' : 'medium',
                   },
                 }}
                 disablePast
@@ -319,6 +349,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                   textField: {
                     fullWidth: true,
                     margin: 'normal',
+                    size: isMobile ? 'small' : 'medium',
                   },
                 }}
                 disablePast
@@ -334,7 +365,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
             onChange={(e) => setDescription(e.target.value)}
             margin="normal"
             multiline
-            rows={4}
+            rows={isMobile ? 3 : 4}
           />
           
           {/* Attendees Section */}
@@ -344,8 +375,8 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
             </Typography>
             
             {/* Add Attendee Form */}
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={7}>
+            <Grid container spacing={isMobile ? 1 : 2} alignItems="center" direction={isMobile ? "column" : "row"}>
+              <Grid item xs={12} sm={7}>
                 <TextField
                   label="Email"
                   fullWidth
@@ -357,7 +388,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                   size="small"
                 />
               </Grid>
-              <Grid item xs={3}>
+              <Grid item xs={12} sm={3}>
                 <FormControlLabel
                   control={
                     <Checkbox 
@@ -369,7 +400,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                   label="Optional"
                 />
               </Grid>
-              <Grid item xs={2}>
+              <Grid item xs={12} sm={2}>
                 <Button 
                   variant="outlined"
                   color="primary"
@@ -378,6 +409,7 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                   startIcon={<PersonAddIcon />}
                   size="small"
                   fullWidth
+                  sx={{ mt: isMobile ? 1 : 0 }}
                 >
                   Add
                 </Button>
@@ -386,7 +418,12 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
             
             {/* Attendee List */}
             {attendees.length > 0 ? (
-              <Paper variant="outlined" sx={{ mt: 2, p: 1, maxHeight: '180px', overflow: 'auto' }}>
+              <Paper variant="outlined" sx={{ 
+                mt: 2, 
+                p: 1, 
+                maxHeight: isMobile ? '150px' : '180px', 
+                overflow: 'auto' 
+              }}>
                 <List dense disablePadding>
                   {attendees.map((attendee, index) => (
                     <ListItem 
@@ -402,11 +439,24 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
                         </IconButton>
                       }
                       divider={index < attendees.length - 1}
+                      sx={{ py: isMobile ? 0.5 : 1 }}
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2">{attendee.email}</Typography>
+                          <Box sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: 1,
+                            flexWrap: 'wrap'
+                          }}>
+                            <Typography variant="body2" 
+                              sx={{ 
+                                fontSize: isMobile ? '0.8rem' : '0.875rem',
+                                wordBreak: 'break-word'
+                              }}
+                            >
+                              {attendee.email}
+                            </Typography>
                             {attendee.optional && (
                               <Chip size="small" variant="outlined" label="Optional" />
                             )}
@@ -434,8 +484,21 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
           </Box>
         </DialogContent>
         
-        <DialogActions>
-          <Button onClick={onClose} color="primary">
+        <DialogActions sx={{ 
+          p: isMobile ? 1.5 : 2, 
+          justifyContent: 'space-between',
+          borderTop: '1px solid rgba(0, 0, 0, 0.12)',
+          position: isMobile ? 'sticky' : 'relative',
+          bottom: 0,
+          backgroundColor: 'white',
+          zIndex: 1200
+        }}>
+          <Button 
+            onClick={onClose} 
+            color="primary"
+            variant="outlined"
+            sx={{ borderRadius: 1 }}
+          >
             Cancel
           </Button>
           <Button 
@@ -443,6 +506,14 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
             color="primary" 
             variant="contained"
             disabled={isLoading}
+            sx={{ 
+              borderRadius: 1, 
+              bgcolor: '#016C9E', 
+              '&:hover': { bgcolor: '#015C8E' },
+              color: 'white',
+              fontWeight: 'bold',
+              minWidth: '80px'
+            }}
           >
             {isLoading ? (
               <CircularProgress size={24} color="inherit" />

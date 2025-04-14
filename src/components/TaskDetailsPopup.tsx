@@ -10,9 +10,8 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import Menu from '@mui/material/Menu';
-import MenuItem from '@mui/material/MenuItem';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useNavigate } from 'react-router-dom';
 import { CalendarEvent } from '../services/calendarService';
 
 interface TaskDetailsPopupProps {
@@ -30,7 +29,7 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
   onEdit,
   onDelete
 }) => {
-  const [menuAnchorEl, setMenuAnchorEl] = React.useState<null | HTMLElement>(null);
+  const navigate = useNavigate();
   
   // Extract task ID from event ID (format: task-{taskId})
   const getTaskId = () => {
@@ -39,28 +38,40 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
     return match ? match[1] : null;
   };
 
-  const handleMenuOpen = (e: React.MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    setMenuAnchorEl(e.currentTarget);
-  };
-  
-  const handleMenuClose = () => {
-    setMenuAnchorEl(null);
-  };
-  
-  const handleEditClick = () => {
-    handleMenuClose();
-    if (event && onEdit) {
-      onEdit(event);
+  // Extract task list ID from summary (format: "Task from {listName}")
+  const getTaskListId = (): string | null => {
+    if (!event?.summary) return null;
+    
+    // First try to parse from any stored metadata
+    if (event.taskListId) {
+      return event.taskListId;
     }
+    
+    // My Tasks is the default list
+    const listName = getTaskListName();
+    if (listName === 'My Tasks') {
+      return '@default'; // Google's default ID for "My Tasks"
+    }
+    
+    return null;
   };
   
-  const handleDeleteClick = () => {
-    handleMenuClose();
-    if (event && onDelete) {
-      onDelete(event);
-    }
+  // Navigate to Google Tasks and open the specific task
+  const handleOpenTask = () => {
+    const taskListId = getTaskListId();
+    const listName = getTaskListName();
+    
+    // Close the popup
     onClose();
+    
+    // Navigate to Google Tasks page
+    navigate('/google-tasks', { 
+      state: { 
+        selectedListId: taskListId,
+        selectedListName: listName,
+        highlightTaskId: getTaskId()
+      } 
+    });
   };
 
   // Format the date
@@ -73,15 +84,6 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
       day: 'numeric',
       year: 'numeric'
     });
-  };
-
-  // Format the time
-  const formatEventTime = () => {
-    if (!event) return '';
-    const start = new Date(event.start);
-    const end = new Date(event.end);
-    
-    return `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
   };
 
   // Get task description and due time from notes
@@ -158,29 +160,16 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
           <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold', fontFamily: 'Poppins' }}>
             Task from {getTaskListName()}
           </Typography>
-          <IconButton size="small" onClick={handleMenuOpen} sx={{ color: 'white' }}>
-            <MoreVertIcon />
-          </IconButton>
           <IconButton size="small" onClick={onClose} sx={{ ml: 1, color: 'white' }}>
             <CloseIcon />
           </IconButton>
         </Box>
 
-        {/* Menu */}
-        <Menu
-          anchorEl={menuAnchorEl}
-          open={Boolean(menuAnchorEl)}
-          onClose={handleMenuClose}
-        >
-          <MenuItem onClick={handleEditClick}>Edit Task</MenuItem>
-          <MenuItem onClick={handleDeleteClick}>Delete Task</MenuItem>
-        </Menu>
-
         {/* Content */}
         <Box sx={{ p: 2 }}>
           <Typography variant="h6" sx={{ mb: 1, fontFamily: 'Poppins' }}>{getTaskTitle()}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {formatEventDate()} · {formatEventTime()}
+            {formatEventDate()}
           </Typography>
 
           <Divider sx={{ my: 2 }} />
@@ -210,10 +199,11 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
             </Button>
             <Button 
               variant="contained"
-              onClick={handleEditClick}
+              onClick={handleOpenTask}
+              startIcon={<OpenInNewIcon />}
               sx={{ bgcolor: '#F29702', '&:hover': { bgcolor: '#D17F00' } }}
             >
-              Edit Task
+              Open Task
             </Button>
           </Box>
         </Box>
@@ -222,4 +212,4 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
   );
 };
 
-export default TaskDetailsPopup; 
+export default TaskDetailsPopup;
