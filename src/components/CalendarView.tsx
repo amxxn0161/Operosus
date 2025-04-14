@@ -1335,8 +1335,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     const eventPositions = calculateEventPositions(regularEvents);
     
+    // Define height for the task row
+    const TASK_ROW_HEIGHT = 60;
+    
     return (
-      <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 }}>
+      <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
         <Typography variant="h6" gutterBottom>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Typography>
@@ -1345,8 +1348,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         
         {/* Time grid with current time indicator */}
         <Box sx={{ position: 'relative', mt: 2, ml: 6 }}>
-          {/* Time labels */}
+          {/* Time labels column with Tasks label */}
           <Box sx={{ position: 'absolute', left: -60, top: 0, width: 50 }}>
+            {/* Task row label */}
+            <Box sx={{
+              height: TASK_ROW_HEIGHT,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              pr: 1
+            }}>
+              <Typography variant="caption" color="text.secondary">
+                Tasks
+              </Typography>
+            </Box>
+            
             {TIME_LABELS.map((hour, index) => (
               <Box 
                 key={hour} 
@@ -1364,6 +1380,58 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 </Typography>
               </Box>
             ))}
+          </Box>
+          
+          {/* Tasks section at the top */}
+          <Box sx={{ 
+            position: 'relative', 
+            borderLeft: 1, 
+            borderColor: 'divider',
+            ml: 1,
+            height: TASK_ROW_HEIGHT,
+            borderBottom: 1
+          }}>
+            {tasks.length > 0 ? (
+              <Box 
+                sx={{ 
+                  cursor: 'pointer',
+                  height: '100%',
+                  width: '100%',
+                  p: 1,
+                  '&:hover': {
+                    backgroundColor: 'rgba(1, 108, 158, 0.05)'
+                  }
+                }}
+                onClick={(e) => handleTaskGroupClick(tasks, e)}
+              >
+                <Box 
+                  sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    p: 1,
+                    bgcolor: '#F29702',
+                    borderRadius: '4px',
+                    color: 'white',
+                    height: '100%'
+                  }}
+                >
+                  <TaskAltIcon sx={{ fontSize: '1rem', mr: 1 }} />
+                  <Typography variant="body2">
+                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} pending
+                  </Typography>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ 
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: 'text.secondary'
+              }}>
+                <Typography variant="caption">No tasks</Typography>
+              </Box>
+            )}
           </Box>
                   
           {/* Hour grid lines */}
@@ -1405,8 +1473,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               />
             )}
             
-            {/* No events or tasks message */}
-            {regularEvents.length === 0 && tasks.length === 0 ? (
+            {/* No events message */}
+            {regularEvents.length === 0 ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
                 <Typography variant="body1" color="text.secondary">
                   No events scheduled for this day
@@ -1414,51 +1482,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               </Box>
             ) : (
               <Box sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
-                {/* Tasks group indicator - at 9am position if there are tasks */}
-                {tasks.length > 0 && (
-                  <WeekEventCard
-                    bgcolor="#F29702" // Orange for tasks
-                    top={timeToPixels(new Date(new Date().setHours(9, 0, 0, 0))) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)))}
-                    height={40}
-                    width="95%"
-                    left="2.5%"
-                    onClick={(e) => handleTaskGroupClick(tasks, e)}
-                    sx={{
-                      zIndex: 10,
-                      border: '1px solid rgba(255,255,255,0.3)',
-                      borderRadius: '4px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                      '&:hover': {
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                        filter: 'brightness(1.03)'
-                      }
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', pl: 1 }}>
-                      <TaskAltIcon 
-                        sx={{ 
-                          fontSize: '0.8rem', 
-                          color: 'white',
-                          mr: 0.5 
-                        }} 
-                      />
-                      <Typography 
-                        variant="caption" 
-                        sx={{ 
-                          fontSize: '0.8rem', 
-                          fontWeight: 'medium',
-                          color: 'white',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}
-                      >
-                        {tasks.length} pending {tasks.length === 1 ? 'task' : 'tasks'}
-                      </Typography>
-                    </Box>
-                  </WeekEventCard>
-                )}
-
                 {/* Regular events */}
                 {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
                   const start = new Date(event.start);
@@ -2259,14 +2282,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   
   // Add a new mobile-specific day view renderer
   const renderMobileDayView = () => {
-    // Similar to renderDayView but optimized for mobile screens
+    // Similar to renderDayView but optimized for mobile screens with a list format like week view
     const dayEvents = getEventsForDay(selectedDate);
     
     // Separate tasks from regular events
     const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
     
-    // Create positions only for regular events
-    const eventPositions = calculateEventPositions(regularEvents);
+    // Sort tasks and regular events separately
+    const sortedTasks = [...tasks].sort((a, b) => {
+      return new Date(a.start).getTime() - new Date(b.start).getTime();
+    });
+    
+    const sortedRegularEvents = [...regularEvents].sort((a, b) => {
+      return new Date(a.start).getTime() - new Date(b.start).getTime();
+    });
+    
+    // Put tasks at the top followed by regular events
+    const allEvents = [...sortedTasks, ...sortedRegularEvents];
     
     // Check if selected date is today
     const isToday = selectedDate.getDate() === today.getDate() && 
@@ -2274,166 +2306,177 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   selectedDate.getFullYear() === today.getFullYear();
     
     return (
-      <Grid container>
-        {/* Time column */}
-        <Grid item xs={2}>
-          {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i).map((hour) => (
-            <Box 
-              key={hour} 
-              sx={{ 
-                height: HOUR_HEIGHT,
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'flex-end',
-                pr: 1,
-                fontSize: '0.75rem',
-                color: 'text.secondary',
-                borderTop: 1,
-                borderColor: 'divider'
-              }}
-            >
-              {formatTime(new Date(new Date().setHours(hour, 0, 0, 0)))}
-            </Box>
-          ))}
-        </Grid>
-        
-        {/* Events column */}
-        <Grid item xs={10}>
-          <Box
-            sx={{
-              position: 'relative',
-              minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT,
-              backgroundColor: isToday ? 'rgba(1, 108, 158, 0.03)' : 'transparent',
-              borderLeft: 1,
-              borderColor: 'divider'
+      <Box sx={{ overflow: 'hidden' }}>
+        {/* Day header */}
+        <Box sx={{ 
+          display: 'flex', 
+          backgroundColor: isToday ? 'rgba(1, 108, 158, 0.1)' : '#f9f9f9',
+          borderBottom: 1,
+          borderColor: 'divider',
+          p: 1.5,
+        }}>
+          <Typography 
+            variant="subtitle1" 
+            sx={{ 
+              fontWeight: 'medium',
+              flex: 1
             }}
           >
-            {/* Time grid lines */}
-            {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i).map((hour) => (
-              <Box
-                key={hour}
-                sx={{
-                  position: 'absolute',
-                  top: (hour - DAY_START_HOUR) * HOUR_HEIGHT,
-                  left: 0,
-                  right: 0,
-                  height: 1,
-                  borderTop: 1,
-                  borderColor: 'divider'
-                }}
-              />
-            ))}
-            
-            {/* Current time indicator */}
-            {isToday && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: calculateCurrentTimePosition(),
-                  left: 0,
-                  right: 0,
-                  height: 2,
-                  bgcolor: 'error.main',
-                  zIndex: 5
-                }}
-              />
-            )}
-            
-            {/* Events */}
-            {eventPositions.map(({ event, width, left }, index) => {
-              const start = new Date(event.start);
-              const end = new Date(event.end);
+            {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+          </Typography>
+        </Box>
+        
+        {/* Event list */}
+        <Box sx={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
+          {allEvents.length === 0 ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+              <Typography variant="body1" color="text.secondary">
+                No events scheduled for this day
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              {/* Tasks section with heading if tasks exist */}
+              {sortedTasks.length > 0 && (
+                <>
+                  <Box sx={{ 
+                    backgroundColor: 'rgba(242, 151, 2, 0.1)', 
+                    p: 1, 
+                    pl: 2, 
+                    borderBottom: 1, 
+                    borderColor: 'divider' 
+                  }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Tasks
+                    </Typography>
+                  </Box>
+                  {sortedTasks.map((event) => {
+                    const eventColor = getEventColor(event);
+                    const isDeclined = event.attendees?.some(attendee => 
+                      (attendee.self === true && attendee.responseStatus === 'declined')
+                    );
+                    
+                    return (
+                      <Box 
+                        key={event.id} 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          p: 1.5,
+                          borderLeft: `4px solid ${eventColor}`,
+                          backgroundColor: isDeclined ? 'transparent' : 'rgba(0, 0, 0, 0.01)',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                          }
+                        }}
+                        onClick={(e) => handleTaskFromListClick(event, e)}
+                      >
+                        <Box sx={{ mr: 1.5, minWidth: '65px' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {/* Empty time slot for tasks */}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <TaskAltIcon 
+                              sx={{ 
+                                fontSize: '0.8rem', 
+                                color: eventColor,
+                                mr: 0.5 
+                              }} 
+                            />
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                fontWeight: 'medium',
+                                textDecoration: isDeclined ? 'line-through' : 'none'
+                              }}
+                            >
+                              {event.title}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </>
+              )}
               
-              // Calculate position and size
-              const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-              const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-              const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
-              
-              const eventColor = getEventColor(event);
-              const textColor = getEventTextColor(eventColor);
-              
-              // Check if this is the active/clicked event
-              const isActive = activeEventId === event.id;
-              
-              // Check if the event is declined
-              const isDeclined = event.attendees?.some(attendee => 
-                (attendee.self === true && attendee.responseStatus === 'declined')
-              );
-              
-              return (
-                <Box
-                  key={event.id}
-                  sx={{
-                    position: 'absolute',
-                    top: startPx,
-                    height: height,
-                    left: '5%',
-                    width: '90%',
-                    borderRadius: 1,
-                    p: 0.75,
-                    backgroundColor: isDeclined ? 'transparent' : eventColor,
-                    border: isDeclined ? `1px dashed ${eventColor}` : 'none',
-                    color: isDeclined ? 'text.primary' : textColor,
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: 'pointer',
-                    zIndex: isActive ? 10 : 1,
-                    boxShadow: isActive ? 4 : 'none',
-                    transition: 'box-shadow 0.2s',
-                    fontSize: '0.8rem',
-                    '&:hover': {
-                      opacity: 0.9,
-                      boxShadow: 2
-                    }
-                  }}
-                  onClick={(e) => {
-                    handleEventClick(event, e);
-                    setActiveEventId(event.id);
-                  }}
-                >
-                  {renderEventContent(event, eventColor, textColor, height, false)}
-                </Box>
-              );
-            })}
-            
-            {/* Tasks for the day */}
-            {tasks.length > 0 && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 8,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-end',
-                  zIndex: 5
-                }}
-              >
-                <Tooltip title={`${tasks.length} task${tasks.length > 1 ? 's' : ''} for today`}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => handleTaskGroupClick(tasks, e)}
-                    sx={{
-                      backgroundColor: 'primary.light',
-                      color: 'primary.contrastText',
-                      width: 26,
-                      height: 26,
-                      '&:hover': {
-                        backgroundColor: 'primary.main',
-                      }
-                    }}
-                  >
-                    <Badge badgeContent={tasks.length} color="error">
-                      <TaskAltIcon fontSize="small" />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            )}
-          </Box>
-        </Grid>
-      </Grid>
+              {/* Events section with heading if events exist */}
+              {sortedRegularEvents.length > 0 && (
+                <>
+                  <Box sx={{ 
+                    backgroundColor: 'rgba(16, 86, 245, 0.1)', 
+                    p: 1, 
+                    pl: 2, 
+                    borderBottom: 1, 
+                    borderColor: 'divider' 
+                  }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Events
+                    </Typography>
+                  </Box>
+                  {sortedRegularEvents.map((event) => {
+                    const eventColor = getEventColor(event);
+                    const textColor = getEventTextColor(eventColor);
+                    
+                    const isDeclined = event.attendees?.some(attendee => 
+                      (attendee.self === true && attendee.responseStatus === 'declined')
+                    );
+                    
+                    return (
+                      <Box 
+                        key={event.id} 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          p: 1.5,
+                          borderLeft: `4px solid ${eventColor}`,
+                          backgroundColor: isDeclined ? 'transparent' : 'rgba(0, 0, 0, 0.01)',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                          }
+                        }}
+                        onClick={(e) => handleEventClick(event, e)}
+                      >
+                        <Box sx={{ mr: 1.5, minWidth: '65px' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {event.isAllDay ? 'All day' : formatTime(event.start)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                fontWeight: 'medium',
+                                textDecoration: isDeclined ? 'line-through' : 'none'
+                              }}
+                            >
+                              {event.title}
+                            </Typography>
+                          </Box>
+                          {event.location && (
+                            <Typography variant="caption" color="text.secondary">
+                              {event.location}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          )}
+        </Box>
+      </Box>
     );
   };
   
@@ -2441,6 +2484,34 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const renderMobileWeekView = () => {
     const weekDays = generateWeekDays();
     const today = new Date();
+    
+    // Separate tasks and events across all days of the week
+    const allWeekTasks: CalendarEvent[] = [];
+    const dayEventsMap: Record<string, CalendarEvent[]> = {};
+    
+    weekDays.forEach((date, index) => {
+      const dayEvents = getEventsForDay(date);
+      const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+      
+      // Add tasks to the combined tasks list
+      if (tasks.length > 0) {
+        allWeekTasks.push(...tasks);
+      }
+      
+      // Keep regular events grouped by day
+      if (regularEvents.length > 0) {
+        // Use date string as the key
+        const dateKey = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        dayEventsMap[dateKey] = regularEvents.sort((a, b) => 
+          new Date(a.start).getTime() - new Date(b.start).getTime()
+        );
+      }
+    });
+    
+    // Sort all tasks by due date
+    const sortedTasks = [...allWeekTasks].sort((a, b) => {
+      return new Date(a.start).getTime() - new Date(b.start).getTime();
+    });
     
     return (
       <Box sx={{ overflow: 'hidden' }}>
@@ -2501,93 +2572,178 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           })}
         </Box>
         
-        {/* Event list for each day */}
+        {/* Content area with tasks and events */}
         <Box sx={{ maxHeight: 'calc(100vh - 250px)', overflow: 'auto' }}>
-          {weekDays.map((date, dayIndex) => {
-            const dayEvents = getEventsForDay(date);
-            
-            // Separate tasks from regular events
-            const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
-            
-            const allEvents = [...regularEvents, ...tasks].sort((a, b) => 
-              new Date(a.start).getTime() - new Date(b.start).getTime()
-            );
-            
-            const isToday = date.getDate() === today.getDate() && 
-                          date.getMonth() === today.getMonth() && 
-                          date.getFullYear() === today.getFullYear();
-            
-            if (allEvents.length === 0) return null;
-            
-            return (
-              <Box key={dayIndex} sx={{ mt: 2, mb: 3 }}>
-                <Typography 
-                  variant="subtitle2" 
-                  sx={{ 
+          {sortedTasks.length === 0 && Object.keys(dayEventsMap).length === 0 ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+              <Typography variant="body1" color="text.secondary">
+                No events scheduled for this week
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              {/* Tasks section with heading if tasks exist */}
+              {sortedTasks.length > 0 && (
+                <>
+                  <Box sx={{ 
+                    backgroundColor: 'rgba(242, 151, 2, 0.1)', 
+                    p: 1, 
                     pl: 2, 
-                    py: 0.5, 
-                    backgroundColor: isToday ? 'rgba(1, 108, 158, 0.1)' : 'rgba(0, 0, 0, 0.02)',
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                    fontWeight: isToday ? 'bold' : 'medium'
-                  }}
-                >
-                  {date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                </Typography>
-                
-                {allEvents.map((event) => {
-                  const eventColor = getEventColor(event);
-                  const textColor = getEventTextColor(eventColor);
-                  
-                  const isDeclined = event.attendees?.some(attendee => 
-                    (attendee.self === true && attendee.responseStatus === 'declined')
-                  );
-                  
-                  return (
-                    <Box 
-                      key={event.id} 
-                      sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        p: 1.5,
-                        borderLeft: `4px solid ${eventColor}`,
-                        backgroundColor: isDeclined ? 'transparent' : 'rgba(0, 0, 0, 0.01)',
-                        borderBottom: 1,
-                        borderColor: 'divider',
-                        cursor: 'pointer',
-                        '&:hover': {
-                          backgroundColor: 'rgba(0, 0, 0, 0.03)'
-                        }
-                      }}
-                      onClick={(e) => handleEventClick(event, e)}
-                    >
-                      <Box sx={{ mr: 1.5 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {event.isAllDay ? 'All day' : formatTime(event.start)}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontWeight: 'medium',
-                            textDecoration: isDeclined ? 'line-through' : 'none'
-                          }}
-                        >
-                          {event.title}
-                        </Typography>
-                        {event.location && (
+                    borderBottom: 1, 
+                    borderColor: 'divider' 
+                  }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Tasks
+                    </Typography>
+                  </Box>
+                  {sortedTasks.map((event) => {
+                    const eventColor = getEventColor(event);
+                    const isDeclined = event.attendees?.some(attendee => 
+                      (attendee.self === true && attendee.responseStatus === 'declined')
+                    );
+                    
+                    // Get the day of the task for display
+                    const taskDate = new Date(event.start);
+                    const dayName = taskDate.toLocaleDateString('en-US', { weekday: 'short' });
+                    
+                    return (
+                      <Box 
+                        key={event.id} 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          p: 1.5,
+                          borderLeft: `4px solid ${eventColor}`,
+                          backgroundColor: isDeclined ? 'transparent' : 'rgba(0, 0, 0, 0.01)',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                          }
+                        }}
+                        onClick={(e) => handleTaskFromListClick(event, e)}
+                      >
+                        <Box sx={{ mr: 1.5, minWidth: '65px' }}>
                           <Typography variant="caption" color="text.secondary">
-                            {event.location}
+                            {dayName}
                           </Typography>
-                        )}
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <TaskAltIcon 
+                              sx={{ 
+                                fontSize: '0.8rem', 
+                                color: eventColor,
+                                mr: 0.5 
+                              }} 
+                            />
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                fontWeight: 'medium',
+                                textDecoration: isDeclined ? 'line-through' : 'none'
+                              }}
+                            >
+                              {event.title}
+                            </Typography>
+                          </Box>
+                        </Box>
                       </Box>
+                    );
+                  })}
+                </>
+              )}
+              
+              {/* Regular events grouped by day */}
+              {Object.keys(dayEventsMap).length > 0 && (
+                <>
+                  <Box sx={{ 
+                    backgroundColor: 'rgba(16, 86, 245, 0.1)', 
+                    p: 1, 
+                    pl: 2, 
+                    borderBottom: 1, 
+                    borderColor: 'divider' 
+                  }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Events
+                    </Typography>
+                  </Box>
+                  
+                  {Object.entries(dayEventsMap).map(([dateKey, events]) => (
+                    <Box key={dateKey}>
+                      <Typography 
+                        variant="subtitle2" 
+                        sx={{ 
+                          pl: 2, 
+                          py: 0.5, 
+                          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          fontWeight: 'medium'
+                        }}
+                      >
+                        {dateKey}
+                      </Typography>
+                      
+                      {events.map((event) => {
+                        const eventColor = getEventColor(event);
+                        const textColor = getEventTextColor(eventColor);
+                        
+                        const isDeclined = event.attendees?.some(attendee => 
+                          (attendee.self === true && attendee.responseStatus === 'declined')
+                        );
+                        
+                        return (
+                          <Box 
+                            key={event.id} 
+                            sx={{ 
+                              display: 'flex',
+                              alignItems: 'center',
+                              p: 1.5,
+                              borderLeft: `4px solid ${eventColor}`,
+                              backgroundColor: isDeclined ? 'transparent' : 'rgba(0, 0, 0, 0.01)',
+                              borderBottom: 1,
+                              borderColor: 'divider',
+                              cursor: 'pointer',
+                              '&:hover': {
+                                backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                              }
+                            }}
+                            onClick={(e) => handleEventClick(event, e)}
+                          >
+                            <Box sx={{ mr: 1.5, minWidth: '65px' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {event.isAllDay ? 'All day' : formatTime(event.start)}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ flex: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Typography 
+                                  variant="body2" 
+                                  sx={{ 
+                                    fontWeight: 'medium',
+                                    textDecoration: isDeclined ? 'line-through' : 'none'
+                                  }}
+                                >
+                                  {event.title}
+                                </Typography>
+                              </Box>
+                              {event.location && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {event.location}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        );
+                      })}
                     </Box>
-                  );
-                })}
-              </Box>
-            );
-          })}
+                  ))}
+                </>
+              )}
+            </>
+          )}
         </Box>
       </Box>
     );

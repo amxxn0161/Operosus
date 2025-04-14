@@ -907,9 +907,12 @@ const Dashboard: React.FC = () => {
                           if (isMobile) {
                             setActiveDataPoint(data.activePayload[0].payload);
                             
-                            if (data.chartX !== undefined && data.chartY !== undefined) {
-                              // Simple positioning - always position tooltips with fixed offsets
-                              // that ensure they're fully visible
+                            // Get exact position within the chart
+                            const chartElement = document.querySelector('.recharts-surface');
+                            if (chartElement && data.chartX !== undefined && data.chartY !== undefined) {
+                              const chartRect = chartElement.getBoundingClientRect();
+                              
+                              // Store the position for rendering the tooltip
                               setTooltipPosition({
                                 x: data.chartX,
                                 y: data.chartY
@@ -998,100 +1001,93 @@ const Dashboard: React.FC = () => {
                   
                   {/* Place the mobile tooltip directly on top of the chart */}
                   {isMobile && activeDataPoint && tooltipPosition && (
-                    <div
-                      style={{
+                    <Paper
+                      elevation={4}
+                      sx={{
+                        backgroundColor: 'white',
+                        padding: '10px 14px',
+                        border: '1px solid #f5f5f5',
+                        fontFamily: 'Poppins',
+                        width: '85%', // Fixed width for mobile
+                        maxWidth: '280px',
+                        boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.15)',
                         position: 'absolute',
-                        top: Math.max(10, tooltipPosition.y - 145), // Always position above point with minimum top margin
+                        // Position directly over the data point (50px above the dot)
+                        bottom: `calc(100% - ${tooltipPosition.y}px + 10px)`,
                         left: tooltipPosition.x,
                         transform: 'translateX(-50%)',
-                        zIndex: 1000,
-                        maxWidth: '90%',
-                        width: 'auto'
+                        zIndex: 100,
+                        '&::after': {
+                          content: '""',
+                          position: 'absolute',
+                          bottom: '-8px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '8px solid transparent',
+                          borderRight: '8px solid transparent',
+                          borderTop: '8px solid white',
+                        }
                       }}
                     >
-                      <Paper
-                        elevation={4}
-                        sx={{
-                          backgroundColor: 'white',
-                          padding: '10px 14px',
-                          border: '1px solid #f5f5f5',
-                          fontFamily: 'Poppins',
-                          minWidth: '170px', 
-                          maxWidth: '250px',
-                          boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.15)',
-                          position: 'relative',
-                          '&::after': {
-                            content: '""',
-                            position: 'absolute',
-                            bottom: '-8px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            width: 0,
-                            height: 0,
-                            borderLeft: '8px solid transparent',
-                            borderRight: '8px solid transparent',
-                            borderTop: '8px solid white',
-                          }
-                        }}
-                      >
+                      <Typography sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontSize: '0.85rem', 
+                        mb: 0.8,
+                        fontWeight: 'medium',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                        color: '#333'
+                      }}>
+                        {activeDataPoint.mobileName}
+                      </Typography>
+                      <Box sx={{ 
+                        mb: 0.8,
+                        p: 1,
+                        borderRadius: 1,
+                        bgcolor: 'rgba(16, 86, 245, 0.08)'
+                      }}>
                         <Typography sx={{ 
                           fontFamily: 'Poppins', 
-                          fontSize: '0.85rem', 
-                          mb: 0.8,
-                          fontWeight: 'medium',
-                          whiteSpace: 'normal',
-                          wordBreak: 'break-word',
-                          color: '#333'
+                          fontSize: '1rem', 
+                          color: '#1056F5', 
+                          fontWeight: 'bold'
                         }}>
-                          {activeDataPoint.mobileName}
+                          Overall Score: {activeDataPoint.comprehensive}%
                         </Typography>
-                        <Box sx={{ 
-                          mb: 0.8,
-                          p: 1,
-                          borderRadius: 1,
-                          bgcolor: 'rgba(16, 86, 245, 0.08)'
-                        }}>
-                          <Typography sx={{ 
-                            fontFamily: 'Poppins', 
-                            fontSize: '1rem', 
-                            color: '#1056F5', 
-                            fontWeight: 'bold'
-                          }}>
-                            Overall Score: {activeDataPoint.comprehensive}%
-                          </Typography>
-                        </Box>
-                        <Typography sx={{ 
-                          fontFamily: 'Poppins', 
-                          fontSize: '0.85rem', 
-                          color: '#666' 
-                        }}>
-                          Productivity: {activeDataPoint.productivity}%
-                        </Typography>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          justifyContent: 'flex-end', 
-                          mt: 1.5 
-                        }}>
-                          <Button 
-                            size="small" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDataPoint(null);
-                              setTooltipPosition(null);
-                            }}
-                            sx={{ 
-                              fontSize: '0.75rem', 
-                              minWidth: 'auto', 
-                              p: '2px 8px',
-                              color: '#666',
-                              pointerEvents: 'auto'
-                            }}
-                          >
-                            Close
-                          </Button>
-                        </Box>
-                      </Paper>
-                    </div>
+                      </Box>
+                      <Typography sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontSize: '0.85rem', 
+                        color: '#666' 
+                      }}>
+                        Productivity: {activeDataPoint.productivity}%
+                      </Typography>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'flex-end', 
+                        mt: 1.5 
+                      }}>
+                        <Button 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDataPoint(null);
+                            setTooltipPosition(null);
+                          }}
+                          sx={{ 
+                            fontSize: '0.75rem', 
+                            minWidth: 'auto', 
+                            p: '2px 8px',
+                            color: '#666',
+                            pointerEvents: 'auto'
+                          }}
+                        >
+                          Close
+                        </Button>
+                      </Box>
+                    </Paper>
                   )}
                 </Box>
               ) : (
