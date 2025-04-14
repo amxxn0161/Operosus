@@ -266,6 +266,12 @@ const formatEventTime = (event: CalendarEvent): string => {
   if (event.isAllDay) {
     return 'All day';
   }
+  
+  // For tasks without explicit time, don't show a time
+  if (event.eventType === 'task' && !event.hasExplicitTime) {
+    return '';
+  }
+  
   return `${formatTime(event.start)} - ${formatTime(event.end)}`;
 };
 
@@ -1146,7 +1152,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               color: isDeclined ? eventColor : textColor, // Use event color for declined events text
               flexShrink: 0,
               pr: 0.5,
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
+              textDecoration: isDeclined ? 'line-through' : 'none', // Keep strikethrough for declined events
+              display: (event.eventType === 'task' && !event.hasExplicitTime) ? 'none' : 'block' // Hide time for tasks without explicit time
             }}
           >
             {formatTime(event.start)}-{formatTime(event.end)}
@@ -2627,6 +2634,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         <Box sx={{ mr: 1.5, minWidth: '65px' }}>
                           <Typography variant="caption" color="text.secondary">
                             {dayName}
+                            {event.hasExplicitTime && (
+                              <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+                                {formatTime(event.start)}
+                              </Box>
+                            )}
                           </Typography>
                         </Box>
                         <Box sx={{ flex: 1 }}>

@@ -34,6 +34,7 @@ export interface CalendarEvent {
   isAllDay?: boolean;
   eventType?: string;
   taskListId?: string;
+  hasExplicitTime?: boolean;
   
   // API-specific fields that we pass through
   summary?: string;

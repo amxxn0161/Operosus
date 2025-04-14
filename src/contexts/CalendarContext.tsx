@@ -37,10 +37,12 @@ const convertTaskToEvent = (task: GoogleTask, listTitle: string, listId?: string
   
   // Extract time from notes if available
   let timeInfo = '';
+  let hasExplicitTime = false;
   if (task.notes && task.notes.includes('Due Time:')) {
     const timeMatch = task.notes.match(/Due Time: (\d{1,2}:\d{2})/);
     if (timeMatch && timeMatch[1]) {
       timeInfo = `(${timeMatch[1]})`;
+      hasExplicitTime = true;
     }
   }
   
@@ -49,14 +51,15 @@ const convertTaskToEvent = (task: GoogleTask, listTitle: string, listId?: string
   
   return {
     id: `task-${task.id}`,
-    title: `${task.title} ${timeInfo} [Task]`,
+    title: `${task.title}${hasExplicitTime ? ' ' + timeInfo : ''} [Task]`,
     start: startDate.toISOString(),
     end: endDate.toISOString(),
     description: task.notes || '',
     colorId: '6', // Use a distinct color for tasks
     eventType: 'task',
     summary: `Task from ${listTitle}`,
-    taskListId: taskListId // Store the task list ID for direct API access
+    taskListId: taskListId, // Store the task list ID for direct API access
+    hasExplicitTime: hasExplicitTime // Add a flag to indicate if this task has an explicit time set
   };
 };
 

@@ -228,6 +228,7 @@ const GoogleTasks: React.FC = () => {
           due?: string;
           timezone?: string;
           time_in_notes?: boolean;
+          has_explicit_time?: boolean;
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
@@ -258,6 +259,12 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
+            
+            // Set has_explicit_time to true when a specific time is chosen
+            taskData.has_explicit_time = true;
+          } else {
+            // Set has_explicit_time to false when only a date is chosen without specific time
+            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
@@ -537,9 +544,9 @@ const GoogleTasks: React.FC = () => {
   // Set task due date
   const handleSetDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Fix timezone issue by setting time to noon of the selected day
+      // Set time to midnight instead of noon to avoid showing time when none was set
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(12, 0, 0, 0);
+      fixedDate.setHours(0, 0, 0, 0);
       
       // Format date to RFC3339 as expected by the API
       const isoDate = fixedDate.toISOString();
@@ -746,6 +753,7 @@ const GoogleTasks: React.FC = () => {
           status?: string;
           timezone?: string;
           time_in_notes?: boolean;
+          has_explicit_time?: boolean;
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
@@ -776,6 +784,12 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
+            
+            // Set has_explicit_time to true when a specific time is chosen
+            taskData.has_explicit_time = true;
+          } else {
+            // Set has_explicit_time to false when only a date is chosen without specific time
+            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
@@ -817,9 +831,9 @@ const GoogleTasks: React.FC = () => {
   // Set task due date in edit mode
   const handleSetEditDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Fix timezone issue by setting time to noon of the selected day
+      // Set time to midnight instead of noon to avoid showing time when none was set
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(12, 0, 0, 0);
+      fixedDate.setHours(0, 0, 0, 0);
       
       // Format date to RFC3339 as expected by the API
       const isoDate = fixedDate.toISOString();
