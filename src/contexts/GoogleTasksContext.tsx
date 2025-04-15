@@ -94,7 +94,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
         isVisible: true,
         tasks: list.tasks.map(task => ({
           ...task,
-          starred: false // Initialize all tasks as not starred
+          starred: task.is_starred || false // Use the server's is_starred value if available
         }))
       }));
       
