@@ -133,23 +133,24 @@ const formatMessageContent = (content: string): JSX.Element => {
 export const AIAssistantButton: React.FC = () => {
   const { openAssistant } = useAIAssistant();
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   return (
     <Tooltip title="Ask AI Assistant" placement="left">
       <Fab
         color="primary"
-        size="medium"
+        size={isMobile ? "small" : "medium"}
         onClick={openAssistant}
         sx={{
           position: 'fixed',
-          bottom: 24,
-          right: 24,
+          bottom: isMobile ? 16 : 24,
+          right: isMobile ? 16 : 24,
           boxShadow: theme.shadows[4],
           background: 'linear-gradient(45deg, #1056F5 30%, #4B7FF7 90%)',
           zIndex: 1200,
         }}
       >
-        <SmartToyIcon />
+        <SmartToyIcon fontSize={isMobile ? "small" : "medium"} />
       </Fab>
     </Tooltip>
   );
@@ -174,6 +175,7 @@ const AIAssistant: React.FC = () => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isSmallMobile = useMediaQuery('(max-width:380px)');
   
   // Reset position when closing
   useEffect(() => {
@@ -229,7 +231,7 @@ const AIAssistant: React.FC = () => {
   return (
     <>
       {/* Hidden reference div positioned where we want the popover to anchor */}
-      <div ref={buttonRef} style={{ position: 'fixed', bottom: 24, right: 24 }} />
+      <div ref={buttonRef} style={{ position: 'fixed', bottom: isMobile ? 16 : 24, right: isMobile ? 16 : 24 }} />
       
       {isOpen && (
         <Draggable
@@ -239,27 +241,33 @@ const AIAssistant: React.FC = () => {
           position={position}
           onStop={handleDragStop}
           cancel=".cancel-drag"
+          disabled={isMobile} // Disable dragging on mobile for better UX
         >
           <Paper
             ref={nodeRef}
             elevation={6}
             sx={{
-              width: isMobile ? '90vw' : '400px',
-              height: '500px',
-              maxHeight: '70vh',
+              width: isMobile ? (isSmallMobile ? '95vw' : '90vw') : '400px',
+              height: isMobile ? '75vh' : '500px',
+              maxHeight: isMobile ? '80vh' : '70vh',
               display: 'flex',
               flexDirection: 'column',
               borderRadius: 2,
               overflow: 'hidden',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
               position: 'fixed',
-              bottom: 80,
-              right: 24,
+              bottom: isMobile ? 70 : 80,
+              right: isMobile ? 8 : 24,
               zIndex: 1300,
               transition: 'all 0.2s ease-out',
               cursor: 'auto',
               touchAction: 'none',
               willChange: 'transform',
+              // On mobile, position it centered near the bottom
+              ...(isMobile && {
+                left: '50%',
+                transform: 'translateX(-50%)'
+              }),
             }}
           >
             {/* Header - Made draggable */}
@@ -269,12 +277,12 @@ const AIAssistant: React.FC = () => {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                p: 1.5,
+                p: isMobile ? 1 : 1.5,
                 backgroundColor: theme.palette.primary.main,
                 color: 'white',
                 borderTopLeftRadius: 2,
                 borderTopRightRadius: 2,
-                cursor: 'move',
+                cursor: isMobile ? 'default' : 'move',
                 '&:hover': { 
                   backgroundColor: theme.palette.primary.dark 
                 },
@@ -282,24 +290,25 @@ const AIAssistant: React.FC = () => {
               }}
             >
               <Box display="flex" alignItems="center">
-                <DragIndicatorIcon sx={{ mr: 1, opacity: 0.7 }} />
+                {!isMobile && <DragIndicatorIcon sx={{ mr: 1, opacity: 0.7 }} />}
                 <Avatar
                   sx={{
                     bgcolor: 'white',
                     mr: 1.5,
-                    width: 32,
-                    height: 32,
+                    width: isMobile ? 28 : 32,
+                    height: isMobile ? 28 : 32,
                   }}
                 >
                   <SmartToyIcon fontSize="small" sx={{ color: theme.palette.primary.main }} />
                 </Avatar>
-                <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
+                <Typography variant={isMobile ? "body1" : "subtitle1"} fontWeight="medium">Pulse Assistant</Typography>
               </Box>
               <Box className="cancel-drag">
                 <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
                   <RefreshIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close">
+                <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" 
+                  sx={{ ml: isMobile ? 0.5 : 1 }}>
                   <CloseIcon fontSize="small" />
                 </IconButton>
               </Box>
@@ -312,7 +321,7 @@ const AIAssistant: React.FC = () => {
                 flexGrow: 1,
                 overflowY: 'auto',
                 overflowX: 'hidden',
-                p: 2,
+                p: isMobile ? 1.5 : 2,
                 backgroundColor: '#f5f7fa',
                 scrollbarWidth: 'thin',
                 scrollbarColor: '#d4d4d4 #f5f7fa',
@@ -337,11 +346,19 @@ const AIAssistant: React.FC = () => {
                   alignItems="center"
                   justifyContent="center"
                   height="100%"
-                  p={2}
+                  p={isMobile ? 1.5 : 2}
                   textAlign="center"
                 >
-                  <SmartToyIcon fontSize="large" color="primary" sx={{ mb: 1, fontSize: '2.5rem', opacity: 0.8 }} />
-                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                  <SmartToyIcon 
+                    fontSize="large" 
+                    color="primary" 
+                    sx={{ 
+                      mb: 1, 
+                      fontSize: isMobile ? '2rem' : '2.5rem', 
+                      opacity: 0.8 
+                    }} 
+                  />
+                  <Typography variant={isMobile ? "body1" : "subtitle1"} gutterBottom fontWeight="medium">
                     Welcome to Pulse Assistant
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
@@ -365,19 +382,19 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.primary.main,
                             mr: 1,
                             alignSelf: 'flex-start',
-                            width: 28,
-                            height: 28,
+                            width: isMobile ? 24 : 28,
+                            height: isMobile ? 24 : 28,
                           }}
                         >
-                          <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                          <SmartToyIcon sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }} />
                         </Avatar>
                       )}
 
                       <Paper
                         elevation={0}
                         sx={{
-                          p: 1.5,
-                          maxWidth: '75%',
+                          p: isMobile ? 1 : 1.5,
+                          maxWidth: isMobile ? '80%' : '75%',
                           borderRadius: 2,
                           backgroundColor: msg.role === 'user'
                             ? theme.palette.primary.main
@@ -390,8 +407,14 @@ const AIAssistant: React.FC = () => {
                         }}
                       >
                         {msg.role === 'user'
-                          ? <Typography variant="body2">{msg.content}</Typography>
-                          : <Box sx={{ '& .MuiTypography-root': { fontSize: '0.9rem' } }}>
+                          ? <Typography variant="body2" sx={{ fontSize: isMobile ? '0.85rem' : '0.9rem' }}>
+                              {msg.content}
+                            </Typography>
+                          : <Box sx={{ 
+                              '& .MuiTypography-root': { 
+                                fontSize: isMobile ? '0.85rem' : '0.9rem' 
+                              } 
+                            }}>
                               {formatMessageContent(msg.content)}
                             </Box>
                         }
@@ -403,11 +426,14 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.secondary.main,
                             ml: 1,
                             alignSelf: 'flex-start',
-                            width: 28,
-                            height: 28,
+                            width: isMobile ? 24 : 28,
+                            height: isMobile ? 24 : 28,
                           }}
                         >
-                          <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                          <Typography variant="caption" sx={{ 
+                            fontWeight: 'bold',
+                            fontSize: isMobile ? '0.65rem' : '0.75rem'
+                          }}>
                             {localStorage.getItem('userName')?.[0] || 'U'}
                           </Typography>
                         </Avatar>
@@ -428,11 +454,11 @@ const AIAssistant: React.FC = () => {
                           bgcolor: theme.palette.primary.main,
                           mr: 1,
                           alignSelf: 'flex-start',
-                          width: 28,
-                          height: 28,
+                          width: isMobile ? 24 : 28,
+                          height: isMobile ? 24 : 28,
                         }}
                       >
-                        <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                        <SmartToyIcon sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }} />
                       </Avatar>
 
                       <Paper
@@ -447,7 +473,7 @@ const AIAssistant: React.FC = () => {
                           minWidth: '60px',
                         }}
                       >
-                        <CircularProgress size={20} thickness={5} />
+                        <CircularProgress size={isMobile ? 16 : 20} thickness={5} />
                       </Paper>
                     </Box>
                   )}
@@ -462,7 +488,7 @@ const AIAssistant: React.FC = () => {
               onSubmit={handleSendMessage}
               className="cancel-drag"
               sx={{
-                p: 2,
+                p: isMobile ? 1.5 : 2,
                 borderTop: '1px solid #e0e0e0',
                 backgroundColor: 'white',
               }}
@@ -475,7 +501,7 @@ const AIAssistant: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleInputKeyDown}
                 multiline
-                maxRows={3}
+                maxRows={isMobile ? 2 : 3}
                 disabled={isLoading}
                 size="small"
                 inputRef={inputRef}
@@ -484,7 +510,7 @@ const AIAssistant: React.FC = () => {
                     borderRadius: '20px',
                     backgroundColor: theme.palette.background.paper,
                     pr: 1,
-                    fontSize: '0.9rem',
+                    fontSize: isMobile ? '0.85rem' : '0.9rem',
                   }
                 }}
                 InputProps={{
@@ -504,8 +530,8 @@ const AIAssistant: React.FC = () => {
                         '&.Mui-disabled': {
                           bgcolor: 'transparent'
                         },
-                        width: 30,
-                        height: 30,
+                        width: isMobile ? 26 : 30,
+                        height: isMobile ? 26 : 30,
                       }}
                     >
                       <SendIcon fontSize="small" />
