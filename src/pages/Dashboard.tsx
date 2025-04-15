@@ -51,7 +51,6 @@ import {
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import CalendarView from '../components/CalendarView';
-import AIWelcomeNotification from '../components/AIWelcomeNotification';
 
 // Dummy data for initial display
 const initialStats = {
@@ -678,9 +677,6 @@ const Dashboard: React.FC = () => {
           }
         }}
       />
-      
-      {/* Include the AI Welcome Notification */}
-      <AIWelcomeNotification />
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography 
