@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -134,6 +134,7 @@ export const AIAssistantButton: React.FC = () => {
   const { openAssistant } = useAIAssistant();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isSmallMobile = useMediaQuery('(max-width:380px)');
   
   return (
     <Tooltip title="Ask AI Assistant" placement="left">
@@ -143,14 +144,30 @@ export const AIAssistantButton: React.FC = () => {
         onClick={openAssistant}
         sx={{
           position: 'fixed',
-          bottom: isMobile ? 16 : 24,
-          right: isMobile ? 16 : 24,
+          bottom: isMobile 
+            ? (isSmallMobile ? 12 : 16) 
+            : 24,
+          right: isMobile 
+            ? (isSmallMobile ? 12 : 16) 
+            : 24,
           boxShadow: theme.shadows[4],
           background: 'linear-gradient(45deg, #1056F5 30%, #4B7FF7 90%)',
           zIndex: 1200,
+          width: isMobile 
+            ? (isSmallMobile ? 36 : 40) 
+            : 48,
+          height: isMobile 
+            ? (isSmallMobile ? 36 : 40) 
+            : 48,
+          minHeight: 'auto'
         }}
       >
-        <SmartToyIcon fontSize={isMobile ? "small" : "medium"} />
+        <SmartToyIcon 
+          fontSize={isMobile ? "small" : "medium"} 
+          sx={{
+            fontSize: isSmallMobile ? '1.1rem' : undefined
+          }}
+        />
       </Fab>
     </Tooltip>
   );
@@ -176,6 +193,13 @@ const AIAssistant: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isSmallMobile = useMediaQuery('(max-width:380px)');
+  const isVerySmallMobile = useMediaQuery('(max-width:320px)');
+  const isShortScreen = useMediaQuery('(max-height:670px)');
+  
+  // Calculate center position for mobile
+  const mobilePosition = useMemo(() => {
+    return { x: 0, y: 0 };
+  }, []);
   
   // Reset position when closing
   useEffect(() => {
@@ -231,138 +255,164 @@ const AIAssistant: React.FC = () => {
   return (
     <>
       {/* Hidden reference div positioned where we want the popover to anchor */}
-      <div ref={buttonRef} style={{ position: 'fixed', bottom: isMobile ? 16 : 24, right: isMobile ? 16 : 24 }} />
+      <div 
+        ref={buttonRef} 
+        style={{ 
+          position: 'fixed', 
+          bottom: isMobile ? undefined : 24, 
+          right: isMobile ? undefined : 24,
+          top: isMobile ? '50%' : undefined,
+          left: isMobile ? '50%' : undefined,
+          zIndex: 9998
+        }} 
+      />
       
       {isOpen && (
-        <Draggable
-          nodeRef={nodeRef}
-          handle=".draggable-handle"
-          bounds="parent"
-          position={position}
-          onStop={handleDragStop}
-          cancel=".cancel-drag"
-          disabled={isMobile} // Disable dragging on mobile for better UX
-        >
-          <Paper
-            ref={nodeRef}
-            elevation={6}
+        isMobile ? (
+          // Mobile view - use a fixed position dialog
+          <Box
             sx={{
-              width: isMobile ? (isSmallMobile ? '95vw' : '90vw') : '400px',
-              height: isMobile ? '75vh' : '500px',
-              maxHeight: isMobile ? '80vh' : '70vh',
-              display: 'flex',
-              flexDirection: 'column',
-              borderRadius: 2,
-              overflow: 'hidden',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
               position: 'fixed',
-              bottom: isMobile ? 70 : 80,
-              right: isMobile ? 8 : 24,
-              zIndex: 1300,
-              transition: 'all 0.2s ease-out',
-              cursor: 'auto',
-              touchAction: 'none',
-              willChange: 'transform',
-              // On mobile, position it centered near the bottom
-              ...(isMobile && {
-                left: '50%',
-                transform: 'translateX(-50%)'
-              }),
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              zIndex: 9999,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {/* Header - Made draggable */}
-            <Box
-              className="draggable-handle"
+            <Paper
+              ref={nodeRef}
+              elevation={6}
               sx={{
+                width: isVerySmallMobile ? '90%' : (isSmallMobile ? '85%' : '80%'),
+                height: isShortScreen ? '70%' : '75%',
+                maxHeight: '80vh',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                p: isMobile ? 1 : 1.5,
-                backgroundColor: theme.palette.primary.main,
-                color: 'white',
-                borderTopLeftRadius: 2,
-                borderTopRightRadius: 2,
-                cursor: isMobile ? 'default' : 'move',
-                '&:hover': { 
-                  backgroundColor: theme.palette.primary.dark 
-                },
-                userSelect: 'none',
+                flexDirection: 'column',
+                borderRadius: 2,
+                overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
               }}
             >
-              <Box display="flex" alignItems="center">
-                {!isMobile && <DragIndicatorIcon sx={{ mr: 1, opacity: 0.7 }} />}
-                <Avatar
-                  sx={{
-                    bgcolor: 'white',
-                    mr: 1.5,
-                    width: isMobile ? 28 : 32,
-                    height: isMobile ? 28 : 32,
-                  }}
-                >
-                  <SmartToyIcon fontSize="small" sx={{ color: theme.palette.primary.main }} />
-                </Avatar>
-                <Typography variant={isMobile ? "body1" : "subtitle1"} fontWeight="medium">Pulse Assistant</Typography>
+              {/* Header */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: isSmallMobile ? 0.75 : 1,
+                  backgroundColor: theme.palette.primary.main,
+                  color: 'white',
+                  borderTopLeftRadius: 2,
+                  borderTopRightRadius: 2,
+                }}
+              >
+                <Box display="flex" alignItems="center">
+                  <Avatar
+                    sx={{
+                      bgcolor: 'white',
+                      mr: 1.5,
+                      width: isSmallMobile ? 24 : 28,
+                      height: isSmallMobile ? 24 : 28,
+                    }}
+                  >
+                    <SmartToyIcon 
+                      fontSize="small" 
+                      sx={{ 
+                        color: theme.palette.primary.main,
+                        fontSize: isSmallMobile ? '0.8rem' : undefined
+                      }} 
+                    />
+                  </Avatar>
+                  <Typography 
+                    variant={isSmallMobile ? "body2" : "body1"} 
+                    fontWeight="medium"
+                  >
+                    Pulse Assistant
+                  </Typography>
+                </Box>
+                <Box>
+                  <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" 
+                    sx={{ ml: isSmallMobile ? 0.5 : 1 }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
               </Box>
-              <Box className="cancel-drag">
-                <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
-                  <RefreshIcon fontSize="small" />
-                </IconButton>
-                <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" 
-                  sx={{ ml: isMobile ? 0.5 : 1 }}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </Box>
 
-            {/* Messages area - Improved scrolling behavior */}
-            <Box
-              className="cancel-drag"
-              sx={{
-                flexGrow: 1,
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                p: isMobile ? 1.5 : 2,
-                backgroundColor: '#f5f7fa',
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#d4d4d4 #f5f7fa',
-                '&::-webkit-scrollbar': {
-                  width: '8px',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: '#d4d4d4',
-                  borderRadius: '4px',
-                },
-                '&::-webkit-scrollbar-track': {
+              {/* Messages area */}
+              <Box
+                sx={{
+                  flexGrow: 1,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  p: isSmallMobile ? 0.75 : 1,
                   backgroundColor: '#f5f7fa',
-                },
-                overscrollBehavior: 'contain',
-                WebkitOverflowScrolling: 'touch',
-              }}
-            >
-              {displayMessages.length === 0 ? (
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#d4d4d4 #f5f7fa',
+                  '&::-webkit-scrollbar': {
+                    width: '6px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: '#d4d4d4',
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    backgroundColor: '#f5f7fa',
+                  },
+                  overscrollBehavior: 'contain',
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                {/* Rest of the message area code */}
+                {displayMessages.length === 0 ? (
                 <Box
                   display="flex"
                   flexDirection="column"
                   alignItems="center"
                   justifyContent="center"
                   height="100%"
-                  p={isMobile ? 1.5 : 2}
+                  p={isSmallMobile ? 0.5 : 0.75}
                   textAlign="center"
+                  sx={{
+                    maxWidth: '85%',
+                    margin: '0 auto'
+                  }}
                 >
                   <SmartToyIcon 
                     fontSize="large" 
                     color="primary" 
                     sx={{ 
-                      mb: 1, 
-                      fontSize: isMobile ? '2rem' : '2.5rem', 
+                      mb: 0.5, 
+                      fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
                       opacity: 0.8 
                     }} 
                   />
-                  <Typography variant={isMobile ? "body1" : "subtitle1"} gutterBottom fontWeight="medium">
+                  <Typography 
+                    variant={isSmallMobile ? "body2" : "body1"} 
+                    gutterBottom 
+                    fontWeight="medium"
+                    sx={{ mb: 0.4 }}
+                  >
                     Welcome to Pulse Assistant
                   </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Ask me anything about productivity, time management, or how to use this app!
+                  <Typography 
+                    variant="caption"
+                    color="textSecondary"
+                    sx={{ 
+                      fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Ask me about productivity or app usage!
                   </Typography>
                 </Box>
               ) : (
@@ -373,7 +423,7 @@ const AIAssistant: React.FC = () => {
                       sx={{
                         display: 'flex',
                         justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        mb: 1.5,
+                        mb: isSmallMobile ? 1 : 1.25,
                       }}
                     >
                       {msg.role === 'assistant' && (
@@ -382,19 +432,21 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.primary.main,
                             mr: 1,
                             alignSelf: 'flex-start',
-                            width: isMobile ? 24 : 28,
-                            height: isMobile ? 24 : 28,
+                            width: isSmallMobile ? 20 : 24,
+                            height: isSmallMobile ? 20 : 24,
                           }}
                         >
-                          <SmartToyIcon sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }} />
+                          <SmartToyIcon sx={{ 
+                            fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                          }} />
                         </Avatar>
                       )}
 
                       <Paper
                         elevation={0}
                         sx={{
-                          p: isMobile ? 1 : 1.5,
-                          maxWidth: isMobile ? '80%' : '75%',
+                          p: isSmallMobile ? 0.75 : 1,
+                          maxWidth: isSmallMobile ? '80%' : '82%',
                           borderRadius: 2,
                           backgroundColor: msg.role === 'user'
                             ? theme.palette.primary.main
@@ -407,12 +459,19 @@ const AIAssistant: React.FC = () => {
                         }}
                       >
                         {msg.role === 'user'
-                          ? <Typography variant="body2" sx={{ fontSize: isMobile ? '0.85rem' : '0.9rem' }}>
+                          ? <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                fontSize: isSmallMobile ? '0.75rem' : '0.8rem',
+                                wordBreak: 'break-word' 
+                              }}
+                            >
                               {msg.content}
                             </Typography>
                           : <Box sx={{ 
                               '& .MuiTypography-root': { 
-                                fontSize: isMobile ? '0.85rem' : '0.9rem' 
+                                fontSize: isSmallMobile ? '0.75rem' : '0.8rem',
+                                wordBreak: 'break-word'
                               } 
                             }}>
                               {formatMessageContent(msg.content)}
@@ -426,13 +485,13 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.secondary.main,
                             ml: 1,
                             alignSelf: 'flex-start',
-                            width: isMobile ? 24 : 28,
-                            height: isMobile ? 24 : 28,
+                            width: isSmallMobile ? 20 : 24,
+                            height: isSmallMobile ? 20 : 24,
                           }}
                         >
                           <Typography variant="caption" sx={{ 
                             fontWeight: 'bold',
-                            fontSize: isMobile ? '0.65rem' : '0.75rem'
+                            fontSize: isSmallMobile ? '0.6rem' : '0.65rem'
                           }}>
                             {localStorage.getItem('userName')?.[0] || 'U'}
                           </Typography>
@@ -446,7 +505,7 @@ const AIAssistant: React.FC = () => {
                       sx={{
                         display: 'flex',
                         justifyContent: 'flex-start',
-                        mb: 1.5,
+                        mb: isSmallMobile ? 1 : 1.25,
                       }}
                     >
                       <Avatar
@@ -454,94 +513,394 @@ const AIAssistant: React.FC = () => {
                           bgcolor: theme.palette.primary.main,
                           mr: 1,
                           alignSelf: 'flex-start',
-                          width: isMobile ? 24 : 28,
-                          height: isMobile ? 24 : 28,
+                          width: isSmallMobile ? 20 : 24,
+                          height: isSmallMobile ? 20 : 24,
                         }}
                       >
-                        <SmartToyIcon sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }} />
+                        <SmartToyIcon sx={{ 
+                          fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                        }} />
                       </Avatar>
 
                       <Paper
                         elevation={0}
                         sx={{
-                          p: 1.5,
+                          p: isSmallMobile ? 0.75 : 1,
                           borderRadius: 2,
                           backgroundColor: 'white',
                           display: 'flex',
                           justifyContent: 'center',
                           alignItems: 'center',
-                          minWidth: '60px',
+                          minWidth: isSmallMobile ? '40px' : '50px',
                         }}
                       >
-                        <CircularProgress size={isMobile ? 16 : 20} thickness={5} />
+                        <CircularProgress 
+                          size={isSmallMobile ? 14 : 16}
+                          thickness={5} 
+                        />
                       </Paper>
                     </Box>
                   )}
                   <div ref={messagesEndRef} />
                 </>
               )}
-            </Box>
+              </Box>
 
-            {/* Input area */}
-            <Box
-              component="form"
-              onSubmit={handleSendMessage}
-              className="cancel-drag"
+              {/* Input area */}
+              <Box
+                component="form"
+                onSubmit={handleSendMessage}
+                sx={{
+                  p: isSmallMobile ? 0.75 : 1, 
+                  borderTop: '1px solid #e0e0e0',
+                  backgroundColor: 'white',
+                  pt: isSmallMobile ? 0.4 : 0.6,
+                  pb: isSmallMobile ? 0.4 : 0.6
+                }}
+              >
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  placeholder="Ask a question..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  multiline
+                  maxRows={2}
+                  disabled={isLoading}
+                  size="small"
+                  inputRef={inputRef}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '20px',
+                      backgroundColor: theme.palette.background.paper,
+                      pr: 1,
+                      fontSize: isSmallMobile ? '0.8rem' : '0.85rem',
+                      ...(isSmallMobile && {
+                        py: 0.5,
+                        px: 1
+                      })
+                    }
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton
+                        color="primary"
+                        onClick={handleSendMessage}
+                        disabled={!inputValue.trim() || isLoading}
+                        size="small"
+                        sx={{
+                          ml: 1,
+                          bgcolor: inputValue.trim() ? theme.palette.primary.main : 'transparent',
+                          color: inputValue.trim() ? 'white' : theme.palette.text.disabled,
+                          '&:hover': {
+                            bgcolor: inputValue.trim() ? theme.palette.primary.dark : 'transparent',
+                          },
+                          '&.Mui-disabled': {
+                            bgcolor: 'transparent'
+                          },
+                          width: isMobile ? 26 : 30,
+                          height: isMobile ? 26 : 30,
+                        }}
+                      >
+                        <SendIcon fontSize="small" />
+                      </IconButton>
+                    )
+                  }}
+                />
+              </Box>
+            </Paper>
+          </Box>
+        ) : (
+          // Desktop view - use draggable approach
+          <Draggable
+            nodeRef={nodeRef}
+            handle=".draggable-handle"
+            bounds="parent"
+            position={position}
+            onStop={handleDragStop}
+            cancel=".cancel-drag"
+          >
+            <Paper
+              ref={nodeRef}
+              elevation={6}
               sx={{
-                p: isMobile ? 1.5 : 2,
-                borderTop: '1px solid #e0e0e0',
-                backgroundColor: 'white',
+                width: '400px',
+                height: '500px',
+                maxHeight: '70vh',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: 2,
+                overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
+                position: 'fixed',
+                bottom: 80,
+                right: 24,
+                zIndex: 9999,
+                transition: 'all 0.2s ease-out',
+                cursor: 'auto',
+                touchAction: 'none',
+                willChange: 'transform',
               }}
             >
-              <TextField
-                fullWidth
-                variant="outlined"
-                placeholder="Ask a question..."
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleInputKeyDown}
-                multiline
-                maxRows={isMobile ? 2 : 3}
-                disabled={isLoading}
-                size="small"
-                inputRef={inputRef}
+              {/* Header - Made draggable */}
+              <Box
+                className="draggable-handle"
                 sx={{
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '20px',
-                    backgroundColor: theme.palette.background.paper,
-                    pr: 1,
-                    fontSize: isMobile ? '0.85rem' : '0.9rem',
-                  }
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: 1.5,
+                  backgroundColor: theme.palette.primary.main,
+                  color: 'white',
+                  borderTopLeftRadius: 2,
+                  borderTopRightRadius: 2,
+                  cursor: 'move',
+                  '&:hover': { 
+                    backgroundColor: theme.palette.primary.dark 
+                  },
+                  userSelect: 'none',
                 }}
-                InputProps={{
-                  endAdornment: (
-                    <IconButton
-                      color="primary"
-                      onClick={handleSendMessage}
-                      disabled={!inputValue.trim() || isLoading}
-                      size="small"
-                      sx={{
-                        ml: 1,
-                        bgcolor: inputValue.trim() ? theme.palette.primary.main : 'transparent',
-                        color: inputValue.trim() ? 'white' : theme.palette.text.disabled,
-                        '&:hover': {
-                          bgcolor: inputValue.trim() ? theme.palette.primary.dark : 'transparent',
-                        },
-                        '&.Mui-disabled': {
-                          bgcolor: 'transparent'
-                        },
-                        width: isMobile ? 26 : 30,
-                        height: isMobile ? 26 : 30,
-                      }}
-                    >
-                      <SendIcon fontSize="small" />
-                    </IconButton>
-                  )
+              >
+                <Box display="flex" alignItems="center">
+                  <DragIndicatorIcon sx={{ mr: 1, opacity: 0.7 }} />
+                  <Avatar
+                    sx={{
+                      bgcolor: 'white',
+                      mr: 1.5,
+                      width: 32,
+                      height: 32,
+                    }}
+                  >
+                    <SmartToyIcon fontSize="small" sx={{ color: theme.palette.primary.main }} />
+                  </Avatar>
+                  <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
+                </Box>
+                <Box className="cancel-drag">
+                  <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" sx={{ ml: 1 }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              {/* Messages area */}
+              <Box
+                className="cancel-drag"
+                sx={{
+                  flexGrow: 1,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  p: 2,
+                  backgroundColor: '#f5f7fa',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#d4d4d4 #f5f7fa',
+                  '&::-webkit-scrollbar': {
+                    width: '8px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: '#d4d4d4',
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    backgroundColor: '#f5f7fa',
+                  },
+                  overscrollBehavior: 'contain',
+                  WebkitOverflowScrolling: 'touch',
                 }}
-              />
-            </Box>
-          </Paper>
-        </Draggable>
+              >
+                {/* Desktop messages - reuse existing code */}
+                {displayMessages.length === 0 ? (
+                  <Box
+                    display="flex"
+                    flexDirection="column"
+                    alignItems="center"
+                    justifyContent="center"
+                    height="100%"
+                    p={2}
+                    textAlign="center"
+                  >
+                    <SmartToyIcon fontSize="large" color="primary" sx={{ mb: 1, fontSize: '2.5rem', opacity: 0.8 }} />
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                      Welcome to Pulse Assistant
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Ask me anything about productivity or how to use this app!
+                    </Typography>
+                  </Box>
+                ) : (
+                  <>
+                    {displayMessages.map((msg, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                          mb: 1.5,
+                        }}
+                      >
+                        {msg.role === 'assistant' && (
+                          <Avatar
+                            sx={{
+                              bgcolor: theme.palette.primary.main,
+                              mr: 1,
+                              alignSelf: 'flex-start',
+                              width: 28,
+                              height: 28,
+                            }}
+                          >
+                            <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                          </Avatar>
+                        )}
+
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 1.5,
+                            maxWidth: '75%',
+                            borderRadius: 2,
+                            backgroundColor: msg.role === 'user'
+                              ? theme.palette.primary.main
+                              : 'white',
+                            color: msg.role === 'user'
+                              ? 'white'
+                              : theme.palette.text.primary,
+                            ml: msg.role === 'user' ? 1 : 0,
+                            mr: msg.role === 'assistant' ? 1 : 0,
+                          }}
+                        >
+                          {msg.role === 'user'
+                            ? <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
+                                {msg.content}
+                              </Typography>
+                            : <Box sx={{ '& .MuiTypography-root': { fontSize: '0.9rem' } }}>
+                                {formatMessageContent(msg.content)}
+                              </Box>
+                          }
+                        </Paper>
+
+                        {msg.role === 'user' && (
+                          <Avatar
+                            sx={{
+                              bgcolor: theme.palette.secondary.main,
+                              ml: 1,
+                              alignSelf: 'flex-start',
+                              width: 28,
+                              height: 28,
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
+                              {localStorage.getItem('userName')?.[0] || 'U'}
+                            </Typography>
+                          </Avatar>
+                        )}
+                      </Box>
+                    ))}
+
+                    {isLoading && (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'flex-start',
+                          mb: 1.5,
+                        }}
+                      >
+                        <Avatar
+                          sx={{
+                            bgcolor: theme.palette.primary.main,
+                            mr: 1,
+                            alignSelf: 'flex-start',
+                            width: 28,
+                            height: 28,
+                          }}
+                        >
+                          <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                        </Avatar>
+
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            backgroundColor: 'white',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            minWidth: '60px',
+                          }}
+                        >
+                          <CircularProgress size={20} thickness={5} />
+                        </Paper>
+                      </Box>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </>
+                )}
+              </Box>
+
+              {/* Input area */}
+              <Box
+                component="form"
+                onSubmit={handleSendMessage}
+                className="cancel-drag"
+                sx={{
+                  p: 2, 
+                  borderTop: '1px solid #e0e0e0',
+                  backgroundColor: 'white',
+                }}
+              >
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  placeholder="Ask a question..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  multiline
+                  maxRows={3}
+                  disabled={isLoading}
+                  size="small"
+                  inputRef={inputRef}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '20px',
+                      backgroundColor: theme.palette.background.paper,
+                      pr: 1,
+                      fontSize: '0.9rem'
+                    }
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton
+                        color="primary"
+                        onClick={handleSendMessage}
+                        disabled={!inputValue.trim() || isLoading}
+                        size="small"
+                        sx={{
+                          ml: 1,
+                          bgcolor: inputValue.trim() ? theme.palette.primary.main : 'transparent',
+                          color: inputValue.trim() ? 'white' : theme.palette.text.disabled,
+                          '&:hover': {
+                            bgcolor: inputValue.trim() ? theme.palette.primary.dark : 'transparent',
+                          },
+                          '&.Mui-disabled': {
+                            bgcolor: 'transparent'
+                          },
+                          width: 30,
+                          height: 30,
+                        }}
+                      >
+                        <SendIcon fontSize="small" />
+                      </IconButton>
+                    )
+                  }}
+                />
+              </Box>
+            </Paper>
+          </Draggable>
+        )
       )}
 
       {/* Floating button to open assistant */}
