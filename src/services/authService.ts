@@ -294,19 +294,19 @@ export const refreshGoogleToken = async (): Promise<{ success: boolean; message:
       return { success: false, message: 'No token available to refresh' };
     }
     
-    // Use the dedicated endpoint for token refresh
-    const refreshUrl = `${API_BASE_URL}/api/auth/google/refresh`;
+    // Use the dedicated endpoint for token refresh - using relative path with proxy
+    const refreshUrl = `/api/auth/google/refresh`;
     
-    // Make the refresh request
+    // Make the refresh request - using POST instead of GET
     const response = await fetch(refreshUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`, // Send current token for authentication
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
       },
-      // Use credentials to include cookies that might be needed
-      credentials: 'include'
+      body: JSON.stringify({}), // Add an empty JSON body
+      credentials: 'include',
+      mode: 'cors'
     });
     
     if (!response.ok) {

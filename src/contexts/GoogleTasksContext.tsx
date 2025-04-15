@@ -9,6 +9,7 @@ import {
   updateGoogleTaskList,
   deleteGoogleTaskList,
   clearCompletedTasks,
+  toggleTaskStar as toggleTaskStarApi,
   GoogleTask,
   GoogleTaskList
 } from '../services/googleTasksService';
@@ -493,8 +494,16 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
       });
       
       if (targetTask && targetList) {
-        // Toggle the star status
-        const isStarred = !targetTask.starred;
+        // Make API call to toggle star status
+        const apiResponse = await toggleTaskStarApi(taskListId, taskId);
+        
+        if (!apiResponse) {
+          console.error('API call to toggle star status failed');
+          return null;
+        }
+        
+        // Get the new star status from API response
+        const isStarred = apiResponse.is_starred;
         
         // Update the task in the list
         const updatedLists = taskLists.map(list => 

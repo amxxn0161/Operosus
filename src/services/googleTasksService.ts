@@ -12,6 +12,9 @@ export interface GoogleTask {
   position?: string;
   updated?: string;
   selfLink?: string;
+  is_starred?: boolean;
+  task_list_id?: string;
+  task_list_title?: string;
 }
 
 // Define the TaskList interface
@@ -251,6 +254,57 @@ export const clearCompletedTasks = async (taskListId: string): Promise<boolean> 
     return true;
   } catch (error) {
     console.error('Failed to clear completed tasks:', error);
+    throw error;
+  }
+};
+
+// Toggle star status of a task
+export const toggleTaskStar = async (
+  taskListId: string,
+  taskId: string
+): Promise<{ is_starred: boolean } | null> => {
+  try {
+    console.log(`Toggling star status for task ${taskId} in list ${taskListId}`);
+    const response = await apiRequest<{ 
+      status: string; 
+      message: string;
+      is_starred: boolean;
+    }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}/star`, {
+      method: 'POST'
+    });
+    
+    if (response.status === 'success') {
+      console.log(`Task star status: ${response.is_starred ? 'Starred' : 'Unstarred'}`);
+      return { is_starred: response.is_starred };
+    }
+    
+    console.warn('Star toggle request failed:', response);
+    return null;
+  } catch (error) {
+    console.error('Failed to toggle task star status:', error);
+    throw error;
+  }
+};
+
+// Fetch all starred tasks for the current user
+export const fetchStarredTasks = async (): Promise<GoogleTask[]> => {
+  try {
+    console.log('Fetching starred tasks from API...');
+    const response = await apiRequest<{ 
+      status: string; 
+      data: { 
+        starredTasks: GoogleTask[]
+      } 
+    }>('/api/google/starred-tasks');
+    
+    if (response.status === 'success' && response.data && response.data.starredTasks) {
+      console.log(`Fetched ${response.data.starredTasks.length} starred tasks`);
+      return response.data.starredTasks;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Failed to fetch starred tasks:', error);
     throw error;
   }
 }; 
