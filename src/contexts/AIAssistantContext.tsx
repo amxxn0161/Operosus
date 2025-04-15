@@ -1,20 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
-import { useLocation } from 'react-router-dom';
-// Replace direct OpenAI import with our service
-import { initializeOpenAI, isOpenAIAvailable, sendOpenAIQuery, Message } from '../services/openaiService';
-
-// We don't need to initialize OpenAI directly here anymore, our service handles it
-// Instead, let's define a function to check if OpenAI is available
-const checkOpenAIAvailability = () => {
-  const isAvailable = isOpenAIAvailable();
-  if (!isAvailable) {
-    console.warn('OpenAI API key not found or client not initialized. AI Assistant will use local responses only. Set REACT_APP_OPENAI_API_KEY in .env.local to enable advanced AI capabilities.');
-  } else {
-    console.log('OpenAI API configured successfully.');
-  }
-  return isAvailable;
-};
+// Remove useLocation import
+// import { useLocation } from 'react-router-dom';
+import { Message, sendAssistantMessage } from '../services/assistantService';
 
 interface ScreenContext {
   currentPath: string;
@@ -706,6 +694,7 @@ Ask me questions like "What's my productivity score?", "How do I create a journa
   return null;
 };
 
+// The provider implementation
 export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -715,20 +704,18 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Initialize screen context without relying on router's location
   const [screenContext, setScreenContext] = useState<ScreenContext>({
     currentPath: '',
-    currentComponent: 'Dashboard',
-    journalEntries: [],
+    currentComponent: 'Dashboard' // Default to Dashboard when no specific context is available
   });
-  const [openaiAvailable, setOpenaiAvailable] = useState(false);
   
-  // Check for OpenAI API key on component mount
-  useEffect(() => {
-    const isAvailable = checkOpenAIAvailability();
-    setOpenaiAvailable(isAvailable);
-  }, []);
+  // State to track the current conversation thread ID
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
   
-  // Update screen context when path changes
+  // We don't need the useEffect that was using location.pathname anymore
+  
   const updateScreenContext = (context: Partial<ScreenContext>) => {
     console.log('Updating screen context:', context);
     
@@ -795,303 +782,45 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
   
   const sendMessage = async (content: string) => {
     try {
-      // Add user message to the conversation
+      // Add user message to the conversation immediately for UI
       const userMessage: Message = { role: 'user', content };
       setMessages(prev => [...prev, userMessage]);
       
       setIsLoading(true);
       
-      // Debug current context
-      console.log('Current screen context:', screenContext);
-      console.log('Has journal entries:', screenContext.journalEntries?.length || 0);
+      // Call the backend API with the message and thread ID
+      const response = await sendAssistantMessage(content, threadId);
       
-      // Determine current user ID for filtering
-      let currentUserId: number | null = null;
-      
-      // Try to get current user ID from various sources
-      if (screenContext.currentData?.user?.id) {
-        currentUserId = screenContext.currentData.user.id;
-        console.log(`Current user ID from context data: ${currentUserId}`);
-      } 
-      else if (screenContext.journalEntries && screenContext.journalEntries.length > 0) {
-        // Try to find user ID from entries
-        for (const entry of screenContext.journalEntries) {
-          if (entry.user && entry.user.id) {
-            currentUserId = entry.user.id;
-            console.log(`Current user ID from journal entries: ${currentUserId}`);
-            break;
-          }
-        }
-      }
-      
-      // Ensure we have journal entries data
-      let currentJournalEntries = screenContext.journalEntries;
-      
-      // If no journal entries in context, use the sample entries provided
-      if (!currentJournalEntries || currentJournalEntries.length === 0) {
-        console.log('No journal entries in context, using API response entries');
+      if (response) {
+        // Store the thread ID for future messages
+        setThreadId(response.thread_id);
         
-        // Use the provided productivity API response
-        // This is a fallback with sample data if API hasn't loaded yet
-        const apiResponse: any[] = [
-          // Sample entries remain the same - full array trimmed for brevity
-        ];
-        
-        // Sort entries by created_at or timestamp to ensure most recent first
-        const sortedEntries = [...apiResponse].sort((a, b) => {
-          // Sort by created_at first if available
-          if (a.created_at && b.created_at) {
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          }
-          // Then by timestamp if created_at is not available
-          if (a.timestamp && b.timestamp) {
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-          }
-          // Finally by date if neither of above is available
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        });
-        
-        // Filter entries by user ID if we know who the current user is
-        let userFilteredEntries = sortedEntries;
-        if (currentUserId) {
-          userFilteredEntries = sortedEntries.filter(entry => entry.user_id === currentUserId);
-          console.log(`Filtered API entries to ${userFilteredEntries.length} entries for user ID ${currentUserId}`);
-          
-          // If no entries for this user, fall back to all entries
-          if (userFilteredEntries.length === 0) {
-            console.log('No API entries found for current user, using all entries');
-            userFilteredEntries = sortedEntries;
-          }
-        }
-        
-        // Log the first few sorted entries for debugging
-        console.log('First 3 sorted entries after user filtering:', userFilteredEntries.slice(0, 3).map((e: any) => 
-          `ID: ${e.id}, User: ${e.user_id}, Date: ${e.date}, Created: ${e.created_at?.substring(0, 10)}`));
-        
-        // Update the screen context with sorted entries
-        setScreenContext(prev => ({
-          ...prev,
-          journalEntries: userFilteredEntries
-        }));
-        
-        // Use the sorted entries for response generation
-        currentJournalEntries = userFilteredEntries;
-      } else {
-        // Re-sort existing entries to ensure newest first
-        let sortedEntries = [...currentJournalEntries].sort((a, b) => {
-          // Sort by created_at first if available
-          if (a.created_at && b.created_at) {
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          }
-          // Then by timestamp if created_at is not available
-          if (a.timestamp && b.timestamp) {
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-          }
-          // Finally by date if neither of above is available
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        });
-        
-        // Filter by user ID if available
-        if (currentUserId) {
-          const userFilteredEntries = sortedEntries.filter(entry => entry.user_id === currentUserId);
-          console.log(`Filtered to ${userFilteredEntries.length} entries for user ID ${currentUserId}`);
-          
-          // Only use filtered entries if we found some
-          if (userFilteredEntries.length > 0) {
-            sortedEntries = userFilteredEntries;
-          } else {
-            console.log('No entries found for current user ID, using all entries');
-          }
-        }
-        
-        console.log('First 3 journal entries after sorting and filtering:', sortedEntries.slice(0, 3).map((e: any) => 
-          `ID: ${e.id}, User: ${e.user_id}, Date: ${e.date}, Created: ${e.created_at?.substring(0, 10)}`));
-        
-        currentJournalEntries = sortedEntries;
-      }
-      
-      // Enhanced journal entry statistics for local responses
-      const journalStats: {
-        totalEntries: number;
-        latestEntry: any;
-        avgProductivity: number;
-        distractionCounts: Record<string, number>;
-        mostProductiveEntry?: any;
-      } = {
-        totalEntries: currentJournalEntries ? currentJournalEntries.length : 0,
-        latestEntry: currentJournalEntries && currentJournalEntries.length > 0 ? currentJournalEntries[0] : null,
-        avgProductivity: currentJournalEntries && currentJournalEntries.length > 0 
-          ? parseFloat((currentJournalEntries.reduce((sum, entry) => sum + entry.productivityScore, 0) / currentJournalEntries.length).toFixed(1)) 
-          : 0,
-        distractionCounts: {} as Record<string, number>
-      };
-      
-      // Count distraction occurrences
-      if (currentJournalEntries && currentJournalEntries.length > 0) {
-        currentJournalEntries.forEach(entry => {
-          if (entry.distractions && entry.distractions.length) {
-            entry.distractions.forEach((distraction: string) => {
-              // Handle the escaped slash in distraction names
-              const cleanDistraction = distraction.replace(/\\\//g, '/');
-              journalStats.distractionCounts[cleanDistraction] = (journalStats.distractionCounts[cleanDistraction] || 0) + 1;
-            });
-          }
-        });
-      }
-      
-      // Find most productive day
-      if (currentJournalEntries && currentJournalEntries.length > 0) {
-        journalStats.mostProductiveEntry = currentJournalEntries.reduce((mostProd, entry) => 
-          entry.productivityScore > (mostProd?.productivityScore || 0) ? entry : mostProd, null);
-      }
-      
-      // Get context with enhanced statistics
-      const enhancedContext = {
-        ...screenContext,
-        journalEntries: currentJournalEntries,
-        journalStats
-      };
-      
-      // Determine if this is a complex query that should use OpenAI directly
-      const isComplexQuery = shouldUseOpenAI(content);
-      console.log('Is complex query requiring OpenAI?', isComplexQuery);
-      
-      // CRITICAL CHANGE: Handle complex queries differently
-      let useOpenAI = false;
-      let localResponse = null;
-      
-      // For complex queries, don't even try local response if OpenAI is available
-      if (isComplexQuery && openaiAvailable) {
-        console.log('Routing complex query directly to OpenAI');
-        useOpenAI = true;
-      } else {
-        // Only for non-complex queries or when OpenAI is unavailable:
-        // Try to generate a local response
-        localResponse = generateLocalResponse(content, enhancedContext);
-        console.log('Local response generated:', localResponse ? 'Yes' : 'No');
-        
-        // If no local response, fall back to OpenAI if available
-        if (!localResponse && openaiAvailable) {
-          useOpenAI = true;
-        }
-      }
-      
-      // If we have a valid local response, use it
-      if (localResponse) {
+        // Add the assistant's response to the conversation
         const assistantMessage: Message = {
           role: 'assistant',
-          content: localResponse
+          content: response.reply
         };
         
         setMessages(prev => [...prev, assistantMessage]);
-        setIsLoading(false);
-        return;
-      }
-      
-      // If we get here, we need to use OpenAI if available
-      if (useOpenAI && openaiAvailable) {
-        try {
-          // Prepare messages for OpenAI
-          const openaiMessages = messages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }));
-          
-          // Add current message
-          openaiMessages.push({
-            role: 'user',
-            content
-          });
-          
-          // Add context information to help OpenAI provide a better response
-          let contextMessage = `The user is currently on the ${screenContext.currentComponent} page.`;
-          
-          // Add more specific context based on current page
-          if (screenContext.currentComponent === 'Dashboard' && screenContext.currentData?.metricsOverview) {
-            contextMessage += ` Their current productivity metrics are: ${JSON.stringify(screenContext.currentData.metricsOverview)}`;
-          } else if (screenContext.currentComponent === 'Journal' && screenContext.currentData?.formData) {
-            contextMessage += ` They are currently working on a journal entry: ${JSON.stringify(screenContext.currentData.formData)}`;
-          }
-          
-          // If we have journal entries, include summary of the most relevant ones
-          if (currentJournalEntries && currentJournalEntries.length > 0) {
-            // Include only the 3 most recent entries to avoid token limits
-            const recentEntries = currentJournalEntries.slice(0, 3);
-            contextMessage += ` Recent journal data: ${JSON.stringify(recentEntries)}`;
-            
-            // Include distraction summary if asking about distractions
-            if (content.toLowerCase().includes('distraction')) {
-              contextMessage += ` Common distractions: ${JSON.stringify(journalStats.distractionCounts)}`;
-            }
-          }
-          
-          // Add the context message as a system message
-          openaiMessages.push({
-            role: 'system',
-            content: contextMessage
-          });
-          
-          console.log('Sending to OpenAI with context:', contextMessage);
-          
-          // Use our new service to send the query to OpenAI
-          const responseContent = await sendOpenAIQuery(
-            openaiMessages,
-            'gpt-4o-mini', // model - updated to use the smaller, faster model
-            0.7, // temperature
-            1000 // maxTokens
-          );
-          
-          if (responseContent) {
-            console.log('Received OpenAI response:', responseContent.substring(0, 100) + '...');
-            const assistantMessage: Message = {
-              role: 'assistant',
-              content: responseContent
-            };
-            
-            setMessages(prev => [...prev, assistantMessage]);
-          } else {
-            // Handle case where OpenAI returned null
-            console.error('OpenAI returned null response');
-            const errorMessage: Message = {
-              role: 'assistant',
-              content: `I apologize, but I encountered an error while processing your request. This might be due to API rate limits or configuration issues. Please try again later.`
-            };
-            
-            setMessages(prev => [...prev, errorMessage]);
-          }
-        } catch (error) {
-          console.error('Error processing OpenAI response:', error);
-          
-          // Fallback message on error
-          const errorMessage: Message = {
-            role: 'assistant',
-            content: `I apologize, but I encountered an error while processing your request. This might be due to API rate limits or configuration issues. Please try again later.`
-          };
-          
-          setMessages(prev => [...prev, errorMessage]);
-        }
       } else {
-        // We get here if:
-        // 1. OpenAI is not available, or
-        // 2. We couldn't generate a local response and OpenAI is not available
-        
-        // Fallback message when OpenAI is not configured
-        const fallbackMessage: Message = {
+        // Handle error case
+        const errorMessage: Message = {
           role: 'assistant',
-          content: `I can answer questions about your productivity metrics and journal entries locally. 
-          
-Try asking me:
-- "What was my last journal entry?"
-- "What's my average productivity score?" 
-- "How many journal entries do I have?"
-- "What are my common distractions?"
-- "What was my most productive day?"
-
-For more complex questions, I would need to use the OpenAI API, which is not currently configured.`
+          content: `I apologize, but I encountered an error while processing your request. Please try again later.`
         };
         
-        setMessages(prev => [...prev, fallbackMessage]);
+        setMessages(prev => [...prev, errorMessage]);
       }
+    } catch (error) {
+      console.error('Error sending message to assistant:', error);
+      
+      // Add error message to the conversation
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `I apologize, but I encountered an error while processing your request. Please try again later.`
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -1104,6 +833,8 @@ For more complex questions, I would need to use the OpenAI API, which is not cur
         content: APP_KNOWLEDGE
       }
     ]);
+    // Reset thread ID when clearing messages
+    setThreadId(undefined);
   };
   
   return (
@@ -1123,4 +854,20 @@ For more complex questions, I would need to use the OpenAI API, which is not cur
       {children}
     </AIAssistantContext.Provider>
   );
-}; 
+};
+
+// Helper function remains unchanged but may not be needed anymore
+function getComponentNameFromPath(path: string): string {
+  // Remove leading slash and query parameters
+  const cleanPath = path.replace(/^\//, '').split('?')[0];
+  
+  if (!cleanPath || cleanPath === '') return 'Dashboard';
+  
+  // Convert kebab-case to PascalCase and capitalize first letter
+  return cleanPath
+    .split('/')
+    .pop()!
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+} 
