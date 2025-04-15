@@ -1,5 +1,5 @@
 // apiUtils.ts - Special fix for API authorization issues
-import { checkAuthState } from './authService';
+import { checkAuthState, handleTokenExpirationError, isTokenNearingExpiration, refreshGoogleToken } from './authService';
 
 // Base URL for API requests
 const API_BASE_URL = 'https://app2.operosus.com';
@@ -16,9 +16,30 @@ export interface ApiOptions {
  */
 export async function apiRequest<T>(url: string, options: ApiOptions = {}): Promise<T> {
   // Get auth token
-  const { token } = checkAuthState();
+  let { token } = checkAuthState();
   if (!token) {
     throw new Error('No authentication token available');
+  }
+  
+  // Proactively check if token is nearing expiration before making the request
+  // This prevents token expiration errors during API calls
+  try {
+    if (isTokenNearingExpiration()) {
+      console.log('Token is nearing expiration before API call, refreshing proactively');
+      const { success } = await refreshGoogleToken();
+      if (success) {
+        console.log('Token refreshed successfully before API call');
+        // Get the refreshed token
+        const { token: refreshedToken } = checkAuthState();
+        // Use the new token for this request
+        token = refreshedToken;
+      } else {
+        console.warn('Proactive token refresh failed before API call, proceeding with current token');
+      }
+    }
+  } catch (refreshError) {
+    console.error('Error during proactive token refresh:', refreshError);
+    // Continue with the current token even if refresh failed
   }
   
   // Detect if on mobile device
@@ -95,6 +116,46 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
       error.statusText = response.statusText;
       error.data = data;
       
+      // Special handling for authentication errors (401)
+      if (response.status === 401) {
+        error.message = data?.message || 'Authentication failed: Your session may have expired';
+        console.error('Authentication Error:', {
+          url: fullUrl,
+          method: options.method || 'GET',
+          responseData: data
+        });
+        
+        // Check if this is a token expiration issue
+        if (data?.message?.includes('token') || error.message.includes('session')) {
+          console.warn('Token appears to be expired, attempting refresh');
+          // Try to handle token expiration - if successful, retry the request
+          const tokenRefreshed = await handleTokenExpirationError(error);
+          if (tokenRefreshed) {
+            console.log('Token was refreshed successfully, retrying original request');
+            // Get fresh token after refresh
+            const { token: newToken } = checkAuthState();
+            
+            // Update the Authorization header with the new token
+            if (fetchOptions.headers) {
+              (fetchOptions.headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
+            }
+            
+            // Retry the request with the new token
+            const retryResponse = await fetch(fullUrl, fetchOptions);
+            const retryData = await retryResponse.json();
+            
+            if (retryResponse.ok) {
+              console.log('Request retry was successful after token refresh');
+              return retryData as T;
+            } else {
+              console.error('Request retry failed even after token refresh');
+              error.retryFailed = true;
+              throw error;
+            }
+          }
+        }
+      }
+      
       // For 500 Internal Server errors, add more context
       if (response.status === 500) {
         error.message = data?.message || 'Internal Server Error: The server encountered an unexpected condition';
@@ -133,6 +194,20 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
     // If the error already has status and we've enhanced it, just rethrow
     if ((error as any).status) {
       throw error;
+    }
+    
+    // Check for token expiration even in non-response errors
+    if (error instanceof Error && 
+        (error.message.includes('token') || error.message.includes('authentication'))) {
+      try {
+        const tokenRefreshed = await handleTokenExpirationError(error);
+        if (tokenRefreshed) {
+          console.log('Token was refreshed after a non-response error');
+          // We don't retry here, but we've refreshed the token for the next request
+        }
+      } catch (refreshError) {
+        console.error('Error attempting to refresh token:', refreshError);
+      }
     }
     
     // Otherwise create a more detailed error
