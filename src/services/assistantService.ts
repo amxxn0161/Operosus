@@ -19,6 +19,8 @@ interface AssistantChatResponse {
 }
 
 interface ThreadMessagesResponse {
+  thread_id: string;
+  title: string;
   messages: {
     role: string;
     text: string;
@@ -26,7 +28,7 @@ interface ThreadMessagesResponse {
 }
 
 interface ThreadsListResponse {
-  threads: { thread_id: string; created_at: string }[];
+  threads: { thread_id: string; title: string; created_at: string }[];
 }
 
 /**
@@ -66,9 +68,13 @@ export const sendAssistantMessage = async (
  */
 export const getThreadMessages = async (threadId: string): Promise<Message[] | null> => {
   try {
-    const response = await apiRequest<ThreadMessagesResponse>(`/api/assistant/threads/${threadId}/messages`);
+    // Use the correct endpoint format: /api/assistant/thread/{threadId}
+    const response = await apiRequest<ThreadMessagesResponse>(`/api/assistant/thread/${threadId}`);
     
     if (response.messages) {
+      // Log the thread title for debugging
+      console.log(`Thread title from API: "${response.title}"`);
+      
       return response.messages.map((msg) => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.text
@@ -92,6 +98,40 @@ export const listThreads = async (): Promise<{ thread_id: string; created_at: st
     return response.threads || null;
   } catch (error) {
     console.error('Error fetching threads:', error);
+    return null;
+  }
+};
+
+/**
+ * Interface for Thread objects returned by the API
+ */
+export interface Thread {
+  thread_id: string;
+  title: string;
+  created_at: string;
+}
+
+/**
+ * Interface for the response from the threads API
+ */
+export interface ThreadsResponse {
+  threads: Thread[];
+}
+
+/**
+ * Fetch the list of saved conversation threads
+ * @returns An array of threads or null if the request fails
+ */
+export const fetchAssistantThreads = async (): Promise<Thread[] | null> => {
+  try {
+    // Use apiRequest helper for proper authentication
+    const response = await apiRequest<ThreadsResponse>('/api/assistant/threads', {
+      method: 'GET'
+    });
+    
+    return response.threads;
+  } catch (error) {
+    console.error('Error fetching assistant threads:', error);
     return null;
   }
 }; 

@@ -19,7 +19,11 @@ import {
   Avatar,
   Popper,
   ClickAwayListener,
-  Grow
+  Grow,
+  List,
+  ListItem,
+  ListItemText,
+  Divider
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -27,8 +31,11 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import HistoryIcon from '@mui/icons-material/History';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
+import { Message, Thread, fetchAssistantThreads, getThreadMessages } from '../services/assistantService';
+import { format } from 'date-fns';
 
 // Function to format message content with markdown-like syntax
 const formatMessageContent = (content: string): JSX.Element => {
@@ -181,7 +188,9 @@ const AIAssistant: React.FC = () => {
     messages, 
     isLoading, 
     sendMessage,
-    clearMessages
+    clearMessages,
+    loadThreadMessages,
+    setThreadId
   } = useAIAssistant();
   const [inputValue, setInputValue] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -195,6 +204,13 @@ const AIAssistant: React.FC = () => {
   const isSmallMobile = useMediaQuery('(max-width:380px)');
   const isVerySmallMobile = useMediaQuery('(max-width:320px)');
   const isShortScreen = useMediaQuery('(max-height:670px)');
+  
+  // Thread state management
+  const [showThreads, setShowThreads] = useState(false);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [loadingThreads, setLoadingThreads] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
   
   // Calculate center position for mobile
   const mobilePosition = useMemo(() => {
@@ -249,9 +265,92 @@ const AIAssistant: React.FC = () => {
     setPosition({ x: data.x, y: data.y });
   };
   
+  // Load threads when the dropdown is opened
+  const handleThreadsOpen = () => {
+    setShowThreads(true);
+    loadThreadsList();
+  };
+  
+  // Close threads dropdown
+  const handleThreadsClose = () => {
+    setShowThreads(false);
+  };
+  
+  // Load the list of threads
+  const loadThreadsList = async () => {
+    try {
+      setLoadingThreads(true);
+      setThreadError(null);
+      const threadsList = await fetchAssistantThreads();
+      
+      if (threadsList) {
+        // Sort threads by creation date (newest first)
+        const sortedThreads = [...threadsList].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setThreads(sortedThreads);
+      } else {
+        setThreadError("Failed to load conversation history");
+      }
+    } catch (err) {
+      console.error("Error loading threads:", err);
+      setThreadError("An error occurred while loading your conversation history");
+    } finally {
+      setLoadingThreads(false);
+    }
+  };
+  
+  // Handle thread selection
+  const handleThreadSelect = async (threadId: string) => {
+    try {
+      setLoadingThreads(true);
+      setShowThreads(false);
+      
+      // Find the selected thread to get its title
+      const selectedThread = threads.find(t => t.thread_id === threadId);
+      const threadTitle = selectedThread?.title || `Conversation ${threadId.substring(0, 8)}`;
+      
+      console.log(`Loading thread: "${threadTitle}" (${threadId})`);
+      const messages = await getThreadMessages(threadId);
+      
+      if (messages) {
+        console.log(`Loaded ${messages.length} messages from thread "${threadTitle}"`);
+        // Set the thread ID first
+        setThreadId(threadId);
+        // Then load the messages into the UI
+        loadThreadMessages(messages);
+      } else {
+        setThreadError(`Failed to load conversation: ${threadTitle}`);
+        console.error(`No messages returned for thread ${threadId}`);
+      }
+    } catch (err) {
+      console.error("Error loading thread messages:", err);
+      setThreadError("An error occurred while loading this conversation");
+    } finally {
+      setLoadingThreads(false);
+    }
+  };
+  
+  // Format date for display
+  const formatThreadDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'MMM d, yyyy h:mm a');
+    } catch (error) {
+      return dateString;
+    }
+  };
+  
+  // Extract preview of conversation from the thread title
+  const getThreadPreview = (thread: Thread) => {
+    // Use the thread title that was set by the backend
+    return thread.title || `Conversation ${thread.thread_id.substring(0, 8)}`;
+  };
+  
   // Filter out system messages for display
   const displayMessages = messages.filter(msg => msg.role !== 'system');
   
+  // Remove the separate thread view rendering and keep just the regular assistant view
   return (
     <>
       {/* Hidden reference div positioned where we want the popover to anchor */}
@@ -338,6 +437,119 @@ const AIAssistant: React.FC = () => {
                   </Typography>
                 </Box>
                 <Box>
+                  {/* History button with popover menu */}
+                  <IconButton 
+                    ref={historyButtonRef}
+                    size="small" 
+                    color="inherit" 
+                    onClick={handleThreadsOpen}
+                    title="View conversation history"
+                    sx={{ mr: isSmallMobile ? 0.5 : 1 }}
+                  >
+                    <HistoryIcon fontSize="small" />
+                  </IconButton>
+                  {/* Threads menu popover */}
+                  <Popper
+                    open={showThreads}
+                    anchorEl={historyButtonRef.current}
+                    placement="bottom-end"
+                    transition
+                    style={{ zIndex: 9999 }}
+                  >
+                    {({ TransitionProps }) => (
+                      <Grow
+                        {...TransitionProps}
+                        style={{ transformOrigin: 'right top' }}
+                      >
+                        <Paper
+                          elevation={6}
+                          sx={{
+                            width: isSmallMobile ? 240 : 280,
+                            maxHeight: 400,
+                            overflowY: 'auto',
+                            mt: 1,
+                            borderRadius: 1,
+                          }}
+                        >
+                          <ClickAwayListener onClickAway={handleThreadsClose}>
+                            <Box>
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderBottom: '1px solid',
+                                  borderColor: 'divider',
+                                  backgroundColor: theme.palette.primary.main,
+                                  color: 'white',
+                                }}
+                              >
+                                <Typography variant="subtitle2">Conversation History</Typography>
+                              </Box>
+                              {loadingThreads ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                                  <CircularProgress size={24} />
+                                </Box>
+                              ) : threadError ? (
+                                <Box sx={{ p: 2, textAlign: 'center' }}>
+                                  <Typography color="error" variant="body2">{threadError}</Typography>
+                                  <Button 
+                                    size="small" 
+                                    variant="outlined" 
+                                    sx={{ mt: 1 }} 
+                                    onClick={loadThreadsList}
+                                  >
+                                    Try Again
+                                  </Button>
+                                </Box>
+                              ) : threads.length === 0 ? (
+                                <Box sx={{ p: 2, textAlign: 'center' }}>
+                                  <Typography color="textSecondary" variant="body2">
+                                    No saved conversations found
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                <List sx={{ p: 0 }}>
+                                  {threads.map((thread, index) => (
+                                    <React.Fragment key={thread.thread_id}>
+                                      <ListItem 
+                                        button 
+                                        onClick={() => handleThreadSelect(thread.thread_id)}
+                                        sx={{ 
+                                          py: 1.5,
+                                          '&:hover': {
+                                            backgroundColor: 'rgba(16, 86, 245, 0.04)',
+                                          }
+                                        }}
+                                      >
+                                        <ListItemText
+                                          primary={thread.title}
+                                          secondary={formatThreadDate(thread.created_at)}
+                                          primaryTypographyProps={{
+                                            variant: 'body2',
+                                            fontWeight: 500,
+                                            sx: { 
+                                              color: 'text.primary',
+                                              textOverflow: 'ellipsis',
+                                              overflow: 'hidden',
+                                              whiteSpace: 'nowrap'
+                                            }
+                                          }}
+                                          secondaryTypographyProps={{
+                                            variant: 'caption',
+                                            sx: { color: 'text.secondary' }
+                                          }}
+                                        />
+                                      </ListItem>
+                                      {index < threads.length - 1 && <Divider component="li" />}
+                                    </React.Fragment>
+                                  ))}
+                                </List>
+                              )}
+                            </Box>
+                          </ClickAwayListener>
+                        </Paper>
+                      </Grow>
+                    )}
+                  </Popper>
                   <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
                     <RefreshIcon fontSize="small" />
                   </IconButton>
@@ -485,14 +697,11 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.secondary.main,
                             ml: 1,
                             alignSelf: 'flex-start',
-                            width: isSmallMobile ? 20 : 24,
-                            height: isSmallMobile ? 20 : 24,
+                            width: 28,
+                            height: 28
                           }}
                         >
-                          <Typography variant="caption" sx={{ 
-                            fontWeight: 'bold',
-                            fontSize: isSmallMobile ? '0.6rem' : '0.65rem'
-                          }}>
+                          <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
                             {localStorage.getItem('userName')?.[0] || 'U'}
                           </Typography>
                         </Avatar>
@@ -677,6 +886,121 @@ const AIAssistant: React.FC = () => {
                   <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
                 </Box>
                 <Box className="cancel-drag">
+                  {/* History button with dropdown */}
+                  <IconButton 
+                    ref={historyButtonRef}
+                    size="small" 
+                    color="inherit" 
+                    onClick={handleThreadsOpen}
+                    title="View conversation history"
+                    className="cancel-drag"
+                    sx={{ mr: 0.5 }}
+                  >
+                    <HistoryIcon fontSize="small" />
+                  </IconButton>
+                  {/* Threads menu popover */}
+                  <Popper
+                    open={showThreads}
+                    anchorEl={historyButtonRef.current}
+                    placement="bottom-end"
+                    transition
+                    style={{ zIndex: 9999 }}
+                    className="cancel-drag"
+                  >
+                    {({ TransitionProps }) => (
+                      <Grow
+                        {...TransitionProps}
+                        style={{ transformOrigin: 'right top' }}
+                      >
+                        <Paper
+                          elevation={6}
+                          sx={{
+                            width: 280,
+                            maxHeight: 400,
+                            overflowY: 'auto',
+                            mt: 1,
+                            borderRadius: 1,
+                          }}
+                        >
+                          <ClickAwayListener onClickAway={handleThreadsClose}>
+                            <Box>
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderBottom: '1px solid',
+                                  borderColor: 'divider',
+                                  backgroundColor: theme.palette.primary.main,
+                                  color: 'white',
+                                }}
+                              >
+                                <Typography variant="subtitle2">Conversation History</Typography>
+                              </Box>
+                              {loadingThreads ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                                  <CircularProgress size={24} />
+                                </Box>
+                              ) : threadError ? (
+                                <Box sx={{ p: 2, textAlign: 'center' }}>
+                                  <Typography color="error" variant="body2">{threadError}</Typography>
+                                  <Button 
+                                    size="small" 
+                                    variant="outlined" 
+                                    sx={{ mt: 1 }} 
+                                    onClick={loadThreadsList}
+                                  >
+                                    Try Again
+                                  </Button>
+                                </Box>
+                              ) : threads.length === 0 ? (
+                                <Box sx={{ p: 2, textAlign: 'center' }}>
+                                  <Typography color="textSecondary" variant="body2">
+                                    No saved conversations found
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                <List sx={{ p: 0 }}>
+                                  {threads.map((thread, index) => (
+                                    <React.Fragment key={thread.thread_id}>
+                                      <ListItem 
+                                        button 
+                                        onClick={() => handleThreadSelect(thread.thread_id)}
+                                        sx={{ 
+                                          py: 1.5,
+                                          '&:hover': {
+                                            backgroundColor: 'rgba(16, 86, 245, 0.04)',
+                                          }
+                                        }}
+                                      >
+                                        <ListItemText
+                                          primary={thread.title}
+                                          secondary={formatThreadDate(thread.created_at)}
+                                          primaryTypographyProps={{
+                                            variant: 'body2',
+                                            fontWeight: 500,
+                                            sx: { 
+                                              color: 'text.primary',
+                                              textOverflow: 'ellipsis',
+                                              overflow: 'hidden',
+                                              whiteSpace: 'nowrap'
+                                            }
+                                          }}
+                                          secondaryTypographyProps={{
+                                            variant: 'caption',
+                                            sx: { color: 'text.secondary' }
+                                          }}
+                                        />
+                                      </ListItem>
+                                      {index < threads.length - 1 && <Divider component="li" />}
+                                    </React.Fragment>
+                                  ))}
+                                </List>
+                              )}
+                            </Box>
+                          </ClickAwayListener>
+                        </Paper>
+                      </Grow>
+                    )}
+                  </Popper>
                   <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
                     <RefreshIcon fontSize="small" />
                   </IconButton>
@@ -788,7 +1112,7 @@ const AIAssistant: React.FC = () => {
                               ml: 1,
                               alignSelf: 'flex-start',
                               width: 28,
-                              height: 28,
+                              height: 28
                             }}
                           >
                             <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>

@@ -28,6 +28,8 @@ interface AIAssistantContextType {
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
   updateScreenContext: (context: Partial<ScreenContext>) => void;
+  loadThreadMessages: (messages: Message[]) => void;
+  setThreadId: (threadId: string | undefined) => void;
 }
 
 const AIAssistantContext = createContext<AIAssistantContextType | undefined>(undefined);
@@ -837,6 +839,23 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
     setThreadId(undefined);
   };
   
+  /**
+   * Load messages from a specific thread
+   * @param threadMessages The messages to load
+   */
+  const loadThreadMessages = (threadMessages: Message[]) => {
+    // Include the system message at the beginning
+    const messagesWithSystem: Message[] = [
+      {
+        role: 'system',
+        content: APP_KNOWLEDGE
+      },
+      ...threadMessages.filter(msg => msg.role !== 'system')
+    ];
+    
+    setMessages(messagesWithSystem);
+  };
+  
   return (
     <AIAssistantContext.Provider
       value={{
@@ -849,6 +868,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         sendMessage,
         clearMessages,
         updateScreenContext,
+        loadThreadMessages,
+        setThreadId,
       }}
     >
       {children}
