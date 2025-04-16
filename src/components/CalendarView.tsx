@@ -2160,7 +2160,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           handleEventClick(event, e);
                         }}
                       >
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                        <Typography variant="caption" sx={{ 
+                          fontSize: '0.7rem',
+                          textDecoration: isDeclined ? 'line-through' : 'none'
+                        }}>
                           {format(new Date(event.start), 'h:mm a')} {event.title}
                         </Typography>
                       </Box>
