@@ -31,6 +31,15 @@ interface ThreadsListResponse {
   threads: { thread_id: string; title: string; created_at: string }[];
 }
 
+interface UpdateThreadTitleResponse {
+  success: boolean;
+  thread: {
+    thread_id: string;
+    title: string;
+    created_at: string;
+  };
+}
+
 /**
  * Send a message to the assistant API
  * @param message The user's message to send
@@ -132,6 +141,33 @@ export const fetchAssistantThreads = async (): Promise<Thread[] | null> => {
     return response.threads;
   } catch (error) {
     console.error('Error fetching assistant threads:', error);
+    return null;
+  }
+};
+
+/**
+ * Update the title of a conversation thread
+ * @param threadId The ID of the thread to update
+ * @param title The new title for the thread
+ * @returns The updated thread object or null if the request fails
+ */
+export const updateThreadTitle = async (threadId: string, title: string): Promise<Thread | null> => {
+  try {
+    const response = await apiRequest<UpdateThreadTitleResponse>(`/api/assistant/thread/${threadId}/title`, {
+      method: 'PUT',
+      body: {
+        title
+      }
+    });
+    
+    if (response.success && response.thread) {
+      console.log(`Thread title updated successfully to: "${response.thread.title}"`);
+      return response.thread;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error updating thread title:', error);
     return null;
   }
 }; 

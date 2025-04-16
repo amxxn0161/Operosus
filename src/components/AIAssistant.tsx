@@ -23,7 +23,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider
+  Divider,
+  InputAdornment
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -32,9 +33,12 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import HistoryIcon from '@mui/icons-material/History';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CancelIcon from '@mui/icons-material/Cancel';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
-import { Message, Thread, fetchAssistantThreads, getThreadMessages } from '../services/assistantService';
+import { Message, Thread, fetchAssistantThreads, getThreadMessages, updateThreadTitle } from '../services/assistantService';
 import { format } from 'date-fns';
 
 // Function to format message content with markdown-like syntax
@@ -212,6 +216,12 @@ const AIAssistant: React.FC = () => {
   const [threadError, setThreadError] = useState<string | null>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   
+  // Thread renaming state
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [newThreadTitle, setNewThreadTitle] = useState('');
+  const [isRenamingThread, setIsRenamingThread] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  
   // Calculate center position for mobile
   const mobilePosition = useMemo(() => {
     return { x: 0, y: 0 };
@@ -349,6 +359,165 @@ const AIAssistant: React.FC = () => {
   
   // Filter out system messages for display
   const displayMessages = messages.filter(msg => msg.role !== 'system');
+  
+  // Handle renaming a thread
+  const handleRenameThread = async () => {
+    if (!editingThreadId || !newThreadTitle || newThreadTitle.trim() === '') return;
+    
+    try {
+      setIsRenamingThread(true);
+      setRenameError(null);
+      
+      const updatedThread = await updateThreadTitle(editingThreadId, newThreadTitle.trim());
+      
+      if (updatedThread) {
+        // Update the thread in the local state
+        setThreads(threads.map(thread => 
+          thread.thread_id === editingThreadId 
+            ? { ...thread, title: updatedThread.title } 
+            : thread
+        ));
+        
+        // Exit edit mode
+        setEditingThreadId(null);
+        setNewThreadTitle('');
+      } else {
+        setRenameError("Failed to update thread title");
+      }
+    } catch (err) {
+      console.error("Error renaming thread:", err);
+      setRenameError("An error occurred while renaming the thread");
+    } finally {
+      setIsRenamingThread(false);
+    }
+  };
+  
+  // Start editing a thread title
+  const handleStartRename = (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent thread selection
+    setEditingThreadId(thread.thread_id);
+    setNewThreadTitle(thread.title || '');
+    setRenameError(null);
+  };
+  
+  // Cancel thread title editing
+  const handleCancelRename = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent thread selection
+    setEditingThreadId(null);
+    setNewThreadTitle('');
+    setRenameError(null);
+  };
+  
+  // Handle keydown events in the rename input
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleRenameThread();
+    } else if (e.key === 'Escape') {
+      setEditingThreadId(null);
+      setNewThreadTitle('');
+    }
+  };
+  
+  // Update the thread list rendering for both mobile and desktop with rename functionality
+  const renderThreadList = () => (
+    <List sx={{ p: 0 }}>
+      {threads.map((thread, index) => (
+        <React.Fragment key={thread.thread_id}>
+          <ListItem 
+            button 
+            onClick={() => thread.thread_id !== editingThreadId && handleThreadSelect(thread.thread_id)}
+            sx={{ 
+              py: 1.5,
+              '&:hover': {
+                backgroundColor: 'rgba(16, 86, 245, 0.04)',
+              }
+            }}
+          >
+            {thread.thread_id === editingThreadId ? (
+              // Edit mode
+              <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  autoFocus
+                  value={newThreadTitle || ''}
+                  onChange={(e) => setNewThreadTitle(e.target.value)}
+                  onKeyDown={handleRenameKeyDown}
+                  placeholder="Enter thread title"
+                  error={!!renameError}
+                  helperText={renameError}
+                  disabled={isRenamingThread}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        {isRenamingThread ? (
+                          <CircularProgress size={20} />
+                        ) : (
+                          <>
+                            <IconButton
+                              edge="end"
+                              size="small"
+                              onClick={handleRenameThread}
+                              disabled={!newThreadTitle || newThreadTitle.trim() === ''}
+                              sx={{ mr: 0.5 }}
+                            >
+                              <CheckIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              edge="end"
+                              size="small"
+                              onClick={handleCancelRename}
+                            >
+                              <CancelIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        )}
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ pr: 0.5 }}
+                />
+              </Box>
+            ) : (
+              // Display mode
+              <>
+                <ListItemText
+                  primary={thread.title || `Conversation ${thread.thread_id.substring(0, 8)}`}
+                  secondary={formatThreadDate(thread.created_at)}
+                  primaryTypographyProps={{
+                    variant: 'body2',
+                    fontWeight: 500,
+                    sx: { 
+                      color: 'text.primary',
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap'
+                    }
+                  }}
+                  secondaryTypographyProps={{
+                    variant: 'caption',
+                    sx: { color: 'text.secondary' }
+                  }}
+                />
+                <IconButton 
+                  size="small" 
+                  onClick={(e) => handleStartRename(thread, e)}
+                  sx={{ 
+                    opacity: 0.6,
+                    '&:hover': { opacity: 1 }
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </>
+            )}
+          </ListItem>
+          {index < threads.length - 1 && <Divider component="li" />}
+        </React.Fragment>
+      ))}
+    </List>
+  );
   
   // Remove the separate thread view rendering and keep just the regular assistant view
   return (
@@ -507,42 +676,7 @@ const AIAssistant: React.FC = () => {
                                   </Typography>
                                 </Box>
                               ) : (
-                                <List sx={{ p: 0 }}>
-                                  {threads.map((thread, index) => (
-                                    <React.Fragment key={thread.thread_id}>
-                                      <ListItem 
-                                        button 
-                                        onClick={() => handleThreadSelect(thread.thread_id)}
-                                        sx={{ 
-                                          py: 1.5,
-                                          '&:hover': {
-                                            backgroundColor: 'rgba(16, 86, 245, 0.04)',
-                                          }
-                                        }}
-                                      >
-                                        <ListItemText
-                                          primary={thread.title}
-                                          secondary={formatThreadDate(thread.created_at)}
-                                          primaryTypographyProps={{
-                                            variant: 'body2',
-                                            fontWeight: 500,
-                                            sx: { 
-                                              color: 'text.primary',
-                                              textOverflow: 'ellipsis',
-                                              overflow: 'hidden',
-                                              whiteSpace: 'nowrap'
-                                            }
-                                          }}
-                                          secondaryTypographyProps={{
-                                            variant: 'caption',
-                                            sx: { color: 'text.secondary' }
-                                          }}
-                                        />
-                                      </ListItem>
-                                      {index < threads.length - 1 && <Divider component="li" />}
-                                    </React.Fragment>
-                                  ))}
-                                </List>
+                                renderThreadList()
                               )}
                             </Box>
                           </ClickAwayListener>
@@ -958,42 +1092,7 @@ const AIAssistant: React.FC = () => {
                                   </Typography>
                                 </Box>
                               ) : (
-                                <List sx={{ p: 0 }}>
-                                  {threads.map((thread, index) => (
-                                    <React.Fragment key={thread.thread_id}>
-                                      <ListItem 
-                                        button 
-                                        onClick={() => handleThreadSelect(thread.thread_id)}
-                                        sx={{ 
-                                          py: 1.5,
-                                          '&:hover': {
-                                            backgroundColor: 'rgba(16, 86, 245, 0.04)',
-                                          }
-                                        }}
-                                      >
-                                        <ListItemText
-                                          primary={thread.title}
-                                          secondary={formatThreadDate(thread.created_at)}
-                                          primaryTypographyProps={{
-                                            variant: 'body2',
-                                            fontWeight: 500,
-                                            sx: { 
-                                              color: 'text.primary',
-                                              textOverflow: 'ellipsis',
-                                              overflow: 'hidden',
-                                              whiteSpace: 'nowrap'
-                                            }
-                                          }}
-                                          secondaryTypographyProps={{
-                                            variant: 'caption',
-                                            sx: { color: 'text.secondary' }
-                                          }}
-                                        />
-                                      </ListItem>
-                                      {index < threads.length - 1 && <Divider component="li" />}
-                                    </React.Fragment>
-                                  ))}
-                                </List>
+                                renderThreadList()
                               )}
                             </Box>
                           </ClickAwayListener>
