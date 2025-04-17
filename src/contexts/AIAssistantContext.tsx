@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import axios from 'axios';
 // Remove useLocation import
 // import { useLocation } from 'react-router-dom';
-import { Message, sendAssistantMessage } from '../services/assistantService';
+import { Message, sendAssistantMessage, getThreadMessages } from '../services/assistantService';
 
 interface ScreenContext {
   currentPath: string;
@@ -23,6 +23,7 @@ interface AIAssistantContextType {
   messages: Message[];
   isLoading: boolean;
   screenContext: ScreenContext;
+  threadId?: string;
   openAssistant: () => void;
   closeAssistant: () => void;
   sendMessage: (content: string) => Promise<void>;
@@ -797,13 +798,126 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         // Store the thread ID for future messages
         setThreadId(response.thread_id);
         
-        // Add the assistant's response to the conversation
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: response.reply
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
+        // Handle different response status types
+        if (response.status === 'success') {
+          // Success case - show the response
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: response.reply
+          };
+          
+          setMessages(prev => [...prev, assistantMessage]);
+          setIsLoading(false);
+        } 
+        else if (response.status === 'partial_success') {
+          // Partial success - show a loading spinner instead of an error message
+          // Keep isLoading true to show the spinner
+          
+          console.log('Received partial_success status, will refresh shortly');
+          
+          // Don't add any message yet - keep the loading state active
+          
+          // Auto-refresh based on should_refresh flag
+          if (response.should_refresh) {
+            console.log('Should refresh flag detected, scheduling refresh');
+            setTimeout(async () => {
+              try {
+                if (response.thread_id) {
+                  console.log('Refreshing messages after partial_success');
+                  const messages = await getThreadMessages(response.thread_id);
+                  if (messages) {
+                    loadThreadMessages(messages);
+                    setIsLoading(false);
+                  } else {
+                    // If still no messages, show a helpful message
+                    const waitingMessage: Message = {
+                      role: 'assistant',
+                      content: 'I\'m still processing your request. Please wait a moment or try refreshing.'
+                    };
+                    setMessages(prev => [...prev, waitingMessage]);
+                    setIsLoading(false);
+                  }
+                }
+              } catch (error) {
+                console.error('Error refreshing messages after partial_success:', error);
+                setIsLoading(false);
+              }
+            }, 2000); // 2 second delay as recommended
+          } else {
+            // If no should_refresh flag, still show a waiting message after a delay
+            setTimeout(() => {
+              const waitingMessage: Message = {
+                role: 'assistant',
+                content: 'I\'m processing your request. This may take a moment...'
+              };
+              setMessages(prev => [...prev, waitingMessage]);
+              setIsLoading(false);
+            }, 1000);
+          }
+        }
+        else if (response.status === 'processing') {
+          // Processing - show a waiting message and reload after a delay
+          const processingMessage: Message = {
+            role: 'assistant',
+            content: 'I am processing your request. Please wait a moment...'
+          };
+          
+          setMessages(prev => [...prev, processingMessage]);
+          
+          // Auto-refresh after a delay
+          setTimeout(async () => {
+            try {
+              if (response.thread_id) {
+                const messages = await getThreadMessages(response.thread_id);
+                if (messages) {
+                  loadThreadMessages(messages);
+                }
+              }
+            } catch (error) {
+              console.error('Error refreshing messages after processing status:', error);
+            } finally {
+              setIsLoading(false);
+            }
+          }, 3000);
+        }
+        else if (response.status === 'error') {
+          // Handle specific error message if provided
+          const errorMessage: Message = {
+            role: 'assistant',
+            content: response.error_message || 
+              `I apologize, but I encountered an error while processing your request. Please try again later.`
+          };
+          
+          setMessages(prev => [...prev, errorMessage]);
+          setIsLoading(false);
+        }
+        else {
+          // Default case - treat as success
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: response.reply
+          };
+          
+          setMessages(prev => [...prev, assistantMessage]);
+          
+          // Auto-refresh if should_refresh flag is set
+          if (response.should_refresh) {
+            setTimeout(async () => {
+              try {
+                if (response.thread_id) {
+                  const messages = await getThreadMessages(response.thread_id);
+                  if (messages) {
+                    loadThreadMessages(messages);
+                  }
+                }
+              } catch (error) {
+                console.error('Error auto-refreshing messages:', error);
+              }
+            }, 1000);
+          }
+          
+          setIsLoading(false);
+        }
       } else {
         // Handle error case
         const errorMessage: Message = {
@@ -812,6 +926,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         };
         
         setMessages(prev => [...prev, errorMessage]);
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error sending message to assistant:', error);
@@ -823,7 +938,6 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
       };
       
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -863,6 +977,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         messages,
         isLoading,
         screenContext,
+        threadId,
         openAssistant,
         closeAssistant,
         sendMessage,

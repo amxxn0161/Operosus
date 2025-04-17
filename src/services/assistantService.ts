@@ -16,6 +16,9 @@ export interface Message {
 interface AssistantChatResponse {
   reply: string;
   thread_id: string;
+  status?: 'success' | 'partial_success' | 'processing' | 'error';
+  error_message?: string;
+  should_refresh?: boolean;
 }
 
 interface ThreadMessagesResponse {
@@ -49,7 +52,13 @@ interface UpdateThreadTitleResponse {
 export const sendAssistantMessage = async (
   message: string,
   threadId?: string
-): Promise<{ reply: string; thread_id: string } | null> => {
+): Promise<{ 
+  reply: string; 
+  thread_id: string; 
+  status?: string; 
+  error_message?: string;
+  should_refresh?: boolean;
+} | null> => {
   try {
     // Use apiRequest helper for proper authentication
     const response = await apiRequest<AssistantChatResponse>('/api/assistant/chat', {
@@ -62,7 +71,10 @@ export const sendAssistantMessage = async (
     
     return {
       reply: response.reply,
-      thread_id: response.thread_id
+      thread_id: response.thread_id,
+      status: response.status || 'success', // Default to success if not provided
+      error_message: response.error_message,
+      should_refresh: response.should_refresh
     };
   } catch (error) {
     console.error('Error calling assistant API:', error);

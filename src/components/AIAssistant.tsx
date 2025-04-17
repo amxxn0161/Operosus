@@ -38,7 +38,12 @@ import CheckIcon from '@mui/icons-material/Check';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
-import { Message, Thread, fetchAssistantThreads, getThreadMessages, updateThreadTitle } from '../services/assistantService';
+import { 
+  fetchAssistantThreads, 
+  getThreadMessages,
+  Thread,
+  updateThreadTitle
+} from '../services/assistantService';
 import { format } from 'date-fns';
 
 // Function to format message content with markdown-like syntax
@@ -194,7 +199,8 @@ const AIAssistant: React.FC = () => {
     sendMessage,
     clearMessages,
     loadThreadMessages,
-    setThreadId
+    setThreadId,
+    threadId
   } = useAIAssistant();
   const [inputValue, setInputValue] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -238,8 +244,22 @@ const AIAssistant: React.FC = () => {
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       setAnchorEl(buttonRef.current);
+      
+      // Auto-refresh current thread data if we have a thread ID
+      if (threadId) {
+        setTimeout(async () => {
+          try {
+            const messages = await getThreadMessages(threadId);
+            if (messages && messages.length > 0) {
+              loadThreadMessages(messages);
+            }
+          } catch (error) {
+            console.error("Error auto-refreshing thread data:", error);
+          }
+        }, 500);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, threadId]);
   
   // Scroll to bottom of messages when new ones are added
   useEffect(() => {
@@ -247,6 +267,29 @@ const AIAssistant: React.FC = () => {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   }, [messages]);
+  
+  // Auto-refresh data when loading is active for more than a few seconds
+  useEffect(() => {
+    // Only activate when we're showing a loading spinner
+    if (isLoading && threadId) {
+      // Set up a refresh interval when loading is active
+      const refreshInterval = setInterval(async () => {
+        try {
+          console.log('Auto-refreshing conversation data while loading...');
+          const messages = await getThreadMessages(threadId);
+          if (messages && messages.length > 0) {
+            // If we get messages, load them and stop the loading state
+            loadThreadMessages(messages);
+          }
+        } catch (error) {
+          console.error('Error auto-refreshing thread data:', error);
+        }
+      }, 3000); // Check every 3 seconds while loading is active
+      
+      // Clean up interval on unmount or when loading stops
+      return () => clearInterval(refreshInterval);
+    }
+  }, [isLoading, threadId]);
   
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) {
@@ -868,19 +911,22 @@ const AIAssistant: React.FC = () => {
                       <Paper
                         elevation={0}
                         sx={{
-                          p: isSmallMobile ? 0.75 : 1,
+                          p: isSmallMobile ? 1 : 1.5,
                           borderRadius: 2,
                           backgroundColor: 'white',
                           display: 'flex',
-                          justifyContent: 'center',
                           alignItems: 'center',
-                          minWidth: isSmallMobile ? '40px' : '50px',
+                          minWidth: isSmallMobile ? '60px' : '80px',
                         }}
                       >
                         <CircularProgress 
-                          size={isSmallMobile ? 14 : 16}
+                          size={isSmallMobile ? 16 : 20}
                           thickness={5} 
+                          sx={{ mr: 1 }}
                         />
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: isSmallMobile ? '0.7rem' : '0.8rem' }}>
+                          Processing...
+                        </Typography>
                       </Paper>
                     </Box>
                   )}
@@ -1249,12 +1295,14 @@ const AIAssistant: React.FC = () => {
                             borderRadius: 2,
                             backgroundColor: 'white',
                             display: 'flex',
-                            justifyContent: 'center',
                             alignItems: 'center',
-                            minWidth: '60px',
+                            minWidth: '90px',
                           }}
                         >
-                          <CircularProgress size={20} thickness={5} />
+                          <CircularProgress size={20} thickness={5} sx={{ mr: 1.5 }} />
+                          <Typography variant="body2" color="text.secondary">
+                            Processing...
+                          </Typography>
                         </Paper>
                       </Box>
                     )}
