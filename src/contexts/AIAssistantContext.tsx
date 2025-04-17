@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import axios from 'axios';
 // Remove useLocation import
 // import { useLocation } from 'react-router-dom';
@@ -726,8 +726,21 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
   // State to track the current conversation thread ID
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   
+  // Use useRef for the safety timeout to avoid issues with React hooks
+  const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // We don't need the useEffect that was using location.pathname anymore
   
+  // Make sure to clear the safety timeout when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (safetyTimeoutRef.current) {
+        clearTimeout(safetyTimeoutRef.current);
+        safetyTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const updateScreenContext = (context: Partial<ScreenContext>) => {
     console.log('Updating screen context:', context);
     
@@ -1069,109 +1082,193 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
             }
           }, fallbackDelay);
           
-          // Set a final safety timeout that will clear the loading state no matter what
-          const safetyTimeout = setTimeout(() => {
-            if (isLoading) {
-              console.log(`Final safety timeout reached for thread ${newThreadId}, forcing loading state to clear`);
-              
-              // Add a message indicating we're still trying to get the response
-              setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: "I've processed your message, but I'm having trouble displaying the response. Please try refreshing the conversation."
-              }]);
-              
-              setIsLoading(false);
+          // Continue with normal response processing only if we don't have verified messages
+          if (response) {
+            // Set a final safety timeout that will clear the loading state no matter what
+            // Clear any existing safety timeout first
+            if (safetyTimeoutRef.current) {
+              clearTimeout(safetyTimeoutRef.current);
             }
-          }, 15000); // After 15 seconds, give up and clear loading state
-        }
-        
-        // Continue with normal response processing only if we don't have verified messages
-        if (response) {
-          // Handle different response status types
-          switch (response.status) {
-            case 'success':
-              // Success case - show the response
-              const assistantMessage: Message = {
-                role: 'assistant',
-                content: response.reply
-              };
-              
-              // Check if the response has actual content
-              if (response.reply && response.reply.trim() !== '') {
-                setMessages(prev => [...prev, assistantMessage]);
-                setIsLoading(false);
-              } else {
-                console.log('Success status but empty reply, will attempt to fetch messages directly');
+            
+            safetyTimeoutRef.current = setTimeout(() => {
+              if (isLoading) {
+                console.log(`Final safety timeout reached for thread ${response?.thread_id}, forcing loading state to clear`);
                 
-                // Try to fetch messages directly even though we got a success status
-                try {
-                  const successMessages = await getThreadMessagesWithRetry(response.thread_id, 3, 800);
-                  if (successMessages && successMessages.length > 0) {
-                    console.log(`Retrieved ${successMessages.length} messages directly after success status`);
-                    loadThreadMessages(successMessages);
-                    setIsLoading(false);
-                    return;
-                  } else {
-                    // If we can't get messages, fall back to the original (possibly empty) reply
-                    console.log('Could not retrieve messages, using original reply');
+                // Add a message indicating we're still trying to get the response
+                setMessages(prev => [...prev, {
+                  role: 'assistant',
+                  content: "I've processed your message, but I'm having trouble displaying the response. Please try refreshing the conversation."
+                }]);
+                
+                setIsLoading(false);
+              }
+              safetyTimeoutRef.current = null;
+            }, 15000); // After 15 seconds, give up and clear loading state
+
+            // Handle different response status types
+            switch (response.status) {
+              case 'success':
+                // Success case - show the response
+                const assistantMessage: Message = {
+                  role: 'assistant',
+                  content: response.reply
+                };
+                
+                // Clear any safety timeouts on success
+                if (safetyTimeoutRef.current) {
+                  clearTimeout(safetyTimeoutRef.current);
+                  safetyTimeoutRef.current = null;
+                }
+                
+                // Check if the response has actual content
+                if (response.reply && response.reply.trim() !== '') {
+                  setMessages(prev => [...prev, assistantMessage]);
+                  setIsLoading(false);
+                } else {
+                  console.log('Success status but empty reply, will attempt to fetch messages directly');
+                  
+                  // Try to fetch messages directly even though we got a success status
+                  try {
+                    const successMessages = await getThreadMessagesWithRetry(response.thread_id, 3, 800);
+                    if (successMessages && successMessages.length > 0) {
+                      console.log(`Retrieved ${successMessages.length} messages directly after success status`);
+                      loadThreadMessages(successMessages);
+                      setIsLoading(false);
+                      return;
+                    } else {
+                      // If we can't get messages, fall back to the original (possibly empty) reply
+                      console.log('Could not retrieve messages, using original reply');
+                      setMessages(prev => [...prev, assistantMessage]);
+                      setIsLoading(false);
+                    }
+                  } catch (successFetchError) {
+                    console.error('Error fetching messages after success:', successFetchError);
+                    // Fall back to the original response
                     setMessages(prev => [...prev, assistantMessage]);
                     setIsLoading(false);
                   }
-                } catch (successFetchError) {
-                  console.error('Error fetching messages after success:', successFetchError);
-                  // Fall back to the original response
-                  setMessages(prev => [...prev, assistantMessage]);
-                  setIsLoading(false);
                 }
-              }
-              break;
-              
-            case 'partial_success':
-            case 'processing':
-              // For partial_success or processing - keep loading state until refresh completes
-              console.log(`Received ${response.status} status, waiting for refresh to complete`);
-              // Don't add any message yet - the verification or fallback will handle it
-              break;
-              
-            case 'error':
-              // For error status - wait for verification before showing error
-              console.log('Received error status, waiting for verification before showing error');
-              // The verification or fallback will handle errors, no need to show one now
-              
-              // But set a timeout to show error if verification doesn't complete
-              setTimeout(() => {
-                // Only show error if we're still loading (verification didn't succeed)
-                if (isLoading) {
-                  showErrorMessage(response?.error_message);
-                }
-              }, 5000); // Wait 5 seconds before showing error
-              break;
-              
-            default:
-              // Default case - treat as success but let verification handle it
-              console.log(`Received unknown status: ${response.status || 'undefined'}, waiting for verification`);
-              // The verification or fallback will handle unknown status
-              
-              // Set a timeout to show error if verification doesn't complete
-              setTimeout(() => {
-                // Only show error if we're still loading (verification didn't succeed)
-                if (isLoading) {
-                  showErrorMessage();
-                }
-              }, 5000); // Wait 5 seconds before showing error
-          }
-        } else {
-          // Handle null response - wait for verification before showing error
-          console.warn('Null response from sendAssistantMessage, waiting for verification');
-          // The verification or fallback will handle null response
-          
-          // But set a timeout to show error if verification doesn't complete
-          setTimeout(() => {
-            // Only show error if we're still loading (verification didn't succeed)
-            if (isLoading) {
-              showErrorMessage();
+                break;
+                
+              case 'partial_success':
+              case 'processing':
+                // For partial_success or processing - keep loading state until refresh completes
+                console.log(`Received ${response.status} status, waiting for refresh to complete`);
+                
+                // Track retries in a ref to avoid creating a new variable each time
+                let retryCount = 0;
+                const maxRetries = 3;
+                
+                // Set a shorter timeout for these intermediate states to ensure we don't get stuck
+                const pollingInterval = setInterval(() => {
+                  if (!isLoading) {
+                    // If we're no longer loading, clear the interval
+                    console.log('Clearing polling interval - loading state already cleared');
+                    clearInterval(pollingInterval);
+                    return;
+                  }
+                  
+                  retryCount++;
+                  console.log(`Polling attempt ${retryCount}/${maxRetries} for thread ${response?.thread_id || 'unknown'}`);
+                  
+                  // Try to fetch messages
+                  if (response && response.thread_id) {
+                    getThreadMessagesWithRetry(response.thread_id, 1, 500)
+                      .then(messages => {
+                        if (messages && messages.length > 0) {
+                          console.log(`Polling retrieved ${messages.length} messages!`);
+                          loadThreadMessages(messages);
+                          setIsLoading(false);
+                          clearInterval(pollingInterval);
+                        } else if (retryCount >= maxRetries) {
+                          // If we've reached max retries, stop polling and clear loading state
+                          console.log(`Max polling retries (${maxRetries}) reached, clearing loading state`);
+                          setIsLoading(false);
+                          clearInterval(pollingInterval);
+                          
+                          // Add a message indicating we're still processing
+                          setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "I'm still processing your request. The response should appear soon, or you can try refreshing the conversation."
+                          }]);
+                        }
+                      })
+                      .catch(e => {
+                        console.warn('Error during polling attempt:', e);
+                        if (retryCount >= maxRetries) {
+                          console.log(`Max polling retries (${maxRetries}) reached after error, clearing loading state`);
+                          setIsLoading(false);
+                          clearInterval(pollingInterval);
+                        }
+                      });
+                  } else if (retryCount >= maxRetries) {
+                    // If no thread ID or max retries reached, clear loading state
+                    console.log('No thread ID or max retries reached, clearing loading state');
+                    setIsLoading(false);
+                    clearInterval(pollingInterval);
+                  }
+                }, 2000); // Poll every 2 seconds
+                
+                // Also set a maximum time limit for the polling
+                setTimeout(() => {
+                  if (pollingInterval) {
+                    console.log(`Maximum polling time reached for ${response?.status || 'unknown'} status, clearing interval`);
+                    clearInterval(pollingInterval);
+                    
+                    // Only update if we're still loading
+                    if (isLoading) {
+                      setIsLoading(false);
+                      // Add a message indicating we're still trying to get the response
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "I've processed your request, but I'm having trouble retrieving the full response. You can try refreshing the conversation."
+                      }]);
+                    }
+                  }
+                }, 8000); // Maximum 8 seconds of polling
+                
+                break;
+                
+              case 'error':
+                // For error status - wait for verification before showing error
+                console.log('Received error status, waiting for verification before showing error');
+                // The verification or fallback will handle errors, no need to show one now
+                
+                // But set a timeout to show error if verification doesn't complete
+                setTimeout(() => {
+                  // Only show error if we're still loading (verification didn't succeed)
+                  if (isLoading) {
+                    showErrorMessage(response?.error_message);
+                  }
+                }, 5000); // Wait 5 seconds before showing error
+                break;
+                
+              default:
+                // Default case - treat as success but let verification handle it
+                console.log(`Received unknown status: ${response.status || 'undefined'}, waiting for verification`);
+                // The verification or fallback will handle unknown status
+                
+                // Set a timeout to show error if verification doesn't complete
+                setTimeout(() => {
+                  // Only show error if we're still loading (verification didn't succeed)
+                  if (isLoading) {
+                    showErrorMessage();
+                  }
+                }, 5000); // Wait 5 seconds before showing error
             }
-          }, 5000); // Wait 5 seconds before showing error
+          } else {
+            // Handle null response - wait for verification before showing error
+            console.warn('Null response from sendAssistantMessage, waiting for verification');
+            // The verification or fallback will handle null response
+            
+            // But set a timeout to show error if verification doesn't complete
+            setTimeout(() => {
+              // Only show error if we're still loading (verification didn't succeed)
+              if (isLoading) {
+                showErrorMessage();
+              }
+            }, 5000); // Wait 5 seconds before showing error
+          }
         }
       } catch (innerError) {
         // Clear the timeout in case of error
