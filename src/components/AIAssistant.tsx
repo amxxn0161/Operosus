@@ -36,11 +36,14 @@ import HistoryIcon from '@mui/icons-material/History';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CancelIcon from '@mui/icons-material/Cancel';
+import AddIcon from '@mui/icons-material/Add';
+import ReplayIcon from '@mui/icons-material/Replay';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
 import { 
   fetchAssistantThreads, 
   getThreadMessages,
+  getThreadMessagesWithRetry,
   Thread,
   updateThreadTitle
 } from '../services/assistantService';
@@ -228,6 +231,12 @@ const AIAssistant: React.FC = () => {
   const [isRenamingThread, setIsRenamingThread] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   
+  // Add state for refresh loading
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // State to track the last prompt for retry functionality
+  const [lastPrompt, setLastPrompt] = useState<string>('');
+  
   // Calculate center position for mobile
   const mobilePosition = useMemo(() => {
     return { x: 0, y: 0 };
@@ -292,14 +301,21 @@ const AIAssistant: React.FC = () => {
   }, [isLoading, threadId]);
   
   const handleSendMessage = (e?: React.FormEvent) => {
-    if (e) {
-      e.preventDefault();
-    }
+    if (e) e.preventDefault();
+    if (!inputValue.trim()) return;
     
-    if (inputValue.trim()) {
-      sendMessage(inputValue);
-      setInputValue('');
-    }
+    // Store the current message for potential retry
+    setLastPrompt(inputValue.trim());
+    
+    // Send message through context
+    sendMessage(inputValue)
+      .catch(error => {
+        console.error('Error sending message:', error);
+        // Don't show UI errors - this will be handled by AIAssistantContext
+      });
+    
+    // Clear input
+    setInputValue('');
   };
   
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
@@ -562,6 +578,98 @@ const AIAssistant: React.FC = () => {
     </List>
   );
   
+  // Add refreshConversation handler
+  const refreshConversation = async () => {
+    // Allow refreshing even if loading, to help recover from stuck states
+    if (isRefreshing) return;
+    
+    try {
+      setIsRefreshing(true);
+      
+      if (threadId) {
+        console.log(`Manually refreshing conversation for thread ${threadId}`);
+        
+        // Use the retry function for more reliability
+        const refreshedMessages = await getThreadMessagesWithRetry(threadId, 2, 1000);
+        
+        if (refreshedMessages && refreshedMessages.length > 0) {
+          console.log(`Successfully refreshed ${refreshedMessages.length} messages`);
+          loadThreadMessages(refreshedMessages);
+          return; // Exit early on success
+        } else {
+          console.warn(`No messages found during manual refresh for thread ${threadId}`);
+        }
+      } else {
+        console.log('No thread ID available for refresh, attempting to find most recent thread');
+        
+        // Try to get the most recent thread if we don't have a threadId
+        try {
+          const threads = await fetchAssistantThreads();
+          
+          if (threads && threads.length > 0) {
+            // Sort by creation time (newest first)
+            threads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            
+            // Get the most recent thread
+            const mostRecentThread = threads[0];
+            console.log(`Found most recent thread: ${mostRecentThread.thread_id}`);
+            
+            // Set the thread ID
+            setThreadId(mostRecentThread.thread_id);
+            
+            // Try to fetch messages
+            const recentMessages = await getThreadMessagesWithRetry(mostRecentThread.thread_id, 3, 800);
+            if (recentMessages && recentMessages.length > 0) {
+              console.log(`Successfully fetched ${recentMessages.length} messages from most recent thread`);
+              loadThreadMessages(recentMessages);
+              return; // Exit early on success
+            }
+          } else {
+            console.log('No threads found during refresh attempt');
+          }
+        } catch (findThreadError) {
+          console.error('Error finding recent threads during refresh:', findThreadError);
+        }
+      }
+      
+      // If we get here, neither approach worked
+      console.warn('Refresh was not successful');
+      // We could show a notification here if desired
+      
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  
+  // Function to retry sending the last prompt
+  const handleRetry = () => {
+    if (lastPrompt) {
+      console.log('Retrying last prompt:', lastPrompt);
+      
+      // If we have a thread ID, try refreshing first to see if the message is already there
+      if (threadId) {
+        console.log(`Thread ID exists (${threadId}), trying to refresh before resending`);
+        refreshConversation().then(() => {
+          // If we still need to retry after refresh, use sendMessage
+          // We could add logic here to check if the last message matches what we're retrying
+          // For now, always resend to be safe
+          sendMessage(lastPrompt);
+        }).catch(error => {
+          console.error('Error during pre-retry refresh:', error);
+          // Fall back to sendMessage if refresh fails
+          sendMessage(lastPrompt);
+        });
+      } else {
+        // If no thread ID, just send the message normally
+        sendMessage(lastPrompt);
+      }
+    } else {
+      console.warn('No last prompt available to retry');
+    }
+  };
+  
   // Remove the separate thread view rendering and keep just the regular assistant view
   return (
     <>
@@ -649,6 +757,21 @@ const AIAssistant: React.FC = () => {
                   </Typography>
                 </Box>
                 <Box>
+                  {/* Refresh button */}
+                  <IconButton 
+                    size="small" 
+                    color="inherit" 
+                    onClick={refreshConversation}
+                    disabled={isRefreshing || isLoading}
+                    title="Refresh conversation"
+                    sx={{ opacity: !threadId ? 0.7 : 1, mr: isSmallMobile ? 0.5 : 1 }}
+                  >
+                    {isRefreshing ? (
+                      <CircularProgress size={isSmallMobile ? 16 : 20} color="inherit" thickness={5} />
+                    ) : (
+                      <RefreshIcon fontSize="small" />
+                    )}
+                  </IconButton>
                   {/* History button with popover menu */}
                   <IconButton 
                     ref={historyButtonRef}
@@ -727,8 +850,8 @@ const AIAssistant: React.FC = () => {
                       </Grow>
                     )}
                   </Popper>
-                  <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
-                    <RefreshIcon fontSize="small" />
+                  <IconButton size="small" color="inherit" onClick={clearMessages} title="New conversation">
+                    <AddIcon fontSize="small" />
                   </IconButton>
                   <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" 
                     sx={{ ml: isSmallMobile ? 0.5 : 1 }}>
@@ -864,6 +987,32 @@ const AIAssistant: React.FC = () => {
                               } 
                             }}>
                               {formatMessageContent(msg.content)}
+                              
+                              {/* Add Retry button for error messages */}
+                              {msg.role === 'assistant' && 
+                                (msg.content.toLowerCase().includes('error') || 
+                                 msg.content.toLowerCase().includes('apologize') ||
+                                 msg.content.toLowerCase().includes('sorry') ||
+                                 msg.content.toLowerCase().includes('couldn\'t process') ||
+                                 msg.content.toLowerCase().includes('issue') ||
+                                 msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                lastPrompt && (
+                                <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    onClick={handleRetry}
+                                    startIcon={<ReplayIcon fontSize="small" />}
+                                    sx={{ 
+                                      fontSize: isSmallMobile ? '0.7rem' : '0.75rem',
+                                      py: isSmallMobile ? 0.5 : 0.75
+                                    }}
+                                  >
+                                    Retry
+                                  </Button>
+                                </Box>
+                              )}
                             </Box>
                         }
                       </Paper>
@@ -1066,6 +1215,21 @@ const AIAssistant: React.FC = () => {
                   <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
                 </Box>
                 <Box className="cancel-drag">
+                  {/* Refresh button */}
+                  <IconButton 
+                    size="small" 
+                    color="inherit" 
+                    onClick={refreshConversation}
+                    disabled={isRefreshing || isLoading}
+                    title="Refresh conversation"
+                    sx={{ opacity: !threadId ? 0.7 : 1, mr: isSmallMobile ? 0.5 : 1 }}
+                  >
+                    {isRefreshing ? (
+                      <CircularProgress size={isSmallMobile ? 16 : 20} color="inherit" thickness={5} />
+                    ) : (
+                      <RefreshIcon fontSize="small" />
+                    )}
+                  </IconButton>
                   {/* History button with dropdown */}
                   <IconButton 
                     ref={historyButtonRef}
@@ -1146,10 +1310,10 @@ const AIAssistant: React.FC = () => {
                       </Grow>
                     )}
                   </Popper>
-                  <IconButton size="small" color="inherit" onClick={clearMessages} title="Clear chat">
-                    <RefreshIcon fontSize="small" />
+                  <IconButton size="small" color="inherit" onClick={clearMessages} title="New conversation" className="cancel-drag">
+                    <AddIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" sx={{ ml: 1 }}>
+                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" sx={{ ml: 1 }} className="cancel-drag">
                     <CloseIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -1246,6 +1410,32 @@ const AIAssistant: React.FC = () => {
                               </Typography>
                             : <Box sx={{ '& .MuiTypography-root': { fontSize: '0.9rem' } }}>
                                 {formatMessageContent(msg.content)}
+                                
+                                {/* Add Retry button for error messages */}
+                                {msg.role === 'assistant' && 
+                                  (msg.content.toLowerCase().includes('error') || 
+                                   msg.content.toLowerCase().includes('apologize') ||
+                                   msg.content.toLowerCase().includes('sorry') ||
+                                   msg.content.toLowerCase().includes('couldn\'t process') ||
+                                   msg.content.toLowerCase().includes('issue') ||
+                                   msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                  lastPrompt && (
+                                  <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="primary"
+                                      onClick={handleRetry}
+                                      startIcon={<ReplayIcon fontSize="small" />}
+                                      sx={{ 
+                                        fontSize: '0.75rem',
+                                        py: 0.75
+                                      }}
+                                    >
+                                      Retry
+                                    </Button>
+                                  </Box>
+                                )}
                               </Box>
                           }
                         </Paper>

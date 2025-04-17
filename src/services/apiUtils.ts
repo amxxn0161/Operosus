@@ -116,6 +116,37 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
       error.statusText = response.statusText;
       error.data = data;
       
+      // Special handling for assistant API errors
+      if (url.includes('/api/assistant/')) {
+        console.error('Assistant API Error:', {
+          endpoint: url,
+          method: options.method || 'GET',
+          requestBody: options.body ? JSON.stringify(options.body, null, 2) : 'None',
+          status: response.status,
+          responseData: data
+        });
+        
+        // If it's a chat request that failed, provide more information
+        if (url.includes('/api/assistant/chat')) {
+          error.isAssistantError = true;
+          error.message = data?.message || 'The assistant service encountered an error processing your request.';
+          console.error('Assistant Chat API Error:', { error });
+        }
+        
+        // If it's a thread messages request that failed
+        if (url.includes('/api/assistant/thread/')) {
+          error.isThreadError = true;
+          error.message = data?.message || 'Could not retrieve conversation messages.';
+          
+          // Try to extract thread ID for better debugging
+          const threadIdMatch = url.match(/\/thread\/([^\/]+)/);
+          if (threadIdMatch && threadIdMatch[1]) {
+            error.threadId = threadIdMatch[1];
+            console.error(`Thread load error for thread ID: ${error.threadId}`);
+          }
+        }
+      }
+      
       // Special handling for authentication errors (401)
       if (response.status === 401) {
         error.message = data?.message || 'Authentication failed: Your session may have expired';
@@ -173,6 +204,27 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
     // Return the parsed data or what we already parsed
     if (data) {
       console.log(`API response successful for ${fullUrl}`);
+      
+      // Special handling for assistant chat endpoint responses
+      if (url.includes('/api/assistant/chat')) {
+        console.log('Post-processing assistant chat response:', data);
+        
+        // Ensure the thread_id is always included and properly processed
+        if (data.thread_id) {
+          // Check if run is completed but reply is missing - this is likely our issue
+          if (data.status === 'success' || data.status === 'completed') {
+            console.log('Assistant API success response - ensuring reply exists');
+            
+            // If reply is missing, add a placeholder
+            if (!data.reply || data.reply.trim() === '') {
+              console.log('Adding placeholder reply for completed run with missing reply');
+              data.reply = "I'm processing your request. Please wait a moment...";
+              data.should_refresh = true;
+            }
+          }
+        }
+      }
+      
       return data as T;
     } else {
       console.log(`API response successful for ${fullUrl}, parsing response`);
