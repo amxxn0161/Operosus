@@ -521,10 +521,15 @@ export const updateCalendarEvent = async (
       responseStatus?: string;
     }>;
     remove?: string[]; // Array of email addresses to remove
-  }
+  },
+  responseScope?: 'single' | 'all'
 ): Promise<CalendarEvent | null> => {
   try {
     console.log(`Updating calendar event with ID: ${eventId}`, JSON.stringify(updatedFields, null, 2));
+    
+    if (responseScope) {
+      console.log(`Recurring event update scope: ${responseScope}`);
+    }
     
     // Add detailed logging for date/time values
     if (updatedFields.start) {
@@ -549,160 +554,134 @@ export const updateCalendarEvent = async (
       console.log('With attendee operations:', JSON.stringify(attendeeOperations, null, 2));
     }
     
-    // URL for updating a specific event - using eventId in path with the correct API endpoint
-    const url = `/api/calendar/events/${encodeURIComponent(eventId)}`;
-    console.log(`Using update URL: ${url}`);
-    
-    // Prepare the request body with only the fields that are being updated
+    // Build request body
     const requestBody: any = {};
     
-    // Map summary from our title field if it exists
-    if (updatedFields.title) {
-      requestBody.summary = updatedFields.title;
-    } else if (updatedFields.summary) {
-      requestBody.summary = updatedFields.summary;
+    // Copy basic fields if they exist
+    if (updatedFields.title) requestBody.summary = updatedFields.title;
+    if (updatedFields.summary) requestBody.summary = updatedFields.summary;
+    if (updatedFields.description !== undefined) requestBody.description = updatedFields.description;
+    if (updatedFields.location !== undefined) requestBody.location = updatedFields.location;
+    if (updatedFields.colorId) requestBody.colorId = updatedFields.colorId;
+    if (updatedFields.visibility) requestBody.visibility = updatedFields.visibility;
+    
+    // Add the recurring event update scope, if provided
+    if (responseScope) {
+      // The parameter used in Google Calendar API for updating recurring events
+      requestBody.responseScope = responseScope === 'all' ? 'all' : 'single';
     }
     
-    // Add other fields if they exist in the updated fields
-    if (updatedFields.description !== undefined) {
-      requestBody.description = updatedFields.description;
-    }
-    
-    if (updatedFields.location !== undefined) {
-      requestBody.location = updatedFields.location;
-    }
-    
-    // Use a structure that matches what the Google Calendar API expects
+    // Format start date
     if (updatedFields.start) {
       if (updatedFields.isAllDay) {
-        // For all-day events
+        // For all-day events, use date format without time
         const startDate = new Date(updatedFields.start);
-        const dateString = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
-        
-        // Use nested object structure as expected by Google Calendar API
         requestBody.start = {
-          date: dateString,
+          date: startDate.toISOString().split('T')[0],
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
       } else {
-        // For regular events with time
-        const inputStart = new Date(updatedFields.start);
-        
-        // Format date manually to preserve local time
-        const year = inputStart.getFullYear();
-        const month = String(inputStart.getMonth() + 1).padStart(2, '0');
-        const day = String(inputStart.getDate()).padStart(2, '0');
-        const hours = String(inputStart.getHours()).padStart(2, '0');
-        const minutes = String(inputStart.getMinutes()).padStart(2, '0');
-        
-        // Use nested object structure with proper property names as expected by Google Calendar API
+        // For regular events, use dateTime format with timezone
         requestBody.start = {
-          dateTime: `${year}-${month}-${day}T${hours}:${minutes}:00`,
+          dateTime: updatedFields.start,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
-        
-        console.log('START TIME CONVERSION:');
-        console.log('Input Date Object:', inputStart);
-        console.log('Structured for API:', requestBody.start);
       }
     }
     
+    // Format end date
     if (updatedFields.end) {
       if (updatedFields.isAllDay) {
-        // For all-day events
+        // For all-day events, use date format without time
         const endDate = new Date(updatedFields.end);
-        const dateString = endDate.toISOString().split('T')[0]; // YYYY-MM-DD
-        
-        // Use nested object structure as expected by Google Calendar API
         requestBody.end = {
-          date: dateString,
+          date: endDate.toISOString().split('T')[0],
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
       } else {
-        // For regular events with time
-        const inputEnd = new Date(updatedFields.end);
-        
-        // Format date manually to preserve local time
-        const year = inputEnd.getFullYear();
-        const month = String(inputEnd.getMonth() + 1).padStart(2, '0');
-        const day = String(inputEnd.getDate()).padStart(2, '0');
-        const hours = String(inputEnd.getHours()).padStart(2, '0');
-        const minutes = String(inputEnd.getMinutes()).padStart(2, '0');
-        
-        // Use nested object structure with proper property names as expected by Google Calendar API
+        // For regular events, use dateTime format with timezone
         requestBody.end = {
-          dateTime: `${year}-${month}-${day}T${hours}:${minutes}:00`,
+          dateTime: updatedFields.end,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
-        
-        console.log('END TIME CONVERSION:');
-        console.log('Input Date Object:', inputEnd);
-        console.log('Structured for API:', requestBody.end);
       }
     }
     
-    // Include visibility if it's being updated
-    if (updatedFields.visibility !== undefined) {
-      requestBody.visibility = updatedFields.visibility;
-    }
-    
-    // Include attendees if they're being updated (complete replacement)
+    // Add attendees if complete replacement
     if (updatedFields.attendees) {
-      requestBody.attendees = updatedFields.attendees.map(attendee => ({
+      console.log('Replacing all attendees with:', JSON.stringify(updatedFields.attendees, null, 2));
+      
+      // Filter out any invalid attendees (must have email)
+      const validAttendees = updatedFields.attendees.filter(att => att.email);
+      
+      requestBody.attendees = validAttendees.map(attendee => ({
         email: attendee.email,
-        // Include other attendee fields if available
-        ...(attendee.displayName && { displayName: attendee.displayName }),
-        ...(attendee.responseStatus && { responseStatus: attendee.responseStatus }),
-        ...(attendee.optional !== undefined && { optional: attendee.optional })
+        ...(attendee.optional !== undefined && { optional: attendee.optional }),
+        ...(attendee.responseStatus && { responseStatus: attendee.responseStatus })
       }));
     }
     
-    // If attendeeOperations is provided, include it in the request
+    // Handle attendee operations separately if provided
     if (attendeeOperations) {
-      requestBody.attendeeOperations = {};
+      // We need to fetch the current event to get the current attendees
+      const event = await getCalendarEventById(eventId);
       
-      // Handle adding attendees
-      if (attendeeOperations.add && attendeeOperations.add.length > 0) {
-        requestBody.attendeeOperations.add = attendeeOperations.add.map(attendee => ({
-          email: attendee.email,
-          ...(attendee.optional !== undefined && { optional: attendee.optional }),
-          ...(attendee.responseStatus && { responseStatus: attendee.responseStatus })
-        }));
+      if (!event) {
+        console.error('Could not fetch current event for attendee operations');
+        throw new Error('Event not found');
       }
       
-      // Handle removing attendees
+      let currentAttendees = event.attendees || [];
+      
+      // Process remove operations
       if (attendeeOperations.remove && attendeeOperations.remove.length > 0) {
-        requestBody.attendeeOperations.remove = attendeeOperations.remove;
+        currentAttendees = currentAttendees.filter(att => 
+          att.email && !attendeeOperations.remove?.includes(att.email));
       }
       
-      console.log('Including attendee operations in request:', 
-        JSON.stringify(requestBody.attendeeOperations, null, 2));
+      // Process add operations
+      if (attendeeOperations.add && attendeeOperations.add.length > 0) {
+        // Create a set of current emails for quick lookup
+        const currentEmails = new Set(currentAttendees.map(att => att.email));
+        
+        // Add new attendees that don't already exist
+        attendeeOperations.add.forEach(newAtt => {
+          if (newAtt.email && !currentEmails.has(newAtt.email)) {
+            currentAttendees.push({
+              email: newAtt.email,
+              optional: newAtt.optional,
+              responseStatus: newAtt.responseStatus || 'needsAction'
+            });
+          }
+        });
+      }
+      
+      // Add to request body
+      requestBody.attendees = currentAttendees;
     }
     
-    console.log(`Final request body for API (${new Date().toISOString()}):`, JSON.stringify(requestBody, null, 2));
+    console.log('Final request body:', JSON.stringify(requestBody, null, 2));
     
-    // Make the API request
-    const response = await apiRequest<any>(url, {
+    // For recurring events where we're updating all instances, we need to use the master event ID
+    // If event ID contains an underscore followed by a date (instance ID format), extract the base ID
+    let targetEventId = eventId;
+    if (responseScope === 'all' && eventId.includes('_')) {
+      // Extract the base ID by splitting at the underscore and taking the first part
+      targetEventId = eventId.split('_')[0];
+      console.log(`Updating all instances of recurring event. Using master event ID: ${targetEventId}`);
+    }
+    
+    // Make the API request with the correct event ID
+    const response = await apiRequest<any>(`/api/calendar/events/${targetEventId}`, {
       method: 'PUT',
-      body: requestBody
+      body: requestBody,
     });
     
-    console.log('Event update response:', response);
-    
-    // Check if the update was successful
-    if (response.status === 'success' && response.data?.event) {
-      console.log('Event updated successfully:', response.data.event);
-      
-      // Fetch the updated event to get all fields
-      const updatedEvent = await getCalendarEventById(eventId);
-      return updatedEvent;
-    } else {
-      console.error('Failed to update event:', response);
-      return null;
-    }
+    // Map the API response back to our CalendarEvent format
+    return mapApiEventToCalendarEvent(response);
   } catch (error) {
     console.error('Error updating calendar event:', error);
-    return null;
+    throw error;
   }
 };
 

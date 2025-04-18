@@ -238,22 +238,41 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Update an existing event
   const updateEvent = async (
     eventId: string,
-    eventUpdate: Partial<Omit<CalendarEvent, 'id'>>
+    eventUpdate: Partial<Omit<CalendarEvent, 'id'>> & { responseScope?: 'single' | 'all' }
   ): Promise<CalendarEvent> => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const updatedEvent = await updateCalendarEvent(eventId, eventUpdate);
+      // Extract the recurring event update scope if it exists
+      const { responseScope, ...updateData } = eventUpdate;
+      
+      // Log the event data being sent
+      console.log(`Updating event with ID: ${eventId}`, JSON.stringify(updateData, null, 2));
+      if (responseScope) {
+        console.log(`Recurring event update scope: ${responseScope}`);
+      }
+      
+      const updatedEvent = await updateCalendarEvent(eventId, updateData, undefined, responseScope);
       
       if (!updatedEvent) {
         throw new Error('Failed to update calendar event');
       }
       
-      // Update events state with the updated event
-      setEvents(prevEvents => 
-        prevEvents.map(event => event.id === eventId ? updatedEvent : event)
-      );
+      // Update the events state with the updated event
+      setEvents(prevEvents => {
+        // Find the index of the event to update
+        const index = prevEvents.findIndex(e => e.id === eventId);
+        if (index === -1) return prevEvents; // Event not found
+        
+        // Create a new array with the updated event
+        return [
+          ...prevEvents.slice(0, index),
+          updatedEvent,
+          ...prevEvents.slice(index + 1)
+        ];
+      });
+      
       return updatedEvent;
     } catch (error) {
       console.error('Error updating calendar event:', error);

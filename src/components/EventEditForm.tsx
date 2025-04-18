@@ -21,7 +21,11 @@ import {
   Paper,
   Grid,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Radio,
+  RadioGroup,
+  FormControl,
+  FormLabel,
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -69,6 +73,12 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
   const [newAttendeeOptional, setNewAttendeeOptional] = useState<boolean>(false);
   const [attendeeError, setAttendeeError] = useState<string | null>(null);
   
+  // Recurring event state
+  const [isRecurringEvent, setIsRecurringEvent] = useState<boolean>(false);
+  const [recurringDialogOpen, setRecurringDialogOpen] = useState<boolean>(false);
+  const [recurringEventScope, setRecurringEventScope] = useState<'single' | 'all'>('single');
+  const [eventData, setEventData] = useState<any>(null);
+  
   // Initialize form with event data when event changes
   useEffect(() => {
     if (event) {
@@ -79,6 +89,11 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
       setStartDateTime(new Date(event.start));
       setEndDateTime(new Date(event.end));
       setIsAllDay(event.isAllDay || false);
+      
+      // Check if this is a recurring event
+      const isRecurring = Boolean(event.recurringEventId) || 
+                         (Array.isArray(event.recurrence) && event.recurrence && event.recurrence.length > 0);
+      setIsRecurringEvent(isRecurring);
       
       // Initialize attendees if present
       if (event.attendees && event.attendees.length > 0) {
@@ -176,43 +191,78 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
       return;
     }
     
-    try {
-      if (event) {
-        // Log the event ID to confirm we're updating the correct event
-        console.log(`Updating event with ID: ${event.id}`);
-        
-        // Log date/time values
-        console.log('FORM VALUES BEING SENT:');
-        console.log('startDateTime (Date object):', startDateTime);
-        console.log('startDateTime (ISO string):', startDateTime?.toISOString());
-        console.log('startDateTime (local string):', startDateTime?.toString());
-        console.log('endDateTime (Date object):', endDateTime);
-        console.log('endDateTime (ISO string):', endDateTime?.toISOString());
-        console.log('endDateTime (local string):', endDateTime?.toString());
-        
-        // Update existing event
-        await updateEvent(event.id, {
-          title,
-          summary: title, // Ensure both title and summary are set
-          description,
-          location,
-          start: startDateTime.toISOString(),
-          end: endDateTime.toISOString(),
-          isAllDay,
-          attendees, // Include the updated attendees list
-        });
-        
-        console.log(`Successfully updated event with ID: ${event.id}`);
-        
-        // Call onSave callback to refresh data
-        onSave();
-        
-        // Close the form
-        onClose();
+    if (event) {
+      // Prepare event data for updating
+      const eventUpdateData = {
+        title,
+        summary: title, // Ensure both title and summary are set
+        description,
+        location,
+        start: startDateTime.toISOString(),
+        end: endDateTime.toISOString(),
+        isAllDay,
+        attendees, // Include the updated attendees list
+      };
+      
+      // Store event data for use in recurring dialog
+      setEventData(eventUpdateData);
+      
+      // Check if this is a recurring event
+      if (isRecurringEvent) {
+        // Open the recurring event dialog
+        setRecurringDialogOpen(true);
+      } else {
+        // Proceed with regular update
+        await updateEventWithData(event.id, eventUpdateData);
       }
+    }
+  };
+  
+  // Separate function to update event with data
+  const updateEventWithData = async (eventId: string, data: any) => {
+    try {
+      console.log(`Updating event with ID: ${eventId}`);
+      console.log('Update scope:', recurringEventScope);
+      console.log('Event data:', data);
+      
+      // Update the event, passing the scope parameter for recurring events
+      await updateEvent(eventId, {
+        ...data,
+        // Pass the recurring event scope if applicable
+        ...(isRecurringEvent && { responseScope: recurringEventScope })
+      });
+      
+      console.log(`Successfully updated event with ID: ${eventId}`);
+      
+      // Call onSave callback to refresh data
+      onSave();
+      
+      // Close the recurring dialog if open
+      setRecurringDialogOpen(false);
+      
+      // Close the form
+      onClose();
     } catch (error) {
       console.error('Error saving event:', error);
       setFormError('Failed to save event. Please try again.');
+      setRecurringDialogOpen(false);
+    }
+  };
+  
+  // Handle recurring event dialog close
+  const handleRecurringDialogClose = () => {
+    setRecurringDialogOpen(false);
+  };
+  
+  // Handle recurring event scope change
+  const handleRecurringScopeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRecurringEventScope(e.target.value as 'single' | 'all');
+  };
+  
+  // Handle recurring event update confirmation
+  const handleRecurringConfirm = () => {
+    if (event && eventData) {
+      updateEventWithData(event.id, eventData);
     }
   };
   
@@ -243,288 +293,300 @@ const EventEditForm: React.FC<EventEditFormProps> = ({
   };
   
   return (
-    <Dialog 
-      open={open}
-      onClose={onClose}
-      fullWidth
-      maxWidth="sm"
-      fullScreen={isMobile}
-      aria-labelledby="edit-event-dialog-title"
-      PaperProps={{
-        sx: {
-          borderRadius: isMobile ? 0 : 2,
-          overflow: 'visible',
-          maxHeight: isMobile ? '100vh' : '95vh', // Full height on mobile
-          display: 'flex',
-          flexDirection: 'column'
-        }
-      }}
-    >
-      <DialogTitle 
-        id="edit-event-dialog-title"
-        sx={{ 
-          p: isMobile ? 1.5 : 2,
-          backgroundColor: 'rgba(198, 232, 242, 0.3)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-          position: isMobile ? 'sticky' : 'relative',
-          top: 0,
-          zIndex: 1200
+    <>
+      <Dialog 
+        open={open}
+        onClose={onClose}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={isMobile}
+        aria-labelledby="edit-event-dialog-title"
+        PaperProps={{
+          sx: {
+            borderRadius: isMobile ? 0 : 2,
+            overflow: 'visible',
+            maxHeight: isMobile ? '100vh' : '95vh', // Full height on mobile
+            display: 'flex',
+            flexDirection: 'column'
+          }
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#071C73' }}>
-          Edit Event
-        </Typography>
-        <IconButton
-          aria-label="close"
-          onClick={onClose}
-          size="small"
+        <DialogTitle 
+          id="edit-event-dialog-title"
+          sx={{ 
+            p: isMobile ? 1.5 : 2,
+            backgroundColor: 'rgba(198, 232, 242, 0.3)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
         >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden' }}>
-        <DialogContent sx={{ 
-          p: isMobile ? 2 : 3,
-          overflowY: 'auto',
-          flexGrow: 1
-        }}>
-          {formError && (
-            <Typography color="error" variant="body2" sx={{ mb: 2 }}>
-              {formError}
-            </Typography>
-          )}
-          
-          <TextField
-            label="Title"
-            fullWidth
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            margin="normal"
-            required
-          />
-          
-          <TextField
-            label="Location"
-            fullWidth
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            margin="normal"
-          />
-          
-          <FormControlLabel
-            control={
-              <Checkbox 
-                checked={isAllDay}
-                onChange={(e) => setIsAllDay(e.target.checked)}
-              />
-            }
-            label="All day event"
-          />
-          
-          <Box sx={{ mt: 2, mb: 2 }}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DateTimePicker
-                label="Start Date & Time"
-                value={startDateTime}
-                onChange={(newValue) => setStartDateTime(newValue)}
-                slotProps={{
-                  textField: {
-                    fullWidth: true,
-                    margin: 'normal',
-                    size: isMobile ? 'small' : 'medium',
-                  },
-                }}
-                disablePast
-              />
-              
-              <DateTimePicker
-                label="End Date & Time"
-                value={endDateTime}
-                onChange={(newValue) => setEndDateTime(newValue)}
-                slotProps={{
-                  textField: {
-                    fullWidth: true,
-                    margin: 'normal',
-                    size: isMobile ? 'small' : 'medium',
-                  },
-                }}
-                disablePast
-                minDateTime={startDateTime || undefined}
-              />
-            </LocalizationProvider>
-          </Box>
-          
-          <TextField
-            label="Description"
-            fullWidth
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            margin="normal"
-            multiline
-            rows={isMobile ? 3 : 4}
-          />
-          
-          {/* Attendees Section */}
-          <Box sx={{ mt: 3 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              Attendees
-            </Typography>
-            
-            {/* Add Attendee Form */}
-            <Grid container spacing={isMobile ? 1 : 2} alignItems="center" direction={isMobile ? "column" : "row"}>
-              <Grid item xs={12} sm={7}>
+          Edit Event
+          <IconButton 
+            edge="end" 
+            color="inherit" 
+            onClick={onClose} 
+            aria-label="close"
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        
+        <DialogContent 
+          sx={{ 
+            p: isMobile ? 1.5 : 2, 
+            overflowX: 'hidden',
+            flexGrow: 1
+          }}
+        >
+          <form id="event-edit-form" onSubmit={handleSubmit}>
+            <Grid container spacing={2} sx={{ mb: 1 }}>
+              <Grid item xs={12}>
                 <TextField
-                  label="Email"
+                  required
+                  autoFocus
+                  margin="dense"
+                  id="title"
+                  label="Title"
+                  type="text"
                   fullWidth
-                  value={newAttendeeEmail}
-                  onChange={(e) => setNewAttendeeEmail(e.target.value)}
-                  error={!!attendeeError}
-                  helperText={attendeeError}
-                  placeholder="example@email.com"
-                  size="small"
+                  variant="outlined"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12} sm={3}>
+              
+              <Grid item xs={12}>
+                <TextField
+                  margin="dense"
+                  id="location"
+                  label="Location"
+                  type="text"
+                  fullWidth
+                  variant="outlined"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
                 <FormControlLabel
                   control={
-                    <Checkbox 
+                    <Checkbox
+                      checked={isAllDay}
+                      onChange={(e) => setIsAllDay(e.target.checked)}
+                    />
+                  }
+                  label="All day event"
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={6}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DateTimePicker
+                    label="Start Date & Time"
+                    value={startDateTime}
+                    onChange={(newDateTime) => setStartDateTime(newDateTime)}
+                    slotProps={{
+                      textField: {
+                        required: true,
+                        fullWidth: true,
+                        variant: 'outlined',
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
+              </Grid>
+              
+              <Grid item xs={12} sm={6}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DateTimePicker
+                    label="End Date & Time"
+                    value={endDateTime}
+                    onChange={(newDateTime) => setEndDateTime(newDateTime)}
+                    slotProps={{
+                      textField: {
+                        required: true,
+                        fullWidth: true,
+                        variant: 'outlined',
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <TextField
+                  margin="dense"
+                  id="description"
+                  label="Description"
+                  multiline
+                  rows={4}
+                  fullWidth
+                  variant="outlined"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </Grid>
+              
+              {/* Attendees section */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
+                  Attendees
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
+                  <TextField
+                    id="attendee-email"
+                    label="Attendee Email"
+                    type="email"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={newAttendeeEmail}
+                    onChange={(e) => setNewAttendeeEmail(e.target.value)}
+                    error={!!attendeeError}
+                    helperText={attendeeError}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddAttendee();
+                      }
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="add attendee"
+                            onClick={handleAddAttendee}
+                            edge="end"
+                          >
+                            <PersonAddIcon />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Checkbox
                       checked={newAttendeeOptional}
                       onChange={(e) => setNewAttendeeOptional(e.target.checked)}
                       size="small"
                     />
                   }
-                  label="Optional"
+                  label="Optional attendee"
                 />
-              </Grid>
-              <Grid item xs={12} sm={2}>
-                <Button 
-                  variant="outlined"
-                  color="primary"
-                  onClick={handleAddAttendee}
-                  disabled={!newAttendeeEmail.trim()}
-                  startIcon={<PersonAddIcon />}
-                  size="small"
-                  fullWidth
-                  sx={{ mt: isMobile ? 1 : 0 }}
-                >
-                  Add
-                </Button>
+                
+                {attendees.length > 0 && (
+                  <Paper variant="outlined" sx={{ mt: 2, p: 1 }}>
+                    <List dense>
+                      {attendees.map((attendee, index) => (
+                        <ListItem
+                          key={attendee.email + index}
+                          secondaryAction={
+                            <IconButton 
+                              edge="end" 
+                              aria-label="delete" 
+                              onClick={() => handleRemoveAttendee(attendee.email)}
+                              size="small"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemText
+                            primary={attendee.email}
+                            secondary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                                <Chip 
+                                  label={getResponseStatusLabel(attendee.responseStatus)}
+                                  size="small"
+                                  color={getResponseStatusColor(attendee.responseStatus) as any}
+                                  sx={{ mr: 1 }}
+                                />
+                                {attendee.optional && (
+                                  <Chip 
+                                    label="Optional" 
+                                    size="small" 
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Paper>
+                )}
               </Grid>
             </Grid>
             
-            {/* Attendee List */}
-            {attendees.length > 0 ? (
-              <Paper variant="outlined" sx={{ 
-                mt: 2, 
-                p: 1, 
-                maxHeight: isMobile ? '150px' : '180px', 
-                overflow: 'auto' 
-              }}>
-                <List dense disablePadding>
-                  {attendees.map((attendee, index) => (
-                    <ListItem 
-                      key={attendee.email}
-                      secondaryAction={
-                        <IconButton 
-                          edge="end" 
-                          aria-label="delete" 
-                          onClick={() => handleRemoveAttendee(attendee.email || '')}
-                          size="small"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      }
-                      divider={index < attendees.length - 1}
-                      sx={{ py: isMobile ? 0.5 : 1 }}
-                    >
-                      <ListItemText
-                        primary={
-                          <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 1,
-                            flexWrap: 'wrap'
-                          }}>
-                            <Typography variant="body2" 
-                              sx={{ 
-                                fontSize: isMobile ? '0.8rem' : '0.875rem',
-                                wordBreak: 'break-word'
-                              }}
-                            >
-                              {attendee.email}
-                            </Typography>
-                            {attendee.optional && (
-                              <Chip size="small" variant="outlined" label="Optional" />
-                            )}
-                          </Box>
-                        }
-                        secondary={
-                          <Chip 
-                            size="small"
-                            label={getResponseStatusLabel(attendee.responseStatus)}
-                            color={getResponseStatusColor(attendee.responseStatus) as any}
-                            variant="outlined"
-                            sx={{ mt: 0.5 }}
-                          />
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </Paper>
-            ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                No attendees added yet
+            {formError && (
+              <Typography color="error" variant="body2" sx={{ mt: 2 }}>
+                {formError}
               </Typography>
             )}
-          </Box>
+          </form>
         </DialogContent>
         
-        <DialogActions sx={{ 
-          p: isMobile ? 1.5 : 2, 
-          justifyContent: 'space-between',
-          borderTop: '1px solid rgba(0, 0, 0, 0.12)',
-          position: isMobile ? 'sticky' : 'relative',
-          bottom: 0,
-          backgroundColor: 'white',
-          zIndex: 1200
-        }}>
-          <Button 
-            onClick={onClose} 
-            color="primary"
-            variant="outlined"
-            sx={{ borderRadius: 1 }}
-          >
+        <DialogActions sx={{ p: isMobile ? 1.5 : 2, bgcolor: 'background.default' }}>
+          <Button onClick={onClose} color="inherit">
             Cancel
           </Button>
           <Button 
-            type="submit" 
-            color="primary" 
-            variant="contained"
+            type="submit"
+            form="event-edit-form"
+            variant="contained" 
+            color="primary"
             disabled={isLoading}
-            sx={{ 
-              borderRadius: 1, 
-              bgcolor: '#016C9E', 
-              '&:hover': { bgcolor: '#015C8E' },
-              color: 'white',
-              fontWeight: 'bold',
-              minWidth: '80px'
-            }}
+            startIcon={isLoading ? <CircularProgress size={16} /> : null}
           >
-            {isLoading ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              'Save'
-            )}
+            Save
           </Button>
         </DialogActions>
-      </form>
-    </Dialog>
+      </Dialog>
+      
+      {/* Recurring Event Dialog */}
+      <Dialog
+        open={recurringDialogOpen}
+        onClose={handleRecurringDialogClose}
+        aria-labelledby="recurring-event-dialog-title"
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle id="recurring-event-dialog-title">
+          Edit Recurring Event
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            This is a recurring event. Would you like to edit just this instance or all instances of this event?
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              aria-label="recurring-event-scope"
+              name="recurring-event-scope"
+              value={recurringEventScope}
+              onChange={handleRecurringScopeChange}
+            >
+              <FormControlLabel value="single" control={<Radio />} label="Edit only this instance" />
+              <FormControlLabel value="all" control={<Radio />} label="Edit all instances" />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRecurringDialogClose} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleRecurringConfirm} color="primary" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 
-export default EventEditForm; 
+export default EventEditForm;
