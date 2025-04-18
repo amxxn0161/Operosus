@@ -687,17 +687,35 @@ export const updateCalendarEvent = async (
 
 // Delete a calendar event
 export const deleteCalendarEvent = async (
-  eventId: string
+  eventId: string,
+  responseScope?: 'single' | 'all'
 ): Promise<boolean> => {
   try {
-    console.log(`Deleting calendar event with ID: ${eventId}`);
+    console.log(`Deleting calendar event with ID: ${eventId}`, 
+      responseScope ? `with responseScope: ${responseScope}` : 'with default scope: single');
     
     // URL for deleting a specific event - using eventId in path with the correct API endpoint
     const url = `/api/calendar/events/${encodeURIComponent(eventId)}`;
-    console.log(`Using delete URL: ${url}`);
+    
+    // For recurring events where we're deleting all instances, we need to use the master event ID
+    // If event ID contains an underscore followed by a date (instance ID format), extract the base ID
+    let targetEventId = eventId;
+    if (responseScope === 'all' && eventId.includes('_')) {
+      // Extract the base ID by splitting at the underscore and taking the first part
+      targetEventId = eventId.split('_')[0];
+      console.log(`Deleting all instances of recurring event. Using master event ID: ${targetEventId}`);
+    }
+    
+    // Add query parameter for responseScope if provided
+    let apiUrl = `/api/calendar/events/${encodeURIComponent(targetEventId)}`;
+    if (responseScope) {
+      apiUrl += `?responseScope=${responseScope}`;
+    }
+    
+    console.log(`Using delete URL: ${apiUrl}`);
     
     // Make the API request
-    const response = await apiRequest<any>(url, {
+    const response = await apiRequest<any>(apiUrl, {
       method: 'DELETE'
     });
     

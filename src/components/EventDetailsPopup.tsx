@@ -20,6 +20,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Radio,
   RadioGroup,
@@ -84,6 +85,9 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [responseScope, setResponseScope] = useState<'single' | 'following' | 'all'>('single');
   const [rsvpMenuAnchorEl, setRsvpMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [recurringDialogMode, setRecurringDialogMode] = useState<'rsvp' | 'note'>('rsvp');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -100,10 +104,18 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   
   const handleDeleteClick = () => {
     handleMenuClose();
-    if (event && onDelete) {
-      onDelete(event);
+    
+    // Check if this is a recurring event
+    const isRecurringEvent = Boolean(event?.recurringEventId) || 
+                            (Array.isArray(event?.recurrence) && event?.recurrence && event.recurrence.length > 0);
+    
+    if (isRecurringEvent) {
+      // Open the recurring deletion dialog
+      setDeleteRecurringDialogOpen(true);
+    } else {
+      // Open the regular confirmation dialog
+      setDeleteConfirmOpen(true);
     }
-    onClose();
   };
   
   const handleEditFormClose = () => {
@@ -569,6 +581,32 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         setSnackbarSeverity('error');
         setSnackbarOpen(true);
       });
+  };
+
+  // Handle deletion scope selection for recurring events
+  const handleDeleteScopeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDeleteScope(e.target.value as 'single' | 'all');
+  };
+
+  // Close the recurring deletion dialog
+  const handleCloseDeleteRecurringDialog = () => {
+    setDeleteRecurringDialogOpen(false);
+  };
+
+  // Confirm recurring event deletion
+  const handleConfirmRecurringDelete = () => {
+    setDeleteRecurringDialogOpen(false);
+    setDeleteConfirmOpen(true);
+  };
+
+  // Confirm the actual deletion
+  const handleConfirmDelete = () => {
+    setDeleteConfirmOpen(false);
+    if (event && onDelete) {
+      // Pass the deletion scope for recurring events
+      onDelete(event);
+    }
+    onClose();
   };
 
   return (
@@ -1357,6 +1395,74 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           {snackbarMessage}
         </Alert>
       </Snackbar>
+      
+      {/* Add confirmation dialog for deleting events */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            Are you sure you want to delete this event
+            {deleteScope === 'all' ? ' and all its future occurrences' : ''}?
+            <br /><br />
+            <strong>{event?.title || event?.summary}</strong>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            color="error" 
+            variant="contained"
+            autoFocus
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Add recurring event dialog for deletion */}
+      <Dialog
+        open={deleteRecurringDialogOpen}
+        onClose={handleCloseDeleteRecurringDialog}
+        aria-labelledby="recurring-delete-dialog-title"
+      >
+        <DialogTitle id="recurring-delete-dialog-title">
+          Delete Recurring Event
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            This is a recurring event. Would you like to delete just this instance or all instances of this event?
+          </DialogContentText>
+          <FormControl component="fieldset">
+            <RadioGroup
+              aria-label="delete-recurring-event-scope"
+              name="delete-recurring-event-scope"
+              value={deleteScope}
+              onChange={handleDeleteScopeChange}
+            >
+              <FormControlLabel value="single" control={<Radio />} label="Delete only this instance" />
+              <FormControlLabel value="all" control={<Radio />} label="Delete all instances" />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteRecurringDialog} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmRecurringDelete} color="error" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

@@ -76,7 +76,7 @@ interface CalendarContextType {
   setViewMode: (mode: 'day' | 'week' | 'month' | 'all') => void;
   addEvent: (event: Omit<CalendarEvent, 'id'>, addGoogleMeet?: boolean) => Promise<CalendarEvent>;
   updateEvent: (eventId: string, event: Partial<Omit<CalendarEvent, 'id'>>) => Promise<CalendarEvent>;
-  removeEvent: (eventId: string) => Promise<boolean>;
+  removeEvent: (eventId: string, responseScope?: 'single' | 'all') => Promise<boolean>;
   refreshCalendarData: () => Promise<void>;
   addAttendeesToEvent: (eventId: string, attendees: Array<{ email: string, optional?: boolean }>) => Promise<CalendarEvent | null>;
   removeAttendeesFromEvent: (eventId: string, emails: string[]) => Promise<CalendarEvent | null>;
@@ -342,12 +342,12 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Remove an event
-  const removeEvent = async (eventId: string): Promise<boolean> => {
+  const removeEvent = async (eventId: string, responseScope?: 'single' | 'all'): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const success = await deleteCalendarEvent(eventId);
+      const success = await deleteCalendarEvent(eventId, responseScope);
       if (success) {
         // Remove the event from state
         setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
