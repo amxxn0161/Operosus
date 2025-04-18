@@ -307,8 +307,16 @@ const AIAssistant: React.FC = () => {
     // Store the current message for potential retry
     setLastPrompt(inputValue.trim());
     
+    console.log('Sending message to AI Assistant', {
+      message: inputValue.trim(),
+      currentThreadId: threadId
+    });
+    
     // Send message through context
     sendMessage(inputValue)
+      .then(() => {
+        console.log('Message sent successfully, waiting for response');
+      })
       .catch(error => {
         console.error('Error sending message:', error);
         // Don't show UI errors - this will be handled by AIAssistantContext

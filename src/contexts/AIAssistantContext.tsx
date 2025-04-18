@@ -729,6 +729,9 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
   // Use useRef for the safety timeout to avoid issues with React hooks
   const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Ref to track active polling intervals
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   // We don't need the useEffect that was using location.pathname anymore
   
   // Make sure to clear the safety timeout when the component unmounts
@@ -737,6 +740,12 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
       if (safetyTimeoutRef.current) {
         clearTimeout(safetyTimeoutRef.current);
         safetyTimeoutRef.current = null;
+      }
+      
+      // Also clear any polling intervals
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
   }, []);
@@ -922,9 +931,22 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         // Call the backend API with the message and thread ID
         let response: AssistantResponse | null = null;
         
+        // IMPORTANT: Add explicit flag to track if a POST request was made
+        let madePostRequest = false;
+        
         try {
+          // Always make the POST request and log it clearly
+          console.log(`Making POST request to /api/assistant/chat with thread_id: ${threadId || 'new thread'}`);
           response = await sendAssistantMessage(content, threadId);
+          madePostRequest = true;
           console.log('Successfully received response from sendAssistantMessage:', response?.status);
+          
+          // Add detailed logging about the response
+          if (response) {
+            console.log(`API response details - threadId: ${response.thread_id}, status: ${response.status}, hasReply: ${!!response.reply}`);
+          } else {
+            console.warn('API response is null');
+          }
         } catch (postError) {
           console.error('POST request to sendAssistantMessage failed:', postError);
           // Don't show error yet, we'll try to recover
@@ -1159,12 +1181,20 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
                 let retryCount = 0;
                 const maxRetries = 3;
                 
+                // Clear any existing polling interval before creating a new one
+                if (pollingIntervalRef.current) {
+                  console.log('Clearing existing polling interval before starting a new one');
+                  clearInterval(pollingIntervalRef.current);
+                  pollingIntervalRef.current = null;
+                }
+                
                 // Set a shorter timeout for these intermediate states to ensure we don't get stuck
-                const pollingInterval = setInterval(() => {
+                pollingIntervalRef.current = setInterval(() => {
                   if (!isLoading) {
                     // If we're no longer loading, clear the interval
                     console.log('Clearing polling interval - loading state already cleared');
-                    clearInterval(pollingInterval);
+                    clearInterval(pollingIntervalRef.current!);
+                    pollingIntervalRef.current = null;
                     return;
                   }
                   
@@ -1179,12 +1209,14 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
                           console.log(`Polling retrieved ${messages.length} messages!`);
                           loadThreadMessages(messages);
                           setIsLoading(false);
-                          clearInterval(pollingInterval);
+                          clearInterval(pollingIntervalRef.current!);
+                          pollingIntervalRef.current = null;
                         } else if (retryCount >= maxRetries) {
                           // If we've reached max retries, stop polling and clear loading state
                           console.log(`Max polling retries (${maxRetries}) reached, clearing loading state`);
                           setIsLoading(false);
-                          clearInterval(pollingInterval);
+                          clearInterval(pollingIntervalRef.current!);
+                          pollingIntervalRef.current = null;
                           
                           // Add a message indicating we're still processing
                           setMessages(prev => [...prev, {
@@ -1198,22 +1230,25 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
                         if (retryCount >= maxRetries) {
                           console.log(`Max polling retries (${maxRetries}) reached after error, clearing loading state`);
                           setIsLoading(false);
-                          clearInterval(pollingInterval);
+                          clearInterval(pollingIntervalRef.current!);
+                          pollingIntervalRef.current = null;
                         }
                       });
                   } else if (retryCount >= maxRetries) {
                     // If no thread ID or max retries reached, clear loading state
                     console.log('No thread ID or max retries reached, clearing loading state');
                     setIsLoading(false);
-                    clearInterval(pollingInterval);
+                    clearInterval(pollingIntervalRef.current!);
+                    pollingIntervalRef.current = null;
                   }
                 }, 2000); // Poll every 2 seconds
                 
                 // Also set a maximum time limit for the polling
                 setTimeout(() => {
-                  if (pollingInterval) {
+                  if (pollingIntervalRef.current) {
                     console.log(`Maximum polling time reached for ${response?.status || 'unknown'} status, clearing interval`);
-                    clearInterval(pollingInterval);
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
                     
                     // Only update if we're still loading
                     if (isLoading) {

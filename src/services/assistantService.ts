@@ -62,13 +62,22 @@ export const sendAssistantMessage = async (
   try {
     console.log(`Sending message to assistant${threadId ? ` (thread: ${threadId})` : ' (new thread)'}`);
     
+    // Add a cache-busting parameter to prevent browser caching
+    const cacheBuster = new Date().getTime();
+    
+    // Create the request body with all the data we need to ensure a fresh request
+    const requestBody = {
+      message,
+      thread_id: threadId,
+      timestamp: new Date().toISOString(), // Add timestamp to make each request unique
+      cache_buster: cacheBuster // Add cache buster to force a fresh request
+    };
+    
     // Use apiRequest helper for proper authentication
-    const response = await apiRequest<AssistantChatResponse>('/api/assistant/chat', {
+    const response = await apiRequest<AssistantChatResponse>(`/api/assistant/chat?_=${cacheBuster}`, {
       method: 'POST',
-      body: {
-        message,
-        thread_id: threadId
-      }
+      body: requestBody,
+      timeoutMs: 30000 // Use a longer timeout for assistant requests
     });
     
     // CRITICAL: Deep debugging - log the exact response received
