@@ -38,6 +38,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import CancelIcon from '@mui/icons-material/Cancel';
 import AddIcon from '@mui/icons-material/Add';
 import ReplayIcon from '@mui/icons-material/Replay';
+import StopIcon from '@mui/icons-material/Stop';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
 import { 
@@ -203,7 +204,8 @@ const AIAssistant: React.FC = () => {
     clearMessages,
     loadThreadMessages,
     setThreadId,
-    threadId
+    threadId,
+    cancelRequest
   } = useAIAssistant();
   const [inputValue, setInputValue] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -678,6 +680,12 @@ const AIAssistant: React.FC = () => {
     }
   };
   
+  // Handler to cancel an in-progress request
+  const handleCancelRequest = () => {
+    console.log('Cancelling current request');
+    cancelRequest();
+  };
+  
   // Remove the separate thread view rendering and keep just the regular assistant view
   return (
     <>
@@ -994,34 +1002,35 @@ const AIAssistant: React.FC = () => {
                                 wordBreak: 'break-word'
                               } 
                             }}>
-                              {formatMessageContent(msg.content)}
-                              
-                              {/* Add Retry button for error messages */}
-                              {msg.role === 'assistant' && 
-                                (msg.content.toLowerCase().includes('error') || 
-                                 msg.content.toLowerCase().includes('apologize') ||
-                                 msg.content.toLowerCase().includes('sorry') ||
-                                 msg.content.toLowerCase().includes('couldn\'t process') ||
-                                 msg.content.toLowerCase().includes('issue') ||
-                                 msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
-                                lastPrompt && (
-                                <Box sx={{ mt: 1, textAlign: 'right' }}>
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    color="primary"
-                                    onClick={handleRetry}
-                                    startIcon={<ReplayIcon fontSize="small" />}
-                                    sx={{ 
-                                      fontSize: isSmallMobile ? '0.7rem' : '0.75rem',
-                                      py: isSmallMobile ? 0.5 : 0.75
-                                    }}
-                                  >
-                                    Retry
-                                  </Button>
-                                </Box>
-                              )}
-                            </Box>
+                                {/* Don't display cancellation messages */}
+                                {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
+                                
+                                {/* Add Retry button for error messages */}
+                                {msg.role === 'assistant' && 
+                                  (msg.content.toLowerCase().includes('error') || 
+                                   msg.content.toLowerCase().includes('apologize') ||
+                                   msg.content.toLowerCase().includes('sorry') ||
+                                   msg.content.toLowerCase().includes('couldn\'t process') ||
+                                   msg.content.toLowerCase().includes('issue') ||
+                                   msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                  lastPrompt && (
+                                  <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="primary"
+                                      onClick={handleRetry}
+                                      startIcon={<ReplayIcon fontSize="small" />}
+                                      sx={{ 
+                                        fontSize: isSmallMobile ? '0.7rem' : '0.75rem',
+                                        py: isSmallMobile ? 0.5 : 0.75
+                                      }}
+                                    >
+                                      Retry
+                                    </Button>
+                                  </Box>
+                                )}
+                              </Box>
                         }
                       </Paper>
 
@@ -1130,28 +1139,40 @@ const AIAssistant: React.FC = () => {
                   }}
                   InputProps={{
                     endAdornment: (
-                      <IconButton
-                        color="primary"
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isLoading}
-                        size="small"
-                        sx={{
-                          ml: 1,
-                          bgcolor: inputValue.trim() ? theme.palette.primary.main : 'transparent',
-                          color: inputValue.trim() ? 'white' : theme.palette.text.disabled,
-                          '&:hover': {
-                            bgcolor: inputValue.trim() ? theme.palette.primary.dark : 'transparent',
-                          },
-                          '&.Mui-disabled': {
-                            bgcolor: 'transparent'
-                          },
-                          width: isMobile ? 26 : 30,
-                          height: isMobile ? 26 : 30,
-                        }}
-                      >
-                        <SendIcon fontSize="small" />
-                      </IconButton>
-                    )
+                      <InputAdornment position="end">
+                        {isLoading ? (
+                          <IconButton 
+                            aria-label="stop processing" 
+                            onClick={handleCancelRequest}
+                            edge="end"
+                            size="small"
+                            sx={{ 
+                              mr: -0.5,
+                              bgcolor: theme.palette.primary.main,
+                              color: 'white',
+                              width: isSmallMobile ? 24 : 28,
+                              height: isSmallMobile ? 24 : 28,
+                              '&:hover': {
+                                bgcolor: theme.palette.primary.dark,
+                              }
+                            }}
+                          >
+                            <StopIcon fontSize={isSmallMobile ? "small" : "small"} />
+                          </IconButton>
+                        ) : (
+                          <IconButton 
+                            aria-label="send" 
+                            color="primary"
+                            onClick={handleSendMessage}
+                            disabled={!inputValue.trim() || isLoading}
+                            edge="end"
+                            sx={{ mr: -1 }}
+                          >
+                            <SendIcon />
+                          </IconButton>
+                        )}
+                      </InputAdornment>
+                    ),
                   }}
                 />
               </Box>
@@ -1417,7 +1438,8 @@ const AIAssistant: React.FC = () => {
                                 {msg.content}
                               </Typography>
                             : <Box sx={{ '& .MuiTypography-root': { fontSize: '0.9rem' } }}>
-                                {formatMessageContent(msg.content)}
+                                {/* Don't display cancellation messages */}
+                                {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
                                 
                                 {/* Add Retry button for error messages */}
                                 {msg.role === 'assistant' && 
@@ -1471,7 +1493,7 @@ const AIAssistant: React.FC = () => {
                         sx={{
                           display: 'flex',
                           justifyContent: 'flex-start',
-                          mb: 1.5,
+                          mb: isSmallMobile ? 1 : 1.25,
                         }}
                       >
                         <Avatar
@@ -1479,26 +1501,32 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.primary.main,
                             mr: 1,
                             alignSelf: 'flex-start',
-                            width: 28,
-                            height: 28,
+                            width: isSmallMobile ? 20 : 24,
+                            height: isSmallMobile ? 20 : 24,
                           }}
                         >
-                          <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                          <SmartToyIcon sx={{ 
+                            fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                          }} />
                         </Avatar>
 
                         <Paper
                           elevation={0}
                           sx={{
-                            p: 1.5,
+                            p: isSmallMobile ? 1 : 1.5,
                             borderRadius: 2,
                             backgroundColor: 'white',
                             display: 'flex',
                             alignItems: 'center',
-                            minWidth: '90px',
+                            minWidth: isSmallMobile ? '60px' : '80px',
                           }}
                         >
-                          <CircularProgress size={20} thickness={5} sx={{ mr: 1.5 }} />
-                          <Typography variant="body2" color="text.secondary">
+                          <CircularProgress 
+                            size={isSmallMobile ? 16 : 20}
+                            thickness={5} 
+                            sx={{ mr: 1 }}
+                          />
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: isSmallMobile ? '0.7rem' : '0.8rem' }}>
                             Processing...
                           </Typography>
                         </Paper>
@@ -1542,28 +1570,40 @@ const AIAssistant: React.FC = () => {
                   }}
                   InputProps={{
                     endAdornment: (
-                      <IconButton
-                        color="primary"
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isLoading}
-                        size="small"
-                        sx={{
-                          ml: 1,
-                          bgcolor: inputValue.trim() ? theme.palette.primary.main : 'transparent',
-                          color: inputValue.trim() ? 'white' : theme.palette.text.disabled,
-                          '&:hover': {
-                            bgcolor: inputValue.trim() ? theme.palette.primary.dark : 'transparent',
-                          },
-                          '&.Mui-disabled': {
-                            bgcolor: 'transparent'
-                          },
-                          width: 30,
-                          height: 30,
-                        }}
-                      >
-                        <SendIcon fontSize="small" />
-                      </IconButton>
-                    )
+                      <InputAdornment position="end">
+                        {isLoading ? (
+                          <IconButton 
+                            aria-label="stop processing" 
+                            onClick={handleCancelRequest}
+                            edge="end"
+                            size="small"
+                            sx={{ 
+                              mr: -0.5,
+                              bgcolor: theme.palette.primary.main,
+                              color: 'white',
+                              width: isSmallMobile ? 24 : 28,
+                              height: isSmallMobile ? 24 : 28,
+                              '&:hover': {
+                                bgcolor: theme.palette.primary.dark,
+                              }
+                            }}
+                          >
+                            <StopIcon fontSize={isSmallMobile ? "small" : "small"} />
+                          </IconButton>
+                        ) : (
+                          <IconButton 
+                            aria-label="send" 
+                            color="primary"
+                            onClick={handleSendMessage}
+                            disabled={!inputValue.trim() || isLoading}
+                            edge="end"
+                            sx={{ mr: -1 }}
+                          >
+                            <SendIcon />
+                          </IconButton>
+                        )}
+                      </InputAdornment>
+                    ),
                   }}
                 />
               </Box>

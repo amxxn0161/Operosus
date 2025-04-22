@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { Message, sendAssistantMessage, getThreadMessages, getThreadMessagesWithRetry } from '../services/assistantService';
 
 interface ScreenContext {
@@ -20,6 +20,7 @@ interface AIAssistantContextType {
   loadThreadMessages: (messages: Message[]) => void;
   setThreadId: (threadId: string | undefined) => void;
   updateScreenContext: (context: Partial<ScreenContext>) => void;
+  cancelRequest: () => void;
 }
 
 const AIAssistantContext = createContext<AIAssistantContextType | undefined>(undefined);
@@ -60,21 +61,67 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
   // Ref to track active polling intervals
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Ref to track message timeout
+  const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Ref to track if a request has been cancelled
+  const requestCancelledRef = useRef<boolean>(false);
+  
+  // Ref to track active AbortController
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
   // Make sure to clear the safety timeout when the component unmounts
   useEffect(() => {
     return () => {
+      clearAllTimeouts();
+    };
+  }, []);
+
+  // Function to clear all timeouts and intervals
+  const clearAllTimeouts = () => {
       if (safetyTimeoutRef.current) {
         clearTimeout(safetyTimeoutRef.current);
         safetyTimeoutRef.current = null;
       }
       
-      // Also clear any polling intervals
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
-    };
-  }, []);
+    
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+      messageTimeoutRef.current = null;
+    }
+    
+    // Also abort any in-progress fetch requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Function to cancel an in-progress request
+  const cancelRequest = () => {
+    if (!isLoading) {
+      // Nothing to cancel if not loading
+      return;
+    }
+    
+    console.log('Cancelling in-progress assistant request');
+    
+    // Mark the request as cancelled
+    requestCancelledRef.current = true;
+    
+    // Clear all timeouts and intervals
+    clearAllTimeouts();
+    
+    // Reset loading state without adding a cancellation message
+    setIsLoading(false);
+    
+    // Create a new clean AbortController for the next request
+    abortControllerRef.current = null;
+  };
 
   // Add back updateScreenContext as a no-op function to maintain compatibility
   const updateScreenContext = (context: Partial<ScreenContext>) => {
@@ -94,6 +141,12 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
     }
 
     try {
+      // Reset the cancelled flag when starting a new request
+      requestCancelledRef.current = false;
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+      
       // Immediately add the user message to the conversation for better UX
       const userMessage: Message = { role: 'user', content };
       setMessages(prev => [...prev, userMessage]);
@@ -101,8 +154,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
       setIsLoading(true);
       
       // Set a maximum timeout to ensure we don't leave users hanging
-      const messageTimeout = setTimeout(() => {
-        if (isLoading) {
+      messageTimeoutRef.current = setTimeout(() => {
+        if (isLoading && !requestCancelledRef.current) {
           console.warn('Message processing timeout reached, stopping loading state');
           const timeoutMessage: Message = {
             role: 'assistant',
@@ -112,16 +165,86 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           setIsLoading(false);
         }
       }, 30000); // 30 second maximum timeout
+      
+      // Set up a polling mechanism to periodically check the thread for responses
+      // This helps catch responses that might otherwise be missed
+      if (threadId) {
+        console.log(`Setting up polling for thread ${threadId}`);
+        const threadIdForPolling = threadId; // Capture in local variable to avoid closure issues
+        
+        pollingIntervalRef.current = setInterval(async () => {
+          if (requestCancelledRef.current) {
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+            return;
+          }
+          
+          try {
+            console.log(`Polling thread ${threadIdForPolling} for new messages...`);
+            const threadMessages = await getThreadMessages(threadIdForPolling);
+            if (threadMessages && threadMessages.length > 0) {
+              // Always update the messages since they might be different
+              console.log(`Found ${threadMessages.length} messages in thread, updating UI`);
+              loadThreadMessages(threadMessages);
+              
+              // Check if we have a completed response
+              const lastMessage = threadMessages[threadMessages.length - 1];
+              
+              // Check if it's a complete response based on multiple factors
+              const lastMessageIsFromUser = lastMessage?.role === 'user';
+              const lastMessageIsAssistant = lastMessage?.role === 'assistant';
+              const hasSubstantialContent = lastMessage?.content && lastMessage.content.trim().length > 50;
+              const isNotProcessingMessage = lastMessageIsAssistant && !lastMessage.content.includes("I'm processing") && 
+                                            !lastMessage.content.includes("wait a moment") && 
+                                            !lastMessage.content.includes("Please wait");
+              
+              if (!lastMessageIsFromUser && 
+                  lastMessageIsAssistant && 
+                  hasSubstantialContent && 
+                  isNotProcessingMessage && 
+                  threadMessages.length > 1) {
+                  
+                console.log('Complete response detected in polling, stopping polling and loading state');
+                // We have a complete response, stop polling and loading
+                if (pollingIntervalRef.current) {
+                  clearInterval(pollingIntervalRef.current);
+                  pollingIntervalRef.current = null;
+                }
+                
+                // Add delay to ensure UI updates before stopping loading
+                setTimeout(() => {
+                  setIsLoading(false);
+                }, 1000);
+              } else {
+                console.log('Response still incomplete, continuing to poll');
+                if (lastMessageIsFromUser) {
+                  console.log('Last message is from user, waiting for assistant response');
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error polling for messages:', error);
+          }
+        }, 1500); // Poll more frequently (1.5 seconds)
+      }
 
       // Define error recovery function to avoid duplication
       const attemptRecoveryWithThread = async (recoveryThreadId: string, context: string): Promise<boolean> => {
+        if (requestCancelledRef.current) {
+          console.log(`${context}: Request was cancelled, skipping recovery`);
+          return false;
+        }
+        
         console.log(`${context}: Attempting recovery with thread ${recoveryThreadId}`);
         try {
           const recoveredMessages = await getThreadMessagesWithRetry(recoveryThreadId, 3, 800);
           if (recoveredMessages && recoveredMessages.length > 0) {
             console.log(`${context}: Successfully recovered ${recoveredMessages.length} messages`);
             loadThreadMessages(recoveredMessages);
-            clearTimeout(messageTimeout);
+            clearTimeout(messageTimeoutRef.current!);
+            messageTimeoutRef.current = null;
             setIsLoading(false);
             return true; // Successfully recovered
           }
@@ -133,6 +256,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
 
       // Define function to attempt recovery using most recent thread
       const attemptRecoveryWithRecentThread = async (context: string): Promise<boolean> => {
+        if (requestCancelledRef.current) {
+          console.log(`${context}: Request was cancelled, skipping recovery with recent thread`);
+          return false;
+        }
+        
         console.log(`${context}: Attempting recovery with most recent thread`);
         try {
           const { fetchAssistantThreads } = await import('../services/assistantService');
@@ -160,6 +288,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
 
       // Define function to show error message after all recovery attempts fail
       const showErrorMessage = (errorMsg?: string) => {
+        if (requestCancelledRef.current) {
+          console.log('Request was cancelled, skipping error message');
+          return;
+        }
+        
         const defaultError = 'I apologize, but I encountered an error while processing your request. Please try again.';
         const errorMessage: Message = {
           role: 'assistant',
@@ -172,6 +305,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         // After showing the error, set up a delayed auto-refresh attempt
         console.log('Setting up final delayed auto-refresh after showing error message');
         setTimeout(async () => {
+          if (requestCancelledRef.current) return;
+          
           const success = await attemptRecoveryWithRecentThread('Final auto-refresh');
           
           if (success) {
@@ -201,17 +336,23 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
 
       // Main processing logic starts here
       try {
+        // Check for cancellation at key points
+        if (requestCancelledRef.current) {
+          console.log('Request was cancelled, exiting early');
+          return;
+        }
+
         // Call the backend API with the message and thread ID
         let response: AssistantResponse | null = null;
         
-        // IMPORTANT: Add explicit flag to track if a POST request was made
-        let madePostRequest = false;
-        
-        try {
           // Always make the POST request and log it clearly
           console.log(`Making POST request to /api/assistant/chat with thread_id: ${threadId || 'new thread'}`);
-          response = await sendAssistantMessage(content, threadId);
-          madePostRequest = true;
+        try {
+          response = await sendAssistantMessage(
+            content, 
+            threadId, 
+            abortControllerRef.current?.signal
+          );
           console.log('Successfully received response from sendAssistantMessage:', response?.status);
           
           // Add detailed logging about the response
@@ -222,7 +363,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           }
         } catch (postError) {
           console.error('POST request to sendAssistantMessage failed:', postError);
-          // Don't show error yet, we'll try to recover
+          
+          if (requestCancelledRef.current) {
+            console.log('Request was cancelled after POST error');
+            return;
+          }
           
           // Extract the thread ID from the error if it's available (for new conversations)
           let extractedThreadId: string | undefined = undefined;
@@ -268,6 +413,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           // Set up delayed auto-refresh instead of showing error immediately
           console.log('Initial recovery failed, will attempt automatic refresh after delay');
           setTimeout(async () => {
+            if (requestCancelledRef.current) return;
+            
             const delayedRecoverySuccess = await attemptRecoveryWithRecentThread('Delayed auto-refresh');
             
             if (!delayedRecoverySuccess) {
@@ -283,306 +430,72 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         }
         
         // Clear the timeout since we got a response
-        clearTimeout(messageTimeout);
+        clearTimeout(messageTimeoutRef.current!);
+        messageTimeoutRef.current = null;
         
-        // CRITICAL IMPROVEMENT: Set up a safety fallback that will always try to fetch messages 
-        // regardless of the response type, to ensure we show proper messages if the backend creates them
+        // Continue with processing the response
+        // We need to be careful about stopping too soon
+        
+        // If we have a valid response, update the thread ID
         if (response && response.thread_id) {
-          const newThreadId = response.thread_id;
-          setThreadId(newThreadId); // Ensure thread ID is set immediately
+          console.log('Valid response received, updating thread_id');
           
-          // Always attempt an immediate fetch to get the latest messages
-          try {
-            console.log(`Attempting immediate verification fetch for thread ${newThreadId}`);
-            const verificationMessages = await getThreadMessagesWithRetry(newThreadId, 2, 500);
+          // Set or update the thread ID
+          setThreadId(response.thread_id);
+          
+          // Add the assistant response to the messages if it contains a substantial reply
+          if (response.reply && response.reply.trim() !== '') {
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: response.reply
+            };
+            setMessages(prev => [...prev, assistantMessage]);
             
-            if (verificationMessages && verificationMessages.length > 0) {
-              console.log(`Immediate verification retrieved ${verificationMessages.length} messages!`);
-              // Load the messages
-              loadThreadMessages(verificationMessages);
-              // Ensure loading state is cleared
-              setIsLoading(false);
-              return; // Skip the rest of the processing since we have verified messages
-            } else {
-              console.log("Immediate verification didn't find messages, continuing with normal processing");
+            // For now, we'll keep the loading state active
+            // Even if we have a response, to make sure we get the full message
+            console.log('Response received but keeping loading state active to ensure complete response');
+            
+            // Capture the thread ID before the setTimeout to avoid "possibly null" errors
+            const responseThreadId = response.thread_id;
+            
+            // Set a timer to check for a complete response after a short delay
+            setTimeout(async () => {
+              if (requestCancelledRef.current) return;
               
-              // Try a second immediate fetch with longer delay
-              console.log("Attempting secondary immediate verification with longer delay");
-              const secondVerificationMessages = await getThreadMessagesWithRetry(newThreadId, 3, 1000);
-              
-              if (secondVerificationMessages && secondVerificationMessages.length > 0) {
-                console.log(`Secondary verification retrieved ${secondVerificationMessages.length} messages!`);
-                loadThreadMessages(secondVerificationMessages);
-                setIsLoading(false);
-                return;
-              }
-            }
-          } catch (verificationError) {
-            console.warn('Error in immediate verification:', verificationError);
-            // Continue with normal processing if verification fails
-          }
-          
-          // Also set up a delayed fallback in case immediate fetch didn't work
-          const fallbackDelay = 3000;
-          console.log(`Setting up delayed fallback for thread ${newThreadId} to execute in ${fallbackDelay}ms`);
-          
-          setTimeout(async () => {
-            try {
-              // Only execute if we're still loading or if an error was shown
-              if (isLoading || messages[messages.length - 1]?.content?.toLowerCase().includes('error')) {
-                console.log(`Delayed fallback executing for thread ${newThreadId}`);
-                const safetyMessages = await getThreadMessagesWithRetry(newThreadId, 2, 1000);
-                
-                if (safetyMessages && safetyMessages.length > 0) {
-                  console.log(`Delayed fallback retrieved ${safetyMessages.length} messages!`);
+              try {
+                console.log(`Checking thread ${responseThreadId} for complete response`);
+                const messages = await getThreadMessages(responseThreadId);
+                if (messages && messages.length > 0) {
+                  // Update messages with the latest from the thread
+                  loadThreadMessages(messages);
                   
-                  // Check if the last message was an error message
-                  const lastMessage = messages[messages.length - 1];
-                  const isLastMessageError = lastMessage?.role === 'assistant' && 
-                                          lastMessage?.content?.toLowerCase().includes('error');
-                  
-                  if (isLastMessageError) {
-                    // If the last message was an error, remove it and replace with the actual messages
-                    console.log('Replacing error message with actual response');
-                    setMessages(prev => {
-                      // Create a new array without the last error message
-                      const withoutError = prev.slice(0, prev.length - 1);
-                      // Add a recovery notification
-                      return [
-                        ...withoutError,
-                        {
-                          role: 'assistant',
-                          content: 'I found the response to your message:'
-                        },
-                        ...safetyMessages.filter(msg => msg.role === 'assistant')
-                      ];
-                    });
-                  } else {
-                    // Just load the messages normally
-                    loadThreadMessages(safetyMessages);
-                  }
-                  
-                  // Ensure loading state is cleared
+                  // Now we can safely stop the loading state
                   setIsLoading(false);
                 }
-              } else {
-                console.log('Delayed fallback not needed - already resolved');
-              }
-            } catch (fallbackError) {
-              console.error('Error in delayed fallback:', fallbackError);
-              // If we're still loading, clear it but don't show an error
-              if (isLoading) {
+              } catch (error) {
+                console.error('Error checking for complete response:', error);
+                // Still stop loading even if there's an error checking
                 setIsLoading(false);
               }
-            }
-          }, fallbackDelay);
-          
-          // Continue with normal response processing only if we don't have verified messages
-          if (response) {
-            // Set a final safety timeout that will clear the loading state no matter what
-            // Clear any existing safety timeout first
-            if (safetyTimeoutRef.current) {
-              clearTimeout(safetyTimeoutRef.current);
-            }
-            
-            safetyTimeoutRef.current = setTimeout(() => {
-              if (isLoading) {
-                console.log(`Final safety timeout reached for thread ${response?.thread_id}, forcing loading state to clear`);
-                
-                // Add a message indicating we're still trying to get the response
-                setMessages(prev => [...prev, {
-                  role: 'assistant',
-                  content: "I've processed your message, but I'm having trouble displaying the response. Please try refreshing the conversation."
-                }]);
-                
-                setIsLoading(false);
-              }
-              safetyTimeoutRef.current = null;
-            }, 15000); // After 15 seconds, give up and clear loading state
-
-            // Handle different response status types
-            switch (response.status) {
-              case 'success':
-                // Success case - show the response
-                const assistantMessage: Message = {
-                  role: 'assistant',
-                  content: response.reply
-                };
-                
-                // Clear any safety timeouts on success
-                if (safetyTimeoutRef.current) {
-                  clearTimeout(safetyTimeoutRef.current);
-                  safetyTimeoutRef.current = null;
-                }
-                
-                // Check if the response has actual content
-                if (response.reply && response.reply.trim() !== '') {
-                  setMessages(prev => [...prev, assistantMessage]);
-                  setIsLoading(false);
-                } else {
-                  console.log('Success status but empty reply, will attempt to fetch messages directly');
-                  
-                  // Try to fetch messages directly even though we got a success status
-                  try {
-                    const successMessages = await getThreadMessagesWithRetry(response.thread_id, 3, 800);
-                    if (successMessages && successMessages.length > 0) {
-                      console.log(`Retrieved ${successMessages.length} messages directly after success status`);
-                      loadThreadMessages(successMessages);
-                      setIsLoading(false);
-                      return;
-                    } else {
-                      // If we can't get messages, fall back to the original (possibly empty) reply
-                      console.log('Could not retrieve messages, using original reply');
-                      setMessages(prev => [...prev, assistantMessage]);
-                      setIsLoading(false);
-                    }
-                  } catch (successFetchError) {
-                    console.error('Error fetching messages after success:', successFetchError);
-                    // Fall back to the original response
-                    setMessages(prev => [...prev, assistantMessage]);
-                    setIsLoading(false);
-                  }
-                }
-                break;
-                
-              case 'partial_success':
-              case 'processing':
-                // For partial_success or processing - keep loading state until refresh completes
-                console.log(`Received ${response.status} status, waiting for refresh to complete`);
-                
-                // Track retries in a ref to avoid creating a new variable each time
-                let retryCount = 0;
-                const maxRetries = 3;
-                
-                // Clear any existing polling interval before creating a new one
-                if (pollingIntervalRef.current) {
-                  console.log('Clearing existing polling interval before starting a new one');
-                  clearInterval(pollingIntervalRef.current);
-                  pollingIntervalRef.current = null;
-                }
-                
-                // Set a shorter timeout for these intermediate states to ensure we don't get stuck
-                pollingIntervalRef.current = setInterval(() => {
-                  if (!isLoading) {
-                    // If we're no longer loading, clear the interval
-                    console.log('Clearing polling interval - loading state already cleared');
-                    clearInterval(pollingIntervalRef.current!);
-                    pollingIntervalRef.current = null;
-                    return;
-                  }
-                  
-                  retryCount++;
-                  console.log(`Polling attempt ${retryCount}/${maxRetries} for thread ${response?.thread_id || 'unknown'}`);
-                  
-                  // Try to fetch messages
-                  if (response && response.thread_id) {
-                    getThreadMessagesWithRetry(response.thread_id, 1, 500)
-                      .then(messages => {
-                        if (messages && messages.length > 0) {
-                          console.log(`Polling retrieved ${messages.length} messages!`);
-                          loadThreadMessages(messages);
-                          setIsLoading(false);
-                          clearInterval(pollingIntervalRef.current!);
-                          pollingIntervalRef.current = null;
-                        } else if (retryCount >= maxRetries) {
-                          // If we've reached max retries, stop polling and clear loading state
-                          console.log(`Max polling retries (${maxRetries}) reached, clearing loading state`);
-                          setIsLoading(false);
-                          clearInterval(pollingIntervalRef.current!);
-                          pollingIntervalRef.current = null;
-                          
-                          // Add a message indicating we're still processing
-                          setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: "I'm still processing your request. The response should appear soon, or you can try refreshing the conversation."
-                          }]);
-                        }
-                      })
-                      .catch(e => {
-                        console.warn('Error during polling attempt:', e);
-                        if (retryCount >= maxRetries) {
-                          console.log(`Max polling retries (${maxRetries}) reached after error, clearing loading state`);
-                          setIsLoading(false);
-                          clearInterval(pollingIntervalRef.current!);
-                          pollingIntervalRef.current = null;
-                        }
-                      });
-                  } else if (retryCount >= maxRetries) {
-                    // If no thread ID or max retries reached, clear loading state
-                    console.log('No thread ID or max retries reached, clearing loading state');
-                    setIsLoading(false);
-                    clearInterval(pollingIntervalRef.current!);
-                    pollingIntervalRef.current = null;
-                  }
-                }, 2000); // Poll every 2 seconds
-                
-                // Also set a maximum time limit for the polling
-                setTimeout(() => {
-                  if (pollingIntervalRef.current) {
-                    console.log(`Maximum polling time reached for ${response?.status || 'unknown'} status, clearing interval`);
-                    clearInterval(pollingIntervalRef.current);
-                    pollingIntervalRef.current = null;
-                    
-                    // Only update if we're still loading
-                    if (isLoading) {
-                      setIsLoading(false);
-                      // Add a message indicating we're still trying to get the response
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: "I've processed your request, but I'm having trouble retrieving the full response. You can try refreshing the conversation."
-                      }]);
-                    }
-                  }
-                }, 8000); // Maximum 8 seconds of polling
-                
-                break;
-                
-              case 'error':
-                // For error status - wait for verification before showing error
-                console.log('Received error status, waiting for verification before showing error');
-                // The verification or fallback will handle errors, no need to show one now
-                
-                // But set a timeout to show error if verification doesn't complete
-                setTimeout(() => {
-                  // Only show error if we're still loading (verification didn't succeed)
-                  if (isLoading) {
-                    showErrorMessage(response?.error_message);
-                  }
-                }, 5000); // Wait 5 seconds before showing error
-                break;
-                
-              default:
-                // Default case - treat as success but let verification handle it
-                console.log(`Received unknown status: ${response.status || 'undefined'}, waiting for verification`);
-                // The verification or fallback will handle unknown status
-                
-                // Set a timeout to show error if verification doesn't complete
-                setTimeout(() => {
-                  // Only show error if we're still loading (verification didn't succeed)
-                  if (isLoading) {
-                    showErrorMessage();
-                  }
-                }, 5000); // Wait 5 seconds before showing error
-            }
-          } else {
-            // Handle null response - wait for verification before showing error
-            console.warn('Null response from sendAssistantMessage, waiting for verification');
-            // The verification or fallback will handle null response
-            
-            // But set a timeout to show error if verification doesn't complete
-            setTimeout(() => {
-              // Only show error if we're still loading (verification didn't succeed)
-              if (isLoading) {
-                showErrorMessage();
-              }
-            }, 5000); // Wait 5 seconds before showing error
+            }, 1000); // Wait 1 second to check for complete response
           }
+          
+          return; // Exit early once we've handled the response
         }
+        
       } catch (innerError) {
         // Clear the timeout in case of error
-        clearTimeout(messageTimeout);
+        if (messageTimeoutRef.current) {
+          clearTimeout(messageTimeoutRef.current);
+          messageTimeoutRef.current = null;
+        }
         
         console.error('Error in inner try-catch of sendMessage:', innerError);
+        
+        if (requestCancelledRef.current) {
+          console.log('Request was cancelled, skipping error recovery');
+                      return;
+        }
         
         // Before showing an error, try to fetch messages directly if we have a thread ID
         if (threadId) {
@@ -599,6 +512,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
       }
     } catch (outerError) {
       console.error('Error in outer try-catch of sendMessage:', outerError);
+      
+      if (requestCancelledRef.current) {
+        console.log('Request was cancelled, skipping final error recovery');
+        return;
+      }
       
       // Try to get latest threads for recovery
       try {
@@ -638,17 +556,60 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
     }
   };
 
-  // Function to load messages from a thread
-  const loadThreadMessages = (threadMessages: Message[]) => {
-    console.log(`Loading ${threadMessages.length} thread messages`);
+  // Function to load and display thread messages
+  const loadThreadMessages = useCallback((messages: Message[]) => {
+    console.log(`Loading ${messages.length} thread messages`);
     
-    if (!threadMessages || threadMessages.length === 0) {
-      console.warn('Attempted to load empty thread messages array');
+    // Map API messages to display format
+    const mappedMessages = messages.map(message => ({
+      content: message.content,
+      role: message.role,
+      timestamp: new Date().toISOString(),
+    }));
+    
+    // Update the messages in state
+    setMessages(mappedMessages);
+    
+    // If there's a cancelled request, don't update UI states
+    if (requestCancelledRef.current) {
+      console.log('Request was cancelled, not updating UI states');
       return;
     }
     
-    setMessages(threadMessages);
-  };
+    // Manage loading state based on message content
+    const lastMessage = messages[messages.length - 1];
+    
+    // Check if it's likely that we have a complete response
+    const lastMessageIsFromUser = lastMessage?.role === 'user';
+    const lastMessageIsAssistant = lastMessage?.role === 'assistant';
+    const hasSubstantialContent = lastMessageIsAssistant && lastMessage?.content && lastMessage.content.trim().length > 50;
+    const isNotProcessingMessage = lastMessageIsAssistant && 
+      !lastMessage.content.includes("I'm processing") && 
+      !lastMessage.content.includes("wait a moment") && 
+      !lastMessage.content.includes("Please wait") &&
+      !lastMessage.content.includes("thinking about");
+    
+    if (lastMessageIsFromUser) {
+      console.log('Last message is from user, keeping loading state active');
+    } else if (messages.length <= 1) {
+      console.log('Thread only has one message, keeping loading state active');
+    } else if (!hasSubstantialContent) {
+      console.log('Assistant response is too short, keeping loading state active');
+    } else if (!isNotProcessingMessage) {
+      console.log('Assistant is still processing, keeping loading state active');
+    } else {
+      console.log('Complete response detected in loadThreadMessages, will stop loading after delay');
+      // The response appears complete, but add a delay before changing loading state
+      // This ensures the UI doesn't abruptly change and allows time for any final updates
+      setTimeout(() => {
+        // Double-check that the request wasn't cancelled during the timeout
+        if (!requestCancelledRef.current) {
+          console.log('Stopping loading state after delay');
+          setIsLoading(false);
+        }
+      }, 1000);
+    }
+  }, []);
   
   const clearMessages = () => {
     setMessages([]);
@@ -668,10 +629,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         clearMessages,
         loadThreadMessages,
         setThreadId,
-        updateScreenContext
+        updateScreenContext,
+        cancelRequest
       }}
     >
       {children}
     </AIAssistantContext.Provider>
   );
-}; 
+};

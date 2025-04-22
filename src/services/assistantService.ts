@@ -47,11 +47,13 @@ interface UpdateThreadTitleResponse {
  * Send a message to the assistant API
  * @param message The user's message to send
  * @param threadId Optional thread ID to continue a conversation
+ * @param abortSignal Optional AbortSignal to cancel the request
  * @returns The response containing the assistant's reply and thread ID
  */
 export const sendAssistantMessage = async (
   message: string,
-  threadId?: string
+  threadId?: string,
+  abortSignal?: AbortSignal
 ): Promise<{ 
   reply: string; 
   thread_id: string; 
@@ -77,7 +79,8 @@ export const sendAssistantMessage = async (
     const response = await apiRequest<AssistantChatResponse>(`/api/assistant/chat?_=${cacheBuster}`, {
       method: 'POST',
       body: requestBody,
-      timeoutMs: 30000 // Use a longer timeout for assistant requests
+      timeoutMs: 30000, // Use a longer timeout for assistant requests
+      signal: abortSignal // Pass the abort signal to allow cancellation
     });
     
     // CRITICAL: Deep debugging - log the exact response received

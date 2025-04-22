@@ -8,6 +8,7 @@ export interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: any;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -63,7 +64,7 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
         'Accept': 'application/json',
         'Origin': window.location.origin
       },
-      signal: controller.signal
+      signal: options.signal || controller.signal
       // Removed mode: 'cors' and credentials to let the browser handle it
     };
     
