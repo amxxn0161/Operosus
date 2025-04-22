@@ -399,9 +399,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           }
         } else {
           // No events, use current time if it's during business hours, otherwise use 9am
-          targetTime = currentHour >= 9 && currentHour <= 17 
-            ? now 
-            : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          // For desktop view, ensure we're targeting a time within our view range
+          if (!isMobile) {
+            // For desktop view (8am-6pm), use 9am as default or current time if within range
+            targetTime = (currentHour >= 9 && currentHour <= 17) 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          } else {
+            // For mobile view (1am-11pm), use current time if within business hours or 9am
+            targetTime = (currentHour >= 9 && currentHour <= 17) 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          }
         }
         
         // Ensure the target time is within our view range
@@ -464,9 +473,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           }
         } else {
           // No events, use current time if it's during business hours, otherwise use 9am
-          targetTime = currentHour >= 9 && currentHour <= 17 
-            ? now 
-            : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          // For desktop view, ensure we're targeting a time within our view range
+          if (!isMobile) {
+            // For desktop view (8am-6pm), use 9am as default or current time if within range
+            targetTime = (currentHour >= 9 && currentHour <= 17) 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          } else {
+            // For mobile view (1am-11pm), use current time if within business hours or 9am
+            targetTime = (currentHour >= 9 && currentHour <= 17) 
+              ? now 
+              : new Date(new Date().setHours(9, 0, 0, 0)); // Default to 9am
+          }
         }
         
         // Ensure the target time is within our view range
@@ -942,8 +960,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const HOUR_HEIGHT = 60; // Height in pixels for one hour
   const GRID_GAP = 8;
   const DEFAULT_EVENT_WIDTH = 80;
-  const DAY_START_HOUR = 1; // Start the day view at 1 AM
-  const DAY_END_HOUR = 23; // End the day view at 11 PM
+  
+  // Use different time ranges for mobile and desktop
+  const DAY_START_HOUR = isMobile ? 1 : 8; // Start at 8 AM for desktop, 1 AM for mobile
+  const DAY_END_HOUR = isMobile ? 23 : 18; // End at 6 PM for desktop, 11 PM for mobile
   const TIME_LABELS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, i) => DAY_START_HOUR + i);
 
   // Update the renderWeekView and renderDayView event rendering to improve title visibility

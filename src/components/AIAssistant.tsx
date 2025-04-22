@@ -272,13 +272,6 @@ const AIAssistant: React.FC = () => {
     }
   }, [isOpen, threadId]);
   
-  // Scroll to bottom of messages when new ones are added
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-  }, [messages]);
-  
   // Auto-refresh data when loading is active for more than a few seconds
   useEffect(() => {
     // Only activate when we're showing a loading spinner
@@ -302,6 +295,28 @@ const AIAssistant: React.FC = () => {
     }
   }, [isLoading, threadId]);
   
+  // Add new state to track if user is at the bottom of the chat
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  // Add ref to track the message container
+  const messageContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Keep the scroll tracking logic to potentially use for a "scroll to bottom" button later
+  useEffect(() => {
+    const container = messageContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Check if user is at or very near the bottom (within 100px)
+      const isNearBottom = 
+        container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      
+      setIsAtBottom(isNearBottom);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+  
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim()) return;
@@ -313,6 +328,9 @@ const AIAssistant: React.FC = () => {
       message: inputValue.trim(),
       currentThreadId: threadId
     });
+    
+    // Remove automatic scrolling when sending message
+    // setIsAtBottom(true);
     
     // Send message through context
     sendMessage(inputValue)
@@ -396,6 +414,8 @@ const AIAssistant: React.FC = () => {
         console.log(`Loaded ${messages.length} messages from thread "${threadTitle}"`);
         // Set the thread ID first
         setThreadId(threadId);
+        // Remove automatic scrolling when loading a thread
+        // setIsAtBottom(true);
         // Then load the messages into the UI
         loadThreadMessages(messages);
       } else {
@@ -878,6 +898,7 @@ const AIAssistant: React.FC = () => {
 
               {/* Messages area */}
               <Box
+                ref={messageContainerRef}
                 sx={{
                   flexGrow: 1,
                   overflowY: 'auto',
@@ -1351,6 +1372,7 @@ const AIAssistant: React.FC = () => {
               {/* Messages area */}
               <Box
                 className="cancel-drag"
+                ref={messageContainerRef}
                 sx={{
                   flexGrow: 1,
                   overflowY: 'auto',

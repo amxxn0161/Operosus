@@ -445,11 +445,11 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           
           // Add the assistant response to the messages if it contains a substantial reply
           if (response.reply && response.reply.trim() !== '') {
-            const assistantMessage: Message = {
-              role: 'assistant',
-              content: response.reply
-            };
-            setMessages(prev => [...prev, assistantMessage]);
+                const assistantMessage: Message = {
+                  role: 'assistant',
+                  content: response.reply
+                };
+                  setMessages(prev => [...prev, assistantMessage]);
             
             // For now, we'll keep the loading state active
             // Even if we have a response, to make sure we get the full message
@@ -465,17 +465,17 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
               try {
                 console.log(`Checking thread ${responseThreadId} for complete response`);
                 const messages = await getThreadMessages(responseThreadId);
-                if (messages && messages.length > 0) {
+                        if (messages && messages.length > 0) {
                   // Update messages with the latest from the thread
-                  loadThreadMessages(messages);
+                          loadThreadMessages(messages);
                   
                   // Now we can safely stop the loading state
-                  setIsLoading(false);
+                          setIsLoading(false);
                 }
               } catch (error) {
                 console.error('Error checking for complete response:', error);
                 // Still stop loading even if there's an error checking
-                setIsLoading(false);
+                    setIsLoading(false);
               }
             }, 1000); // Wait 1 second to check for complete response
           }
