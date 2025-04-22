@@ -59,6 +59,31 @@ import {
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
 
+// At the top of the file with other style definitions
+const scrollbarStyles = {
+  '&::-webkit-scrollbar': {
+    width: '8px',
+    height: '8px',
+  },
+  '&::-webkit-scrollbar-track': {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: '4px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: '4px',
+    '&:hover': {
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
+  },
+};
+
+const dialogContentStyles = {
+  overflowY: 'auto',
+  maxHeight: 'calc(100vh - 200px)',
+  ...scrollbarStyles
+};
+
 const GoogleTasks: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -930,6 +955,119 @@ const GoogleTasks: React.FC = () => {
     }));
   };
 
+  // Set global scrollbar styles for all scrollable containers
+  const scrollbarStyles = {
+    '&::-webkit-scrollbar': {
+      width: '8px',
+      height: '8px',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: 'rgba(0,0,0,0.2)',
+      borderRadius: '4px',
+    },
+    '&::-webkit-scrollbar-track': {
+      backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    scrollbarWidth: 'thin',
+    scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
+  };
+
+  // Fix DialogContent components to properly scroll
+  const dialogContentStyles = {
+    overflowY: 'auto',
+    maxHeight: 'calc(100vh - 200px)',
+    ...scrollbarStyles,
+  };
+
+  // Add a useEffect for the pending tasks modal specifically
+  useEffect(() => {
+    // We need to find the pending tasks container and ensure it has proper overflow
+    const pendingTasksContainer = document.querySelector('.pending-tasks-container');
+    if (pendingTasksContainer) {
+      // Add scrolling styles to the inner container that holds the tasks
+      const tasksSection = pendingTasksContainer.querySelector('.tasks-section');
+      if (tasksSection) {
+        (tasksSection as HTMLElement).style.overflowY = 'auto';
+        (tasksSection as HTMLElement).style.maxHeight = 'calc(100vh - 200px)';
+      }
+    }
+  }, []);
+
+  // Since we can't locate the exact Pending Tasks component, add an additional useEffect
+  // that will apply styling to any matching elements that appear in the DOM
+  useEffect(() => {
+    // Create a mutation observer to detect when the pending tasks view is added to the DOM
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.addedNodes.length) {
+          // Look for the pending-tasks-popup class or elements with text content "Pending tasks"
+          const pendingTasksPopup = document.querySelector('.pending-tasks-popup');
+          
+          if (pendingTasksPopup) {
+            // Find the content area that needs to scroll by data attribute
+            const contentArea = pendingTasksPopup.querySelector('[data-scrollable="pending-tasks"]');
+            
+            if (contentArea) {
+              // Apply scrolling styles
+              (contentArea as HTMLElement).style.overflowY = 'auto';
+              (contentArea as HTMLElement).style.maxHeight = 'calc(100vh - 200px)';
+              (contentArea as HTMLElement).style.flexGrow = '1';
+              
+              // We're not applying scrollbar styles here as they're already in the component's sx prop
+              console.log('Applied scrolling styles to Pending tasks popup');
+            }
+          } else {
+            // Fallback to previous approach if the class is not found
+            const pendingTasksHeaders = document.querySelectorAll('h1, h2, h3, h4, h5, h6, div');
+            
+            pendingTasksHeaders.forEach((element) => {
+              if (element.textContent?.includes('Pending tasks')) {
+                // Find the container
+                const container = element.closest('.MuiDialog-paper') || element.closest('.MuiPopover-paper');
+                if (container) {
+                  // Try to find the content area using the data attribute first
+                  let contentArea = container.querySelector('[data-scrollable="pending-tasks"]');
+                  
+                  // If not found, fall back to standard Material-UI classes
+                  if (!contentArea) {
+                    contentArea = container.querySelector('.MuiDialogContent-root') || 
+                                container.querySelector('.MuiCardContent-root') ||
+                                container.querySelector('.tasks-section');
+                  }
+                  
+                  if (contentArea) {
+                    // Apply scrolling styles
+                    (contentArea as HTMLElement).style.overflowY = 'auto';
+                    (contentArea as HTMLElement).style.maxHeight = 'calc(100vh - 200px)';
+                    (contentArea as HTMLElement).style.flexGrow = '1';
+                    
+                    console.log('Applied scrolling styles to content area in Pending tasks popup');
+                  }
+                }
+              }
+            });
+          }
+        }
+      });
+    });
+    
+    // Start observing the document with the configured parameters
+    observer.observe(document.body, { childList: true, subtree: true });
+    
+    // Clean up
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  // Add expandable content styles definition
+  const expandableContentStyles = {
+    maxHeight: '300px', // Fixed height to force scrolling when content exceeds this height
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    ...scrollbarStyles
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1165,7 +1303,9 @@ const GoogleTasks: React.FC = () => {
                       py: 1, 
                       flexGrow: 1, 
                       overflowY: 'auto', 
-                      maxHeight: '50vh' 
+                      overflowX: 'hidden', // Prevent horizontal scrolling
+                      maxHeight: '50vh',
+                      ...scrollbarStyles
                     }}
                   >
                     <Droppable droppableId={taskList.id}>
@@ -1361,67 +1501,74 @@ const GoogleTasks: React.FC = () => {
                               </ListItem>
                               
                               {expandedCompletedSections[taskList.id] && (
-                                taskList.tasks.filter(task => task.status === 'completed').map((task) => (
-                                  <ListItem
-                                    key={task.id}
-                                    sx={{
-                                      py: 1,
-                                      borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                                      '&:last-child': { borderBottom: 'none' }
-                                    }}
-                                  >
-                                    <ListItemIcon sx={{ minWidth: '40px' }}>
-                                      <Checkbox
-                                        checked={true}
-                                        onChange={(e) => {
-                                          e.stopPropagation();
-                                          handleToggleTaskComplete(taskList.id, task.id);
-                                        }}
-                                        edge="start"
-                                        icon={<CheckBoxOutlineBlankIcon />}
-                                        checkedIcon={<CheckBoxIcon />}
-                                        sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
-                                      />
-                                    </ListItemIcon>
-                                    <ListItemText
-                                      primary={
-                                        <Typography
-                                          sx={{
-                                            textDecoration: 'line-through',
-                                            color: 'text.secondary',
-                                            fontFamily: 'Poppins',
-                                          }}
-                                        >
-                                          {task.title}
-                                        </Typography>
-                                      }
-                                      secondary={
-                                        task.completed && (
-                                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                                            Completed: {formatDate(task.completed)}
-                                          </Typography>
-                                        )
-                                      }
-                                    />
-                                    <IconButton
-                                      edge="end"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleTaskStar(taskList.id, task.id);
+                                <Box sx={{ 
+                                  maxHeight: '50vh', 
+                                  overflowY: 'auto',
+                                  overflowX: 'hidden', // Prevent horizontal scrolling
+                                  ...scrollbarStyles
+                                }}>
+                                  {taskList.tasks.filter(task => task.status === 'completed').map((task) => (
+                                    <ListItem
+                                      key={task.id}
+                                      sx={{
+                                        py: 1,
+                                        borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                                        '&:last-child': { borderBottom: 'none' }
                                       }}
-                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
                                     >
-                                      {task.starred ? <StarIcon /> : <StarBorderIcon />}
-                                    </IconButton>
-                                    <IconButton
-                                      edge="end"
-                                      onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
-                                      size="small"
-                                    >
-                                      <MoreVertIcon fontSize="small" />
-                                    </IconButton>
-                                  </ListItem>
-                                ))
+                                      <ListItemIcon sx={{ minWidth: '40px' }}>
+                                        <Checkbox
+                                          checked={true}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleTaskComplete(taskList.id, task.id);
+                                          }}
+                                          edge="start"
+                                          icon={<CheckBoxOutlineBlankIcon />}
+                                          checkedIcon={<CheckBoxIcon />}
+                                          sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
+                                        />
+                                      </ListItemIcon>
+                                      <ListItemText
+                                        primary={
+                                          <Typography
+                                            sx={{
+                                              textDecoration: 'line-through',
+                                              color: 'text.secondary',
+                                              fontFamily: 'Poppins',
+                                            }}
+                                          >
+                                            {task.title}
+                                          </Typography>
+                                        }
+                                        secondary={
+                                          task.completed && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                              Completed: {formatDate(task.completed)}
+                                            </Typography>
+                                          )
+                                        }
+                                      />
+                                      <IconButton
+                                        edge="end"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleTaskStar(taskList.id, task.id);
+                                        }}
+                                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                      >
+                                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                      </IconButton>
+                                      <IconButton
+                                        edge="end"
+                                        onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
+                                        size="small"
+                                      >
+                                        <MoreVertIcon fontSize="small" />
+                                      </IconButton>
+                                    </ListItem>
+                                  ))}
+                                </Box>
                               )}
                             </>
                           )}
@@ -1519,7 +1666,12 @@ const GoogleTasks: React.FC = () => {
             </Box>
             
             {expandedCompletedSections.global && (
-              <Box sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <Box sx={{ 
+                maxHeight: '60vh', 
+                overflowY: 'auto',
+                overflowX: 'hidden', // Prevent horizontal scrolling
+                ...scrollbarStyles
+              }}>
                 <List sx={{ py: 0 }}>
                   {taskLists.flatMap(list => 
                     list.tasks
@@ -1757,7 +1909,7 @@ const GoogleTasks: React.FC = () => {
         <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
           Add a task
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={dialogContentStyles}>
           <TextField
             autoFocus
             margin="dense"
@@ -1907,7 +2059,13 @@ const GoogleTasks: React.FC = () => {
               horizontal: 'left',
             }}
           >
-            <Stack spacing={1} sx={{ p: 2, width: 200, maxHeight: 400, overflow: 'auto' }}>
+            <Stack spacing={1} sx={{ 
+              p: 2, 
+              width: 200, 
+              maxHeight: 400, 
+              overflow: 'auto',
+              ...scrollbarStyles
+            }}>
               <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
                 Set time
               </Typography>
@@ -2019,7 +2177,7 @@ const GoogleTasks: React.FC = () => {
         <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
           Create new list
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={dialogContentStyles}>
           <TextField
             autoFocus
             margin="dense"
@@ -2064,7 +2222,7 @@ const GoogleTasks: React.FC = () => {
         <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
           Rename list
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={dialogContentStyles}>
           <TextField
             autoFocus
             margin="dense"
@@ -2109,7 +2267,7 @@ const GoogleTasks: React.FC = () => {
         <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
           Edit Task
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={dialogContentStyles}>
           <TextField
             autoFocus
             margin="dense"
@@ -2259,7 +2417,13 @@ const GoogleTasks: React.FC = () => {
               horizontal: 'left',
             }}
           >
-            <Stack spacing={1} sx={{ p: 2, width: 200, maxHeight: 400, overflow: 'auto' }}>
+            <Stack spacing={1} sx={{ 
+              p: 2, 
+              width: 200, 
+              maxHeight: 400, 
+              overflow: 'auto',
+              ...scrollbarStyles
+            }}>
               <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
                 Set time
               </Typography>
