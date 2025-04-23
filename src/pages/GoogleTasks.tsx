@@ -550,27 +550,30 @@ const GoogleTasks: React.FC = () => {
         // Filter to get only incomplete tasks as those are the ones being reordered in UI
         const incompleteTasks = destList.tasks.filter(task => task.status !== 'completed');
         
-        // Determine the previous task ID
-        // If dropped at the beginning (index 0), use null as previousTaskId (place at the top)
-        // Otherwise, use the ID of the task that should come before it
+        // Get the task being moved
+        const taskId = sourceList.tasks[source.index].id;
+        
+        // Determine the previous task ID based on the destination index
         let previousTaskId: string | null = null;
         
+        // If destination is not the top position (index 0)
         if (destination.index > 0) {
-          // Get the task ID of the item before the new position
-          previousTaskId = incompleteTasks[destination.index - 1].id;
+          // When moving a task down, we need to determine which task will be before it
+          // Get all the task IDs in order (excluding the one being moved)
+          const taskIdsInOrder = incompleteTasks.filter(t => t.id !== taskId).map(t => t.id);
           
-          // Critical fix: Make sure a task is never positioned after itself
-          // If the previousTaskId is the same as the taskId being moved, we need to adjust
-          if (previousTaskId === taskId) {
-            // If dragging down in the list, use the task that was before the destination instead
-            if (source.index < destination.index && destination.index - 1 > 0) {
-              previousTaskId = incompleteTasks[destination.index - 2].id;
-            } 
-            // If that's not possible or we're dragging up, position at the top
-            else {
-              previousTaskId = null;
-            }
+          // The previous task is the one that will be at destination.index - 1
+          // But we have to be careful with the indices since we removed the task being moved
+          const previousIndex = destination.index - 1;
+          if (previousIndex >= 0 && previousIndex < taskIdsInOrder.length) {
+            previousTaskId = taskIdsInOrder[previousIndex];
           }
+          
+          // Debug log to help diagnose
+          console.log(`Moving task ${taskId} to position ${destination.index}, previous task: ${previousTaskId}`);
+        } else {
+          // If moving to the top, previousTaskId remains null
+          console.log(`Moving task ${taskId} to the top position`);
         }
         
         // Make the API call to reorder
