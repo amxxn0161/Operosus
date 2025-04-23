@@ -409,7 +409,7 @@ const getColorIdFromEventType = (eventType: string | undefined): string | undefi
   // Map event types to color IDs - using more distinct colors
   switch (eventType) {
     case 'focusTime':
-      return '5'; // Yellow
+      return '6'; // Red (changed from '5' Yellow)
     case 'outOfOffice':
       return '11'; // Red
     case 'workingLocation':

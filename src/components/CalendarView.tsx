@@ -172,7 +172,7 @@ const getEventColor = (event: CalendarEvent): string => {
       return '#E8EAED'; // Light gray for Out of Office
     }
     if (event.eventType === 'focusTime') {
-      return '#4285F4'; // Blue for Focus Time 
+      return '#E04330'; // Red for Focus Time (changed from blue #4285F4)
     }
     if (event.eventType === 'workingLocation') {
       return '#34A853'; // Green for Working Location
