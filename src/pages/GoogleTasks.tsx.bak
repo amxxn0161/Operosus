@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, ReactNode } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -55,18 +55,14 @@ import {
   Loop as LoopIcon,
   CheckBox as CheckBoxIcon,
   CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  Clear as ClearIcon,
-  NavigateBefore as NavigateBeforeIcon,
-  NavigateNext as NavigateNextIcon
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
 import { ENDPOINTS } from '../services/apiConfig';
 import { checkAuthState } from '../services/authService';
 import TaskDetailsModal from '../components/TaskDetailsModal';
-// Add these imports if they don't already exist at the top
-import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -91,6 +87,43 @@ const dialogContentStyles = {
   overflowY: 'auto',
   maxHeight: 'calc(100vh - 200px)',
   ...scrollbarStyles
+};
+
+// Add this function near the other date-related utility functions
+const generateMonthCalendarDays = (year: number, month: number) => {
+  // Create a date for the first day of the month
+  const firstDayOfMonth = new Date(year, month, 1);
+  
+  // Get the day of week for the first day (0 = Sunday, 6 = Saturday)
+  const firstDayOfWeek = firstDayOfMonth.getDay();
+  
+  // Get the number of days in the month
+  const lastDayOfMonth = new Date(year, month + 1, 0);
+  const daysInMonth = lastDayOfMonth.getDate();
+  
+  // Create an array to hold all calendar cells (up to 42 for a 6x7 grid)
+  const calendarDays = [];
+  
+  // Add empty cells for days before the 1st of the month
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    calendarDays.push({ day: 0, date: null });
+  }
+  
+  // Add cells for each day of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    calendarDays.push({ day, date });
+  }
+  
+  // If needed, add empty cells to complete the last week row
+  const remainingCells = 7 - (calendarDays.length % 7);
+  if (remainingCells < 7) {
+    for (let i = 0; i < remainingCells; i++) {
+      calendarDays.push({ day: 0, date: null });
+    }
+  }
+  
+  return calendarDays;
 };
 
 const GoogleTasks: React.FC = () => {
@@ -172,9 +205,6 @@ const GoogleTasks: React.FC = () => {
   
   // Click timer for handling single click vs double click
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Add these state variables with the other state variables
-  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -1242,30 +1272,124 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
-  // Add these functions with the other functions
-  const handlePreviousMonth = () => {
-    setCurrentMonth(prevMonth => {
-      const newMonth = new Date(prevMonth);
-      newMonth.setMonth(newMonth.getMonth() - 1);
-      return newMonth;
-    });
+  // First, add state variables to track the current date picker month and year
+  // Add near the top of the component after other state declarations (around line 200)
+
+  // Date picker state for month navigation
+  const [datePickerMonth, setDatePickerMonth] = useState<number>(3); // April (0-indexed)
+  const [datePickerYear, setDatePickerYear] = useState<number>(2025);
+  const [editDatePickerMonth, setEditDatePickerMonth] = useState<number>(3); // April (0-indexed)
+  const [editDatePickerYear, setEditDatePickerYear] = useState<number>(2025);
+
+  // Add these new handlers for month navigation
+  // Add after other handler functions
+
+  // Handlers for month navigation in new task date picker
+  const handlePrevMonth = () => {
+    if (datePickerMonth === 0) {
+      setDatePickerMonth(11);
+      setDatePickerYear(datePickerYear - 1);
+    } else {
+      setDatePickerMonth(datePickerMonth - 1);
+    }
   };
 
   const handleNextMonth = () => {
-    setCurrentMonth(prevMonth => {
-      const newMonth = new Date(prevMonth);
-      newMonth.setMonth(newMonth.getMonth() + 1);
-      return newMonth;
-    });
+    if (datePickerMonth === 11) {
+      setDatePickerMonth(0);
+      setDatePickerYear(datePickerYear + 1);
+    } else {
+      setDatePickerMonth(datePickerMonth + 1);
+    }
   };
 
-  const getDaysInMonth = (date: Date): number => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  // Handlers for month navigation in edit task date picker
+  const handleEditPrevMonth = () => {
+    if (editDatePickerMonth === 0) {
+      setEditDatePickerMonth(11);
+      setEditDatePickerYear(editDatePickerYear - 1);
+    } else {
+      setEditDatePickerMonth(editDatePickerMonth - 1);
+    }
   };
 
-  const getFirstDayOfMonth = (date: Date): number => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const handleEditNextMonth = () => {
+    if (editDatePickerMonth === 11) {
+      setEditDatePickerMonth(0);
+      setEditDatePickerYear(editDatePickerYear + 1);
+    } else {
+      setEditDatePickerMonth(editDatePickerMonth + 1);
+    }
   };
+
+  // Get month name for display
+  const getMonthName = (month: number): string => {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[month];
+  };
+
+  // Now update the date picker implementation in the new task dialog
+  // Replace the month title and calendar generation code in the date picker (around line 2160)
+
+  // Replace:
+  <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>
+    April 2025
+  </Typography>
+
+  // With:
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+    <IconButton onClick={handlePrevMonth}>
+      <ChevronLeftIcon />
+    </IconButton>
+    <Typography variant="subtitle1" align="center">
+      {getMonthName(datePickerMonth)} {datePickerYear}
+    </Typography>
+    <IconButton onClick={handleNextMonth}>
+      <ChevronRightIcon />
+    </IconButton>
+  </Box>
+
+  // Also update the calendar generation to use the state variables:
+  // Replace:
+  {generateMonthCalendarDays(2025, 3).map((dayObj, index) => (
+
+  // With:
+  {generateMonthCalendarDays(datePickerYear, datePickerMonth).map((dayObj, index) => (
+
+  // Now do the same for the edit task date picker (around line 2510)
+
+  // Replace:
+  <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>
+    April 2025
+  </Typography>
+
+  // With:
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+    <IconButton onClick={handleEditPrevMonth}>
+      <ChevronLeftIcon />
+    </IconButton>
+    <Typography variant="subtitle1" align="center">
+      {getMonthName(editDatePickerMonth)} {editDatePickerYear}
+    </Typography>
+    <IconButton onClick={handleEditNextMonth}>
+      <ChevronRightIcon />
+    </IconButton>
+  </Box>
+
+  // Update the calendar generation to use the state variables:
+  // Replace:
+  {generateMonthCalendarDays(2025, 3).map((dayObj, index) => (
+
+  // With:
+  {generateMonthCalendarDays(editDatePickerYear, editDatePickerMonth).map((dayObj, index) => (
+
+  // Don't forget to add the import for the chevron icons near the top of the file
+  // Add to the imports section:
+  import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+  import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
@@ -2179,18 +2303,19 @@ const GoogleTasks: React.FC = () => {
             }}
           >
             <Stack spacing={2} sx={{ p: 2, width: 300 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <IconButton onClick={handlePreviousMonth} size="small">
-                  <ArrowBackIosNewIcon fontSize="small" />
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <IconButton onClick={handlePrevMonth}>
+                  <ChevronLeftIcon />
                 </IconButton>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                  {format(currentMonth, 'MMMM yyyy')}
+                <Typography variant="subtitle1" align="center">
+                  {getMonthName(datePickerMonth)} {datePickerYear}
                 </Typography>
-                <IconButton onClick={handleNextMonth} size="small">
-                  <ArrowForwardIosIcon fontSize="small" />
+                <IconButton onClick={handleNextMonth}>
+                  <ChevronRightIcon />
                 </IconButton>
               </Box>
               
+              {/* Calendar days - properly generated */}
               <Grid container spacing={1}>
                 {/* Calendar days header */}
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
@@ -2199,76 +2324,31 @@ const GoogleTasks: React.FC = () => {
                   </Grid>
                 ))}
                 
-                {/* Calendar days - dynamically generated */}
-                {(() => {
-                  const daysInMonth = getDaysInMonth(currentMonth);
-                  const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
-                  
-                  const days: React.ReactNode[] = [];
-                  // Empty cells for days before first day of month
-                  for (let i = 0; i < firstDayOfMonth; i++) {
-                    days.push(
-                      <Grid item xs={12/7} key={`empty-${i}`} sx={{ textAlign: 'center' }}>
-                        <Box sx={{ width: 32, height: 32 }} />
-                      </Grid>
-                    );
-                  }
-                  
-                  // Days of the month
-                  for (let day = 1; day <= daysInMonth; day++) {
-                    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-                    
-                    // Determine if this date is selected
-                    let dateIsSelected = false;
-                    if (newTaskDueDate) {
-                      let compareDate: Date;
-                      if (typeof newTaskDueDate === 'string') {
-                        compareDate = new Date(newTaskDueDate);
-                      } else {
-                        compareDate = newTaskDueDate as Date;
-                      }
-                      
-                      dateIsSelected = 
-                        date.getDate() === compareDate.getDate() && 
-                        date.getMonth() === compareDate.getMonth() && 
-                        date.getFullYear() === compareDate.getFullYear();
-                    }
-                    
-                    const isToday = 
-                      date.getDate() === new Date().getDate() && 
-                      date.getMonth() === new Date().getMonth() && 
-                      date.getFullYear() === new Date().getFullYear();
-                      
-                    days.push(
-                      <Grid item xs={12/7} key={day} sx={{ textAlign: 'center' }}>
-                        <IconButton 
-                          size="small" 
-                          sx={{ 
-                            borderRadius: '50%',
-                            width: 32, 
-                            height: 32,
-                            ...(dateIsSelected && { 
-                              bgcolor: 'primary.main',
-                              color: 'white',
-                              '&:hover': { bgcolor: 'primary.dark' }
-                            }),
-                            ...(isToday && !dateIsSelected && {
-                              border: '1px solid',
-                              borderColor: 'primary.main',
-                            })
-                          }}
-                          onClick={() => {
-                            handleSetDueDate(date);
-                          }}
-                        >
-                          <Typography variant="body2">{day}</Typography>
-                        </IconButton>
-                      </Grid>
-                    );
-                  }
-                  
-                  return days;
-                })()}
+                {/* Calendar days - properly generated */}
+                {generateMonthCalendarDays(datePickerYear, datePickerMonth).map((dayObj, index) => (
+                  <Grid item xs={12/7} key={index} sx={{ textAlign: 'center' }}>
+                    {dayObj.day > 0 && (
+                      <IconButton 
+                        size="small" 
+                        sx={{ 
+                          borderRadius: '50%',
+                          width: 32, 
+                          height: 32,
+                          ...(dayObj.day === new Date().getDate() && new Date().getMonth() === datePickerMonth && new Date().getFullYear() === datePickerYear && { 
+                            bgcolor: 'primary.main',
+                            color: 'white',
+                            '&:hover': { bgcolor: 'primary.dark' }
+                          })
+                        }}
+                        onClick={() => {
+                          handleSetDueDate(dayObj.date);
+                        }}
+                      >
+                        <Typography variant="body2">{dayObj.day}</Typography>
+                      </IconButton>
+                    )}
+                  </Grid>
+                ))}
               </Grid>
               
               <Divider />
@@ -2300,7 +2380,7 @@ const GoogleTasks: React.FC = () => {
               </Stack>
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                <Button onClick={handleClearDueDate}>Clear</Button>
+                <Button onClick={handleDatePickerClose}>Cancel</Button>
                 <Button 
                   variant="contained" 
                   onClick={handleDatePickerClose}
@@ -2586,18 +2666,19 @@ const GoogleTasks: React.FC = () => {
             }}
           >
             <Stack spacing={2} sx={{ p: 2, width: 300 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <IconButton onClick={handlePreviousMonth} size="small">
-                  <ArrowBackIosNewIcon fontSize="small" />
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <IconButton onClick={handleEditPrevMonth}>
+                  <ChevronLeftIcon />
                 </IconButton>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                  {format(currentMonth, 'MMMM yyyy')}
+                <Typography variant="subtitle1" align="center">
+                  {getMonthName(editDatePickerMonth)} {editDatePickerYear}
                 </Typography>
-                <IconButton onClick={handleNextMonth} size="small">
-                  <ArrowForwardIosIcon fontSize="small" />
+                <IconButton onClick={handleEditNextMonth}>
+                  <ChevronRightIcon />
                 </IconButton>
               </Box>
               
+              {/* Calendar days - properly generated */}
               <Grid container spacing={1}>
                 {/* Calendar days header */}
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
@@ -2606,76 +2687,31 @@ const GoogleTasks: React.FC = () => {
                   </Grid>
                 ))}
                 
-                {/* Calendar days - dynamically generated */}
-                {(() => {
-                  const daysInMonth = getDaysInMonth(currentMonth);
-                  const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
-                  
-                  const days: React.ReactNode[] = [];
-                  // Empty cells for days before first day of month
-                  for (let i = 0; i < firstDayOfMonth; i++) {
-                    days.push(
-                      <Grid item xs={12/7} key={`empty-${i}`} sx={{ textAlign: 'center' }}>
-                        <Box sx={{ width: 32, height: 32 }} />
-                      </Grid>
-                    );
-                  }
-                  
-                  // Days of the month
-                  for (let day = 1; day <= daysInMonth; day++) {
-                    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-                    
-                    // Determine if this date is selected
-                    let dateIsSelected = false;
-                    if (editTaskDueDate) {
-                      let compareDate: Date;
-                      if (typeof editTaskDueDate === 'string') {
-                        compareDate = new Date(editTaskDueDate);
-                      } else {
-                        compareDate = editTaskDueDate as Date;
-                      }
-                      
-                      dateIsSelected = 
-                        date.getDate() === compareDate.getDate() && 
-                        date.getMonth() === compareDate.getMonth() && 
-                        date.getFullYear() === compareDate.getFullYear();
-                    }
-                    
-                    const isToday = 
-                      date.getDate() === new Date().getDate() && 
-                      date.getMonth() === new Date().getMonth() && 
-                      date.getFullYear() === new Date().getFullYear();
-                      
-                    days.push(
-                      <Grid item xs={12/7} key={day} sx={{ textAlign: 'center' }}>
-                        <IconButton 
-                          size="small" 
-                          sx={{ 
-                            borderRadius: '50%',
-                            width: 32, 
-                            height: 32,
-                            ...(dateIsSelected && { 
-                              bgcolor: 'primary.main',
-                              color: 'white',
-                              '&:hover': { bgcolor: 'primary.dark' }
-                            }),
-                            ...(isToday && !dateIsSelected && {
-                              border: '1px solid',
-                              borderColor: 'primary.main',
-                            })
-                          }}
-                          onClick={() => {
-                            handleSetEditDueDate(date);
-                          }}
-                        >
-                          <Typography variant="body2">{day}</Typography>
-                        </IconButton>
-                      </Grid>
-                    );
-                  }
-                  
-                  return days;
-                })()}
+                {/* Calendar days - properly generated */}
+                {generateMonthCalendarDays(editDatePickerYear, editDatePickerMonth).map((dayObj, index) => (
+                  <Grid item xs={12/7} key={index} sx={{ textAlign: 'center' }}>
+                    {dayObj.day > 0 && (
+                      <IconButton 
+                        size="small" 
+                        sx={{ 
+                          borderRadius: '50%',
+                          width: 32, 
+                          height: 32,
+                          ...(dayObj.day === new Date().getDate() && new Date().getMonth() === editDatePickerMonth && new Date().getFullYear() === editDatePickerYear && { 
+                            bgcolor: 'primary.main',
+                            color: 'white',
+                            '&:hover': { bgcolor: 'primary.dark' }
+                          })
+                        }}
+                        onClick={() => {
+                          handleSetEditDueDate(dayObj.date);
+                        }}
+                      >
+                        <Typography variant="body2">{dayObj.day}</Typography>
+                      </IconButton>
+                    )}
+                  </Grid>
+                ))}
               </Grid>
               
               <Divider />
