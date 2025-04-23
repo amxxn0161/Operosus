@@ -58,6 +58,8 @@ import {
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
+import { ENDPOINTS } from '../services/apiConfig';
+import { checkAuthState } from '../services/authService';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -446,6 +448,56 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Move a task within a task list (reorder)
+  const reorderTask = async (taskListId: string, taskId: string, previousTaskId: string | null) => {
+    try {
+      // Get auth token
+      const { token } = checkAuthState();
+      if (!token) {
+        console.error('No authentication token available');
+        return null;
+      }
+
+      // Prepare the request body
+      const requestBody: { previous?: string } = {};
+      
+      // If previousTaskId is provided, set it in the request body
+      // This means "position this task after the task with previousTaskId"
+      // If previousTaskId is null, the task will be positioned at the top
+      if (previousTaskId) {
+        requestBody.previous = previousTaskId;
+      }
+      
+      // Construct the full URL using the API base URL and endpoints from config
+      const endpoint = `${ENDPOINTS.GOOGLE_TASKS}/${taskListId}/tasks/${taskId}/move`;
+      const fullUrl = `https://app2.operosus.com${endpoint}`;
+      
+      // Make the API call to move the task
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Origin': window.location.origin
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        return data.task;
+      } else {
+        console.error('Failed to reorder task:', data.message);
+        return null;
+      }
+    } catch (err) {
+      console.error('Error reordering task:', err);
+      return null;
+    }
+  };
+
   // Handle drag and drop of tasks
   const handleDragEnd = async (result: DropResult) => {
     const { source, destination } = result;
@@ -487,9 +539,56 @@ const GoogleTasks: React.FC = () => {
       } catch (err) {
         showSnackbar('Error moving task', 'error');
       }
+    } 
+    // Reordering within the same list
+    else {
+      try {
+        // Get the destination list (same as source list in this case)
+        const destList = taskLists.find(list => list.id === destinationTaskListId);
+        if (!destList) return;
+        
+        // Filter to get only incomplete tasks as those are the ones being reordered in UI
+        const incompleteTasks = destList.tasks.filter(task => task.status !== 'completed');
+        
+        // Determine the previous task ID
+        // If dropped at the beginning (index 0), use null as previousTaskId (place at the top)
+        // Otherwise, use the ID of the task that should come before it
+        let previousTaskId: string | null = null;
+        
+        if (destination.index > 0) {
+          // Get the task ID of the item before the new position
+          previousTaskId = incompleteTasks[destination.index - 1].id;
+          
+          // Critical fix: Make sure a task is never positioned after itself
+          // If the previousTaskId is the same as the taskId being moved, we need to adjust
+          if (previousTaskId === taskId) {
+            // If dragging down in the list, use the task that was before the destination instead
+            if (source.index < destination.index && destination.index - 1 > 0) {
+              previousTaskId = incompleteTasks[destination.index - 2].id;
+            } 
+            // If that's not possible or we're dragging up, position at the top
+            else {
+              previousTaskId = null;
+            }
+          }
+        }
+        
+        // Make the API call to reorder
+        const result = await reorderTask(destinationTaskListId, taskId, previousTaskId);
+        
+        if (result) {
+          showSnackbar('Task reordered successfully', 'success');
+          
+          // Refresh the task lists to reflect the new order
+          await refreshTaskLists();
+        } else {
+          showSnackbar('Failed to reorder task', 'error');
+        }
+      } catch (err) {
+        console.error('Error reordering task:', err);
+        showSnackbar('Error reordering task', 'error');
+      }
     }
-    // If reordering within the same list, we'd need to update positions
-    // This would require additional API support
   };
 
   // Format date for display

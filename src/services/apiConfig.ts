@@ -9,7 +9,8 @@ export const ENDPOINTS = {
   PROFILE: `/profile`,
   AUTH: `/auth`,
   TASKS: `/api/tasks`,
-  WORKSHEET: `/api/worksheet`
+  WORKSHEET: `/api/worksheet`,
+  GOOGLE_TASKS: `/api/google/tasklists`
 };
 
 // API Request Timeouts
