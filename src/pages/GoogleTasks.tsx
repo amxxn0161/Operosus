@@ -60,6 +60,7 @@ import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogl
 import { format, isValid, parseISO, addDays } from 'date-fns';
 import { ENDPOINTS } from '../services/apiConfig';
 import { checkAuthState } from '../services/authService';
+import TaskDetailsModal from '../components/TaskDetailsModal';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -158,6 +159,13 @@ const GoogleTasks: React.FC = () => {
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
     global: false
   });
+
+  // Task details modal state
+  const [taskDetailsModalOpen, setTaskDetailsModalOpen] = useState<boolean>(false);
+  const [detailsTask, setDetailsTask] = useState<{taskListId: string; task: EnhancedGoogleTask; taskListTitle?: string} | null>(null);
+  
+  // Click timer for handling single click vs double click
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -1170,6 +1178,61 @@ const GoogleTasks: React.FC = () => {
     ...scrollbarStyles
   };
 
+  // Handle task click - will open details view
+  const handleTaskDetailsOpen = (taskListId: string, task: EnhancedGoogleTask, taskListTitle?: string) => {
+    setDetailsTask({ taskListId, task, taskListTitle });
+    setTaskDetailsModalOpen(true);
+  };
+
+  // Handle closing task details modal
+  const handleTaskDetailsClose = () => {
+    setTaskDetailsModalOpen(false);
+  };
+
+  // Handle editing from task details modal
+  const handleEditFromDetails = () => {
+    if (detailsTask) {
+      setTaskDetailsModalOpen(false);
+      handleTaskClick(detailsTask.taskListId, detailsTask.task);
+    }
+  };
+
+  // Handle deleting from task details modal
+  const handleDeleteFromDetails = async () => {
+    if (detailsTask) {
+      try {
+        const result = await deleteTask(detailsTask.taskListId, detailsTask.task.id);
+        if (result) {
+          setTaskDetailsModalOpen(false);
+          showSnackbar('Task deleted successfully', 'success');
+        } else {
+          showSnackbar('Failed to delete task', 'error');
+        }
+      } catch (err) {
+        showSnackbar('Error deleting task', 'error');
+      }
+    }
+  };
+
+  // Handle task item click with single/double click detection
+  const handleTaskItemClick = (taskListId: string, task: EnhancedGoogleTask, taskListTitle?: string) => {
+    // Handle double click detection
+    if (clickTimerRef.current) {
+      // Double click detected
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      // Open edit dialog directly
+      handleTaskClick(taskListId, task);
+    } else {
+      // Set a timer to detect if this is a single click
+      clickTimerRef.current = setTimeout(() => {
+        // This is a single click - open details view
+        handleTaskDetailsOpen(taskListId, task, taskListTitle);
+        clickTimerRef.current = null;
+      }, 250); // 250ms delay to detect double click
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1262,10 +1325,19 @@ const GoogleTasks: React.FC = () => {
                   return (
                     <ListItem
                       key={task.id}
+                      onClick={() => {
+                        const taskList = taskLists.find(list => 
+                          list.tasks.some(t => t.id === task.id)
+                        );
+                        if (taskList) {
+                          handleTaskItemClick(taskList.id, task, taskList.title);
+                        }
+                      }}
                       sx={{
                         py: 1,
                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                        '&:last-child': { borderBottom: 'none' }
+                        '&:last-child': { borderBottom: 'none' },
+                        cursor: 'pointer'
                       }}
                     >
                       <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -1429,10 +1501,12 @@ const GoogleTasks: React.FC = () => {
                                     ref={(el) => provided.innerRef(el)}
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
+                                    onClick={() => handleTaskItemClick(taskList.id, task, taskList.title)}
                                     sx={{
                                       py: 1,
                                       borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                                      '&:last-child': { borderBottom: 'none' }
+                                      '&:last-child': { borderBottom: 'none' },
+                                      cursor: 'pointer'
                                     }}
                                   >
                                     <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -1612,10 +1686,12 @@ const GoogleTasks: React.FC = () => {
                                   {taskList.tasks.filter(task => task.status === 'completed').map((task) => (
                                     <ListItem
                                       key={task.id}
+                                      onClick={() => handleTaskItemClick(taskList.id, task, taskList.title)}
                                       sx={{
                                         py: 1,
                                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                                        '&:last-child': { borderBottom: 'none' }
+                                        '&:last-child': { borderBottom: 'none' },
+                                        cursor: 'pointer'
                                       }}
                                     >
                                       <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -1787,10 +1863,12 @@ const GoogleTasks: React.FC = () => {
                   }).map(({ task, listId, listTitle }) => (
                     <ListItem
                       key={task.id}
+                      onClick={() => handleTaskItemClick(listId, task, listTitle)}
                       sx={{
                         py: 1,
                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                        '&:last-child': { borderBottom: 'none' }
+                        '&:last-child': { borderBottom: 'none' },
+                        cursor: 'pointer'
                       }}
                     >
                       <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -2624,6 +2702,17 @@ const GoogleTasks: React.FC = () => {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      {/* Task Details Modal */}
+      <TaskDetailsModal
+        open={taskDetailsModalOpen}
+        onClose={handleTaskDetailsClose}
+        onEdit={handleEditFromDetails}
+        onDelete={handleDeleteFromDetails}
+        task={detailsTask?.task || null}
+        taskListId={detailsTask?.taskListId || ''}
+        taskListTitle={detailsTask?.taskListTitle}
+      />
     </Container>
   );
 };
