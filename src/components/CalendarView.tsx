@@ -22,7 +22,6 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
 import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useCalendar } from '../contexts/CalendarContext';
@@ -32,6 +31,19 @@ import EventCreationModal from './EventCreationModal';
 import EventDetailsPopup from './EventDetailsPopup';
 import TaskDetailsPopup from './TaskDetailsPopup';
 import TaskListPopup from './TaskListPopup';
+import { 
+  AccessTime as AccessTimeIcon, 
+  People as PeopleIcon,
+  Event as EventIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  VideoCall as VideoCallIcon,
+  TaskAlt as TaskAltIconMui,
+  MoreVert as MoreVertIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  AttachFile as AttachFileIcon,
+} from '@mui/icons-material';
 
 // Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -141,22 +153,25 @@ interface ColorMap {
 
 // Define color map for different event types
 const colorMap: ColorMap = {
-  default: { background: '#C6E8F2', text: '#071C73' },  // Light Blue
+  default: { background: '#1056F5', text: '#FFFFFF' },  // Main Blue
   team: { background: '#1056F5', text: '#FFFFFF' },     // Main Blue
-  client: { background: '#016C9E', text: '#FFFFFF' },   // Rice Blue
-  focus: { background: '#F29702', text: '#FFFFFF' },    // Orange
-  manager: { background: '#E04330', text: '#FFFFFF' },  // Red
-  review: { background: '#49C1E3', text: '#071C73' },   // Aero
+  client: { background: '#1056F5', text: '#FFFFFF' },   // Main Blue
+  focus: { background: '#E04330', text: '#FFFFFF' },    // Red for Focus Time
+  manager: { background: '#1056F5', text: '#FFFFFF' },  // Main Blue
+  review: { background: '#1056F5', text: '#FFFFFF' },   // Main Blue
+  task: { background: '#F29702', text: '#FFFFFF' },     // Orange for Tasks
+  outOfOffice: { background: '#E8EAED', text: '#071C73' }, // Light Gray for Out of Office
   1: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
-  2: { background: '#071C73', text: '#FFFFFF' },        // Dark Blue
-  3: { background: '#016C9E', text: '#FFFFFF' },        // Rice Blue
-  4: { background: '#C6E8F2', text: '#071C73' },        // Light Blue
-  5: { background: '#F29702', text: '#FFFFFF' },        // Orange
-  6: { background: '#E04330', text: '#FFFFFF' },        // Red
-  7: { background: '#49C1E3', text: '#071C73' },        // Aero
-  8: { background: '#C6E8F2', text: '#071C73' },        // Light Blue
-  9: { background: '#F29702', text: '#FFFFFF' },        // Orange
-  10: { background: '#E04330', text: '#FFFFFF' }        // Red
+  2: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
+  3: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
+  4: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
+  5: { background: '#F29702', text: '#FFFFFF' },        // Orange (keep for tasks)
+  6: { background: '#E04330', text: '#FFFFFF' },        // Red (keep for focus time)
+  7: { background: '#1056F5', text: '#FFFFFF' },        // Main Blue
+  8: { background: '#E8EAED', text: '#071C73' },        // Light Gray (keep for out of office)
+  9: { background: '#F29702', text: '#FFFFFF' },        // Orange (keep for tasks)
+  10: { background: '#1056F5', text: '#FFFFFF' },       // Main Blue
+  11: { background: '#E04330', text: '#FFFFFF' }        // Red (keep for focus time)
 };
 
 // Get color for event based on type
@@ -174,62 +189,48 @@ const getEventColor = (event: CalendarEvent): string => {
     if (event.eventType === 'focusTime') {
       return '#E04330'; // Red for Focus Time (changed from blue #4285F4)
     }
-    if (event.eventType === 'workingLocation') {
-      return '#34A853'; // Green for Working Location
-    }
+    // All other event types use the main blue color
+    return '#1056F5'; // Main blue for all other event types
   }
 
-  // Get color based on colorId
+  // If the event has a colorId and it's for focus time or out of office, respect that
   if (event.colorId) {
-    // If event has a specific colorId, use that from the color map
-    if (colorMap[event.colorId]) {
-      return colorMap[event.colorId].background;
+    // Check if this color is meant for focus time (typically red)
+    if (event.colorId === '11') { // Google's red
+      return '#E04330'; // Red for Focus Time
+    }
+    // Check if this color is meant for out of office (typically gray)
+    if (event.colorId === '8') { // Google's gray
+      return '#E8EAED'; // Light gray for Out of Office
     }
   }
   
-  // Default colors based on event types
-  const typeColors: Record<string, string> = {
-    'default': '#C6E8F2',   // Light Blue
-    'call': '#016C9E',      // Rice Blue
-    'meeting': '#016C9E',   // Bice Blue
-    'task': '#F29702',      // Orange
-    'reminder': '#49C1E3',  // Aero
-    'appointment': '#071C73', // Dark Blue
-    'travel': '#49C1E3',    // Aero
-    'holiday': '#E04330',   // Red
-    'personal': '#F29702',  // Orange
-    'work': '#016C9E',      // Bice Blue
-    'standup': '#1056F5',   // Main Blue - for standup meetings
-    'tech': '#1056F5',      // Main Blue - for tech related events
-    'develop': '#1056F5'    // Main Blue - for development tasks
-  };
-  
-  // Try to extract event type from title or description
-  let eventType = 'default';
-  
-  if (event.title) {
-    eventType = extractEventType(event.title);
-  } else if (event.description) {
-    eventType = extractEventType(event.description);
+  // If event title contains "focus" or "focus time", treat as focus time
+  if (event.title && event.title.toLowerCase().includes('focus')) {
+    return '#E04330'; // Red for Focus Time
   }
-    
-  return typeColors[eventType.toLowerCase()] || '#C6E8F2'; // default light blue shade
+  
+  // If event title contains "out of office" or "ooo", treat as out of office
+  if (event.title && 
+      (event.title.toLowerCase().includes('out of office') || 
+       event.title.toLowerCase().includes('ooo'))) {
+    return '#E8EAED'; // Light gray for Out of Office
+  }
+  
+  // Default to main blue for all other events
+  return '#1056F5'; // Main blue for all other events
 };
 
 // Extract event type from event summary or title
 const extractEventType = (text: string): string => {
   text = text.toLowerCase();
-  if (text.includes('meeting') || text.includes('sync')) return 'meeting';
-  if (text.includes('call') || text.includes('phone')) return 'call';
-  if (text.includes('reminder')) return 'reminder';
-  if (text.includes('travel') || text.includes('flight')) return 'travel';
-  if (text.includes('appointment')) return 'appointment';
-  if (text.includes('holiday') || text.includes('vacation')) return 'holiday';
-  if (text.includes('personal')) return 'personal';
-  if (text.includes('work')) return 'work';
+  
+  // Keep these special event types for sorting/prioritization purposes
+  if (text.includes('focus')) return 'focus';
   if (text.includes('stand') || text.includes('standup')) return 'standup';
-  if (text.includes('tech') || text.includes('deploy')) return 'tech';
-  if (text.includes('develop') || text.includes('dev')) return 'develop';
+  if (text.includes('out of office') || text.includes('ooo')) return 'outOfOffice';
+  
+  // All other event types are treated as 'default'
   return 'default';
 };
 
@@ -974,6 +975,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       (attendee.self === true && attendee.responseStatus === 'declined')
     );
 
+    // Check if event has attachments
+    const hasAttachments = event.attachments && event.attachments.length > 0;
+
     // Calculate border styling for declined events
     const declinedStyle = isDeclined ? {
       backgroundColor: 'white',
@@ -1000,7 +1004,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             alignItems: 'center',
             pl: 0.5
           }}>
-            <TaskAltIcon 
+            <TaskAltIconMui 
               sx={{ 
                 fontSize: '0.9rem', 
                 color: textColor,
@@ -1120,6 +1124,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             }}
           >
             {event.title}
+            {hasAttachments && (
+              <AttachFileIcon 
+                sx={{ 
+                  fontSize: '0.7rem', 
+                  ml: 0.5,
+                  verticalAlign: 'middle',
+                  opacity: 0.7
+                }} 
+              />
+            )}
           </Typography>
         </Box>
       );
@@ -1161,6 +1175,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             }}
           >
             {event.title}
+            {hasAttachments && (
+              <AttachFileIcon 
+                sx={{ 
+                  fontSize: '0.7rem', 
+                  ml: 0.5,
+                  verticalAlign: 'middle',
+                  opacity: 0.7
+                }} 
+              />
+            )}
           </Typography>
           
           <Typography 
@@ -1228,6 +1252,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       
       // Call the updated getCalendarEventById which now uses the proper eventId parameter
       const fullEventDetails = await getCalendarEventById(event.id);
+      
+      // Debug logging for attachments
+      console.log('Full API response event details:', fullEventDetails);
+      console.log('Response has attachments:', !!fullEventDetails?.attachments);
+      if (fullEventDetails?.attachments) {
+        console.log('API response attachments:', fullEventDetails.attachments);
+      }
       
       if (fullEventDetails) {
         // Verify the returned event ID matches what we requested
@@ -1442,7 +1473,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     height: '100%'
                   }}
                 >
-                  <TaskAltIcon sx={{ fontSize: '1rem', mr: 1 }} />
+                  <TaskAltIconMui sx={{ fontSize: '1rem', mr: 1 }} />
                   <Typography variant="body2">
                     {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} pending
                   </Typography>
@@ -1795,7 +1826,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         onClick={(e) => handleTaskGroupClick(tasks, e)}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center', px: 1 }}>
-                          <TaskAltIcon 
+                          <TaskAltIconMui 
                             sx={{ 
                               fontSize: '0.8rem', 
                               color: 'white',
@@ -2142,7 +2173,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         handleTaskGroupClick(day.tasks, e);
                       }}
                     >
-                      <TaskAltIcon sx={{ fontSize: '0.7rem', color: 'white', mr: 0.5 }} />
+                      <TaskAltIconMui sx={{ fontSize: '0.7rem', color: 'white', mr: 0.5 }} />
                       <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'white' }}>
                         {day.tasks.length}
                       </Typography>
@@ -2411,7 +2442,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         </Box>
                         <Box sx={{ flex: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <TaskAltIcon 
+                            <TaskAltIconMui 
                               sx={{ 
                                 fontSize: '0.8rem', 
                                 color: eventColor,
@@ -2666,7 +2697,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         </Box>
                         <Box sx={{ flex: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <TaskAltIcon 
+                            <TaskAltIconMui 
                               sx={{ 
                                 fontSize: '0.8rem', 
                                 color: eventColor,

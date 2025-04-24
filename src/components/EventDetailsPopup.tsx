@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -40,6 +40,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import PeopleIcon from '@mui/icons-material/People';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { CalendarEvent, respondToEventInvitation } from '../services/calendarService';
 import { format } from 'date-fns';
 import EventEditForm from './EventEditForm';
@@ -73,6 +74,18 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const { fetchEvents } = useCalendar();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // Debug logging for attachments
+  useEffect(() => {
+    if (event) {
+      console.log('Event data in EventDetailsPopup:', event);
+      console.log('Event has attachments:', !!event.attachments);
+      if (event.attachments) {
+        console.log('Attachments data:', event.attachments);
+      }
+    }
+  }, [event]);
+  
   const [rsvpStatus, setRsvpStatus] = useState<string>('Yes');
   const [isEditFormOpen, setIsEditFormOpen] = useState<boolean>(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -820,6 +833,71 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               >
                 {phoneDetails.number}{phoneDetails.pin ? ` PIN: ${phoneDetails.pin}` : ''}
               </Typography>
+            </Box>
+          )}
+          
+          {/* Attachments section - only show if there are attachments */}
+          {event.attachments && event.attachments.length > 0 && (
+            <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                <AttachFileIcon 
+                  fontSize={isMobile ? "small" : "small"} 
+                  sx={{ 
+                    mr: 1, 
+                    color: 'text.secondary', 
+                    mt: 0.5,
+                    width: isMobile ? 20 : 18, 
+                    height: isMobile ? 20 : 18
+                  }} 
+                />
+                <Typography 
+                  variant="body2" 
+                  color="primary" 
+                  sx={{ 
+                    fontWeight: 500,
+                    fontSize: isMobile ? '0.9rem' : '0.85rem'
+                  }}
+                >
+                  {event.attachments.length === 1 ? 'Attachment' : 'Attachments'}
+                </Typography>
+              </Box>
+              {event.attachments.map((attachment, index) => (
+                <Box 
+                  key={index} 
+                  sx={{ 
+                    ml: 3, 
+                    mb: 1, 
+                    display: 'flex', 
+                    alignItems: 'center' 
+                  }}
+                >
+                  <Box 
+                    component="img" 
+                    src={attachment.iconLink} 
+                    alt="" 
+                    sx={{ 
+                      width: 16, 
+                      height: 16, 
+                      mr: 1 
+                    }} 
+                  />
+                  <Link
+                    href={attachment.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ 
+                      fontSize: '0.85rem',
+                      color: '#1a73e8',
+                      textDecoration: 'none',
+                      '&:hover': {
+                        textDecoration: 'underline'
+                      }
+                    }}
+                  >
+                    {attachment.title}
+                  </Link>
+                </Box>
+              ))}
             </Box>
           )}
           

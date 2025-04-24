@@ -36,6 +36,15 @@ export interface CalendarEvent {
   taskListId?: string;
   hasExplicitTime?: boolean;
   
+  // Attachments array for calendar event files
+  attachments?: Array<{
+    fileId: string;
+    fileUrl: string;
+    iconLink: string;
+    mimeType: string;
+    title: string;
+  }>;
+  
   // API-specific fields that we pass through
   summary?: string;
   creator?: {
@@ -395,7 +404,8 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
     ...(apiEvent.recurringEventId && { recurringEventId: apiEvent.recurringEventId }),
     ...(apiEvent.eventType && { eventType: apiEvent.eventType }),
     ...(hangoutLink && { hangoutLink: hangoutLink }),
-    ...(conferenceData && { conferenceData: conferenceData })
+    ...(conferenceData && { conferenceData: conferenceData }),
+    ...(apiEvent.attachments && { attachments: apiEvent.attachments }) // Add attachments field
   };
   
   console.log('Mapped to calendar event:', mappedEvent);

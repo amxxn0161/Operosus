@@ -45,7 +45,7 @@ export const fetchGoogleTaskLists = async (): Promise<GoogleTaskList[]> => {
 // Create a new task
 export const createGoogleTask = async (
   taskListId: string, 
-  task: { title: string; notes?: string; due?: string; }
+  task: { title: string; notes?: string; due?: string; parent?: string; }
 ): Promise<GoogleTask | null> => {
   try {
     const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${taskListId}/tasks`, {

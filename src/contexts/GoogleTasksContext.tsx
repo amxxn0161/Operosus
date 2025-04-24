@@ -35,7 +35,7 @@ interface GoogleTasksContextType {
   error: string | null;
   starredTasks: EnhancedGoogleTask[];
   refreshTaskLists: () => Promise<void>;
-  createTask: (taskListId: string, task: { title: string; notes?: string; due?: string; timezone?: string }) => Promise<EnhancedGoogleTask | null>;
+  createTask: (taskListId: string, task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string }) => Promise<EnhancedGoogleTask | null>;
   updateTask: (taskListId: string, taskId: string, updates: Partial<EnhancedGoogleTask & { timezone?: string }>) => Promise<EnhancedGoogleTask | null>;
   deleteTask: (taskListId: string, taskId: string) => Promise<boolean>;
   moveTask: (sourceTaskListId: string, targetTaskListId: string, taskId: string) => Promise<EnhancedGoogleTask | null>;
@@ -111,7 +111,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   // Create a new task
   const createTask = async (
     taskListId: string, 
-    task: { title: string; notes?: string; due?: string; timezone?: string }
+    task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string }
   ): Promise<EnhancedGoogleTask | null> => {
     try {
       setError(null);

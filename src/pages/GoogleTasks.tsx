@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, ReactNode } from 'react';
+import React, { useState, useRef, useEffect, useMemo, ReactNode, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
@@ -57,7 +57,16 @@ import {
   CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
   Clear as ClearIcon,
   NavigateBefore as NavigateBeforeIcon,
-  NavigateNext as NavigateNextIcon
+  NavigateNext as NavigateNextIcon,
+  Splitscreen as SplitscreenIcon,
+  SmartToy as SmartToyIcon,
+  Folder as FolderIcon,
+  SortByAlpha as SortByAlphaIcon,
+  ImportExport as ImportExportIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  AddCircleOutline as AddCircleOutlineIcon,
+  MenuOpen as MenuOpenIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -67,6 +76,12 @@ import TaskDetailsModal from '../components/TaskDetailsModal';
 // Add these imports if they don't already exist at the top
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+// Add these imports at the top of the file
+// import AIAssistant from '../components/AIAssistant';
+// import { useAIAssistant } from '../contexts/AIAssistantContext';
+
+// Import the proper AIAssistant component and context
+import { useAIAssistant } from '../contexts/AIAssistantContext';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -93,6 +108,7 @@ const dialogContentStyles = {
   ...scrollbarStyles
 };
 
+// Update the FC definition to fix type issues
 const GoogleTasks: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -144,6 +160,17 @@ const GoogleTasks: React.FC = () => {
   const datePickerOpen = Boolean(datePickerAnchorEl);
   const [timePickerAnchorEl, setTimePickerAnchorEl] = useState<HTMLElement | null>(null);
   const timePickerOpen = Boolean(timePickerAnchorEl);
+  const [editDatePickerAnchorEl, setEditDatePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const editDatePickerOpen = Boolean(editDatePickerAnchorEl);
+  const [editTimePickerAnchorEl, setEditTimePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const editTimePickerOpen = Boolean(editTimePickerAnchorEl);
+
+  // Add state for subtask date and time pickers
+  const [subtaskDatePickerAnchorEl, setSubtaskDatePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const subtaskDatePickerOpen = Boolean(subtaskDatePickerAnchorEl);
+  const [subtaskTimePickerAnchorEl, setSubtaskTimePickerAnchorEl] = useState<HTMLElement | null>(null);
+  const subtaskTimePickerOpen = Boolean(subtaskTimePickerAnchorEl);
+  const [editingSubtaskIndex, setEditingSubtaskIndex] = useState<number>(-1);
 
   // Task menu state
   const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -156,10 +183,6 @@ const GoogleTasks: React.FC = () => {
   const [editTaskNotes, setEditTaskNotes] = useState<string>('');
   const [editTaskDueDate, setEditTaskDueDate] = useState<string | null>(null);
   const [editTaskDueTime, setEditTaskDueTime] = useState<string | null>(null);
-  const [editDatePickerAnchorEl, setEditDatePickerAnchorEl] = useState<HTMLElement | null>(null);
-  const editDatePickerOpen = Boolean(editDatePickerAnchorEl);
-  const [editTimePickerAnchorEl, setEditTimePickerAnchorEl] = useState<HTMLElement | null>(null);
-  const editTimePickerOpen = Boolean(editTimePickerAnchorEl);
 
   // Add state for tracking expanded/collapsed completed sections
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
@@ -175,6 +198,21 @@ const GoogleTasks: React.FC = () => {
 
   // Add these state variables with the other state variables
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+
+  // Add a new state variable for the task breakdown modal
+  const [breakdownTaskDialogOpen, setBreakdownTaskDialogOpen] = useState<boolean>(false);
+  const [taskToBreakdown, setTaskToBreakdown] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
+  // Update the breakdownSubtasks state to include due dates and times
+  const [breakdownSubtasks, setBreakdownSubtasks] = useState<Array<{
+    title: string;
+    due: string | null;
+    time: string | null;
+  }>>([]);
+  const [isBreakingDown, setIsBreakingDown] = useState<boolean>(false);
+  const [aiAssistantVisible, setAiAssistantVisible] = useState<boolean>(false);
+  
+  // Add AI assistant reference
+  const aiAssistantRef = useRef<HTMLDivElement>(null);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -1267,6 +1305,423 @@ const GoogleTasks: React.FC = () => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   };
 
+  // Add a helper function to get all subtasks for a given parent task ID
+  const getSubtasksForParent = (tasks: EnhancedGoogleTask[], parentId: string): EnhancedGoogleTask[] => {
+    return tasks.filter(task => task.parent === parentId);
+  };
+
+  // Add a helper function to sort tasks so that subtasks appear directly after their parent tasks
+  const sortTasksWithSubtasks = (tasks: EnhancedGoogleTask[]): EnhancedGoogleTask[] => {
+    // Create a copy of the tasks to avoid mutating the original
+    const result: EnhancedGoogleTask[] = [];
+    
+    // First, identify parent tasks and standalone tasks (not subtasks)
+    const parentAndStandaloneTasks = tasks.filter(task => !isSubtask(task));
+    
+    // For each parent/standalone task, add it to the result array
+    // then immediately add all of its subtasks
+    parentAndStandaloneTasks.forEach(task => {
+      // Add the parent/standalone task
+      result.push(task);
+      
+      // Find and add any subtasks that belong to this parent
+      const subtasks = tasks.filter(t => 
+        (t.parent === task.id) || // API-based relation
+        (t.notes && t.notes.includes(`[Subtask of] ${task.title}`)) // Legacy relation
+      );
+      
+      if (subtasks.length > 0) {
+        result.push(...subtasks);
+      }
+    });
+    
+    return result;
+  };
+
+  // Update the handleBreakDownTaskFromMenu function to load existing subtasks
+  const handleBreakDownTaskFromMenu = () => {
+    if (selectedTask) {
+      setTaskToBreakdown(selectedTask);
+      
+      // Find existing subtasks for this parent task
+      const taskList = taskLists.find(list => list.id === selectedTask.taskListId);
+      if (taskList) {
+        const existingSubtasks = taskList.tasks.filter(task => 
+          (task.parent === selectedTask.task.id) || // API-based relation
+          (task.notes && task.notes.includes(`[Subtask of] ${selectedTask.task.title}`)) // Legacy relation
+        );
+        
+        // Pre-populate the subtasks list with existing subtask titles
+        if (existingSubtasks.length > 0) {
+          setBreakdownSubtasks(existingSubtasks.map(task => ({
+            title: task.title,
+            due: task.due || null,
+            time: task.notes?.match(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/) ? 
+                  task.notes.match(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/)?.[1] || null : 
+                  null
+          })));
+        } else {
+          setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Start with one empty subtask if none exist
+        }
+      } else {
+        setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Default to one empty subtask
+      }
+      
+      setBreakdownTaskDialogOpen(true);
+      handleTaskMenuClose();
+    }
+  };
+  
+  // Add a function to handle AI assistant opening
+  const handleOpenAIAssistant = () => {
+    setAiAssistantVisible(true);
+  };
+  
+  // Add a function to create subtasks
+  const handleCreateSubtasks = async () => {
+    if (!taskToBreakdown || breakdownSubtasks.length === 0) return;
+    
+    setIsBreakingDown(true);
+    try {
+      // Create a parent-child relationship by adding a prefix to subtask titles
+      const parentTask = taskToBreakdown.task;
+      const parentTaskId = parentTask.id;
+      const taskListId = taskToBreakdown.taskListId;
+      
+      // Only add a tag to the parent task if it doesn't already have one
+      let updatedParentNotes = parentTask.notes || '';
+      if (!updatedParentNotes.includes('[Has Subtasks]')) {
+        updatedParentNotes = `${updatedParentNotes}${updatedParentNotes ? '\n' : ''}[Has Subtasks] - See nested tasks below.`.trim();
+        
+        // Only update the task notes if they've changed
+        await updateTask(taskListId, parentTaskId, {
+          ...parentTask,
+          notes: updatedParentNotes
+        });
+      }
+      
+      // Create all subtasks using the parent parameter
+      for (const subtask of breakdownSubtasks) {
+        if (subtask.title.trim()) {
+          // Construct notes with subtask information
+          let subtaskNotes = `[Subtask of] ${parentTask.title}`;
+          
+          // Add time information to notes if provided
+          if (subtask.time) {
+            subtaskNotes += `\nDue Time: ${subtask.time}`;
+          }
+          
+          // Use individual subtask due date if available, otherwise inherit from parent
+          const due = subtask.due || parentTask.due;
+          
+          await createTask(taskListId, {
+            title: subtask.title.trim(), // No need for emoji prefix with proper API usage
+            notes: subtaskNotes, // Keep for UI purposes and include time info
+            due: due, // Use individual subtask due date or inherit from parent
+            parent: parentTaskId // Use the parent parameter for proper API integration
+          });
+        }
+      }
+      
+      showSnackbar('Task broken down successfully', 'success');
+      setBreakdownTaskDialogOpen(false);
+    } catch (error) {
+      console.error('Error creating subtasks:', error);
+      showSnackbar('Failed to break down task', 'error');
+    } finally {
+      setIsBreakingDown(false);
+    }
+  };
+  
+  // Add a function to add a new subtask to the list
+  const handleAddSubtask = () => {
+    setBreakdownSubtasks([...breakdownSubtasks, { title: '', due: null, time: null }]);
+  };
+  
+  // Handle updating a subtask
+  const handleUpdateSubtask = (index: number, value: { title: string; due: string | null; time: string | null }) => {
+    const updatedSubtasks = [...breakdownSubtasks];
+    updatedSubtasks[index] = value;
+    setBreakdownSubtasks(updatedSubtasks);
+  };
+  
+  // Handle removing a subtask
+  const handleRemoveSubtask = (index: number) => {
+    const updatedSubtasks = [...breakdownSubtasks];
+    updatedSubtasks.splice(index, 1);
+    setBreakdownSubtasks(updatedSubtasks);
+  };
+
+  // Create a ref to track if we're extracting subtasks
+  const extractingSubtasksRef = useRef<boolean>(false);
+
+  // Get AI assistant context properly
+  const { 
+    sendMessage, 
+    isLoading, 
+    clearMessages, 
+    openAssistant, 
+    messages 
+  } = useAIAssistant();
+
+  // Fix the helper functions to return proper boolean values
+  const isSubtask = (task: EnhancedGoogleTask): boolean => {
+    return !!(
+      task.parent || // Check for parent property from API
+      task.title.startsWith('📎') || // Keep checking for emoji for backward compatibility
+      (task.notes && task.notes.includes('[Subtask of]')) // Keep checking notes for backward compatibility
+    );
+  };
+
+  // Add a helper function to determine if a task has subtasks
+  const hasSubtasks = (task: EnhancedGoogleTask): boolean => {
+    return !!(task.notes && task.notes.includes('[Has Subtasks]'));
+  };
+
+  // Add a helper function to get the parent task title from a subtask
+  const getParentTaskTitle = (task: EnhancedGoogleTask): string | null => {
+    if (!isSubtask(task) || !task.notes) return null;
+    
+    const match = task.notes.match(/\[Subtask of\] (.*)/);
+    return match ? match[1] : null;
+  };
+
+  // Add a helper function to group subtasks by parent
+  const groupSubtasksByParent = (tasks: EnhancedGoogleTask[]): Record<string, EnhancedGoogleTask[]> => {
+    const grouped: Record<string, EnhancedGoogleTask[]> = {};
+    
+    tasks.forEach(task => {
+      if (isSubtask(task)) {
+        const parentTitle = getParentTaskTitle(task);
+        if (parentTitle) {
+          if (!grouped[parentTitle]) {
+            grouped[parentTitle] = [];
+          }
+          grouped[parentTitle].push(task);
+        }
+      }
+    });
+    
+    return grouped;
+  };
+
+  // Update the handleAIResponse function to interact with the actual AI assistant
+  const handleAIResponse = async () => {
+    if (!taskToBreakdown) return;
+    
+    setIsBreakingDown(true);
+    
+    try {
+      // Clear previous messages
+      await clearMessages();
+      
+      // Open the assistant
+      openAssistant();
+      
+      // Set extracting mode
+      extractingSubtasksRef.current = true;
+      
+      // Send a message to the assistant
+      const prompt = `I need to break down this task into smaller subtasks: "${taskToBreakdown.task.title}". ${
+        taskToBreakdown.task.notes ? `Additional context: ${taskToBreakdown.task.notes}` : ''
+      } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You should determine the appropriate number of subtasks based on the complexity of the task - use as many or as few as needed to be most effective. Format each subtask as a bullet point.`;
+      
+      // Send the message to the AI assistant
+      await sendMessage(prompt);
+    } catch (error) {
+      console.error('Error interacting with AI assistant:', error);
+      showSnackbar('Failed to communicate with AI assistant', 'error');
+      extractingSubtasksRef.current = false;
+    } finally {
+      setIsBreakingDown(false);
+    }
+  };
+
+  // Update the effect that monitors AI messages to stop automatically setting the subtasks
+  // Replace the existing useEffect related to AI messages (around line 1510-1548)
+  useEffect(() => {
+    // Only proceed if we're in "extracting subtasks" mode
+    if (!extractingSubtasksRef.current || !taskToBreakdown) return;
+    
+    // Look for assistant messages
+    const assistantMessages = messages.filter(msg => msg.role === 'assistant');
+    if (assistantMessages.length > 0) {
+      // Get the most recent assistant message
+      const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
+      
+      // Check if the message contains relevant subtask information
+      if (latestAssistantMessage.content && !isLoading) {
+        const content = latestAssistantMessage.content;
+        
+        // We no longer automatically set the breakdown subtasks here
+        // We will let the user click "Import Subtasks from Assistant" to do that
+        
+        // Just show a notification that subtasks are ready to be imported
+        if (content.match(/[•\-\*]\s+([^\n]+)/g) || content.match(/\d+\.\s+([^\n]+)/g)) {
+          showSnackbar('AI has provided subtask suggestions. Click "Import Subtasks from Assistant" to use them.', 'success');
+        }
+        
+        // Exit extraction mode
+        extractingSubtasksRef.current = false;
+      }
+    }
+  }, [messages, isLoading, taskToBreakdown, showSnackbar]);
+
+  // Update the handleImportFromAssistant function to merge subtasks rather than replace them
+  // Replace the function around line 1549-1599
+  const handleImportFromAssistant = () => {
+    // This will extract the suggested subtasks from the last assistant message
+    const assistantMessages = messages.filter(msg => msg.role === 'assistant');
+    if (assistantMessages.length === 0) {
+      showSnackbar('No AI assistant messages found', 'error');
+      return;
+    }
+    
+    const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
+    if (!latestAssistantMessage.content) {
+      showSnackbar('No content in latest AI assistant message', 'error');
+      return;
+    }
+    
+    const content = latestAssistantMessage.content;
+    
+    // Extract subtasks from the message
+    const extractedSubtasks: Array<{ title: string; due: string | null; time: string | null }> = [];
+    
+    // Look for bullet points patterns
+    if (content.match(/[•\-\*]\s+([^\n]+)/g)) {
+      const bulletMatches = content.match(/[•\-\*]\s+([^\n]+)/g) || [];
+      bulletMatches.forEach((match: string) => {
+        const subtask = match.replace(/^[•\-\*]\s+/, '').trim();
+        if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
+      });
+    }
+    
+    // Look for numbered list patterns as well
+    if (content.match(/\d+\.\s+([^\n]+)/g)) {
+      const numberedMatches = content.match(/\d+\.\s+([^\n]+)/g) || [];
+      numberedMatches.forEach((match: string) => {
+        const subtask = match.replace(/^\d+\.\s+/, '').trim();
+        if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
+      });
+    }
+    
+    // Update the subtasks list if we found any
+    if (extractedSubtasks.length > 0) {
+      // IMPORTANT: Merge with existing subtasks instead of replacing them
+      setBreakdownSubtasks((prevSubtasks: Array<{ title: string; due: string | null; time: string | null }>) => {
+        // Filter out empty subtasks from the existing list
+        const nonEmptyPrevSubtasks = prevSubtasks.filter(task => task.title.trim() !== '');
+        
+        // If there were no existing non-empty subtasks, just use the extracted ones
+        if (nonEmptyPrevSubtasks.length === 0) {
+          return extractedSubtasks;
+        }
+        
+        // Otherwise, merge the lists
+        // Find subtasks with the same title and keep their due dates if they exist
+        const mergedSubtasks = [...nonEmptyPrevSubtasks];
+        
+        extractedSubtasks.forEach(newSubtask => {
+          // Check if this task already exists
+          const existingIndex = mergedSubtasks.findIndex(
+            task => task.title.toLowerCase() === newSubtask.title.toLowerCase()
+          );
+          
+          if (existingIndex === -1) {
+            // Add as a new subtask if not found
+            mergedSubtasks.push(newSubtask);
+          }
+          // We don't update existing subtasks to preserve their due dates
+        });
+        
+        return mergedSubtasks;
+      });
+      
+      showSnackbar('Imported subtasks from assistant', 'success');
+    } else {
+      showSnackbar('No subtasks found in assistant message', 'error');
+    }
+  };
+
+  // Add handlers for subtask date and time pickers
+  const handleSubtaskDatePickerOpen = (event: React.MouseEvent<HTMLElement>, index: number) => {
+    setSubtaskDatePickerAnchorEl(event.currentTarget);
+    setEditingSubtaskIndex(index);
+  };
+
+  const handleSubtaskDatePickerClose = () => {
+    setSubtaskDatePickerAnchorEl(null);
+    setEditingSubtaskIndex(-1);
+  };
+
+  const handleSubtaskTimePickerOpen = (event: React.MouseEvent<HTMLElement>, index: number) => {
+    setSubtaskTimePickerAnchorEl(event.currentTarget);
+    setEditingSubtaskIndex(index);
+  };
+
+  const handleSubtaskTimePickerClose = () => {
+    setSubtaskTimePickerAnchorEl(null);
+    setEditingSubtaskIndex(-1);
+  };
+
+  const handleSetSubtaskDueDate = (dueDate: Date | null) => {
+    if (editingSubtaskIndex >= 0 && editingSubtaskIndex < breakdownSubtasks.length) {
+      const updatedSubtasks = [...breakdownSubtasks];
+      const updatedSubtask = { ...updatedSubtasks[editingSubtaskIndex] };
+      
+      if (dueDate) {
+        // Format date to RFC 3339 format required by Google Tasks API
+        const year = dueDate.getFullYear();
+        const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+        const day = String(dueDate.getDate()).padStart(2, '0');
+        updatedSubtask.due = `${year}-${month}-${day}`;
+      } else {
+        updatedSubtask.due = null;
+        updatedSubtask.time = null; // Clear time when date is cleared
+      }
+      
+      updatedSubtasks[editingSubtaskIndex] = updatedSubtask;
+      setBreakdownSubtasks(updatedSubtasks);
+    }
+  };
+
+  const handleSetSubtaskDueTime = (time: string | null) => {
+    if (editingSubtaskIndex >= 0 && editingSubtaskIndex < breakdownSubtasks.length) {
+      const updatedSubtasks = [...breakdownSubtasks];
+      const updatedSubtask = { ...updatedSubtasks[editingSubtaskIndex] };
+      
+      if (time) {
+        // Store time in HH:MM format
+        updatedSubtask.time = time;
+      } else {
+        updatedSubtask.time = null;
+      }
+      
+      updatedSubtasks[editingSubtaskIndex] = updatedSubtask;
+      setBreakdownSubtasks(updatedSubtasks);
+    }
+  };
+
+  const handleSetSubtaskToday = () => {
+    const today = new Date();
+    handleSetSubtaskDueDate(today);
+  };
+
+  const handleSetSubtaskTomorrow = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    handleSetSubtaskDueDate(tomorrow);
+  };
+
+  const handleClearSubtaskDueDate = () => {
+    handleSetSubtaskDueDate(null);
+  };
+
+  const handleClearSubtaskDueTime = () => {
+    handleSetSubtaskDueTime(null);
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1523,8 +1978,8 @@ const GoogleTasks: React.FC = () => {
                           {...provided.droppableProps}
                           sx={{ py: 0 }}
                         >
-                          {taskList.tasks.filter(task => task.status !== 'completed').length > 0 ? (
-                            taskList.tasks.filter(task => task.status !== 'completed').map((task, index) => (
+                          {sortTasksWithSubtasks(taskList.tasks).filter(task => task.status !== 'completed').length > 0 ? (
+                            sortTasksWithSubtasks(taskList.tasks).filter(task => task.status !== 'completed').map((task, index) => (
                               <Draggable
                                 key={task.id}
                                 draggableId={task.id}
@@ -1558,15 +2013,41 @@ const GoogleTasks: React.FC = () => {
                                     </ListItemIcon>
                                     <ListItemText
                                       primary={
-                                        <Typography
-                                          sx={{
-                                            textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                                            color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
-                                            fontFamily: 'Poppins',
-                                          }}
-                                        >
-                                          {task.title}
-                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                          {hasSubtasks(task) && (
+                                            <Tooltip title="Has subtasks">
+                                              <Box 
+                                                component="span" 
+                                                sx={{ 
+                                                  mr: 0.5, 
+                                                  display: 'inline-flex', 
+                                                  color: 'primary.main' 
+                                                }}
+                                              >
+                                                <FolderIcon fontSize="small" />
+                                              </Box>
+                                            </Tooltip>
+                                          )}
+                                          <Typography
+                                            sx={{
+                                              textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                                              color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
+                                              fontFamily: 'Poppins',
+                                              ...(isSubtask(task) ? { 
+                                                paddingLeft: '24px', // Increased padding
+                                                marginLeft: '16px', // Added margin
+                                                borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
+                                                backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
+                                                borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                                fontStyle: 'italic',
+                                                py: 0.5 // Add some vertical padding
+                                              } : {})
+                                            }}
+                                          >
+                                            {/* Remove the paperclip emoji from display if it exists */}
+                                            {task.title.startsWith('📎 ') ? task.title.substring(2) : task.title}
+                                          </Typography>
+                                        </Box>
                                       }
                                       secondary={
                                         <>
@@ -1717,7 +2198,7 @@ const GoogleTasks: React.FC = () => {
                                   overflowX: 'hidden', // Prevent horizontal scrolling
                                   ...scrollbarStyles
                                 }}>
-                                  {taskList.tasks.filter(task => task.status === 'completed').map((task) => (
+                                  {sortTasksWithSubtasks(taskList.tasks).filter(task => task.status === 'completed').map((task) => (
                                     <ListItem
                                       key={task.id}
                                       onClick={() => handleTaskItemClick(taskList.id, task, taskList.title)}
@@ -1748,9 +2229,18 @@ const GoogleTasks: React.FC = () => {
                                               textDecoration: 'line-through',
                                               color: 'text.secondary',
                                               fontFamily: 'Poppins',
+                                              ...(isSubtask(task) ? { 
+                                                paddingLeft: '24px', // Increased padding
+                                                marginLeft: '16px', // Added margin
+                                                borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
+                                                backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
+                                                borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                                fontStyle: 'italic',
+                                                py: 0.5 // Add some vertical padding
+                                              } : {})
                                             }}
                                           >
-                                            {task.title}
+                                            {task.title.startsWith('📎 ') ? task.title.substring(2) : task.title}
                                           </Typography>
                                         }
                                         secondary={
@@ -1886,7 +2376,7 @@ const GoogleTasks: React.FC = () => {
               }}>
                 <List sx={{ py: 0 }}>
                   {taskLists.flatMap(list => 
-                    list.tasks
+                    sortTasksWithSubtasks(list.tasks)
                       .filter(task => task.status === 'completed')
                       .map(task => ({ task, listId: list.id, listTitle: list.title }))
                   ).sort((a, b) => {
@@ -1925,9 +2415,18 @@ const GoogleTasks: React.FC = () => {
                               textDecoration: 'line-through',
                               color: 'text.secondary',
                               fontFamily: 'Poppins',
+                              ...(isSubtask(task) ? { 
+                                paddingLeft: '24px', // Increased padding
+                                marginLeft: '16px', // Added margin
+                                borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
+                                backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
+                                borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                fontStyle: 'italic',
+                                py: 0.5 // Add some vertical padding
+                              } : {})
                             }}
                           >
-                            {task.title}
+                            {task.title.startsWith('📎 ') ? task.title.substring(2) : task.title}
                           </Typography>
                         }
                         secondary={
@@ -2013,8 +2512,9 @@ const GoogleTasks: React.FC = () => {
         </MenuItem>
       </Menu>
 
-      {/* Task Options Menu */}
+      {/* Task Menu */}
       <Menu
+        id="task-menu"
         anchorEl={taskMenuAnchorEl}
         open={Boolean(taskMenuAnchorEl)}
         onClose={handleTaskMenuClose}
@@ -2027,8 +2527,6 @@ const GoogleTasks: React.FC = () => {
             mt: 0.5
           }
         }}
-        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
         <MenuItem 
           onClick={handleEditTaskFromMenu}
@@ -2040,19 +2538,41 @@ const GoogleTasks: React.FC = () => {
           <ListItemIcon>
             <EditIcon 
               fontSize="small" 
-              sx={{ color: 'text.primary' }} 
+              sx={{ color: '#1056F5' }}
             />
           </ListItemIcon>
           <ListItemText 
             primary="Edit task" 
             primaryTypographyProps={{ 
               fontFamily: 'Poppins', 
-              fontWeight: 'regular',
-              fontSize: '0.9rem'
+              fontWeight: 'medium' 
             }} 
           />
         </MenuItem>
-        <Divider />
+        
+        {/* Add Break Down Task option */}
+        <MenuItem 
+          onClick={handleBreakDownTaskFromMenu}
+          sx={{ 
+            py: 1.5,
+            px: 2
+          }}
+        >
+          <ListItemIcon>
+            <SplitscreenIcon 
+              fontSize="small" 
+              sx={{ color: '#1056F5' }}
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Break down task" 
+            primaryTypographyProps={{ 
+              fontFamily: 'Poppins', 
+              fontWeight: 'medium' 
+            }} 
+          />
+        </MenuItem>
+        
         <MenuItem 
           onClick={handleDeleteTaskFromMenu}
           sx={{ 
@@ -2062,17 +2582,13 @@ const GoogleTasks: React.FC = () => {
           }}
         >
           <ListItemIcon>
-            <DeleteIcon 
-              fontSize="small" 
-              sx={{ color: '#e53935' }} 
-            />
+            <DeleteIcon fontSize="small" sx={{ color: '#e53935' }} />
           </ListItemIcon>
           <ListItemText 
             primary="Delete task" 
             primaryTypographyProps={{ 
               fontFamily: 'Poppins', 
-              fontWeight: 'regular',
-              fontSize: '0.9rem'
+              fontWeight: 'medium' 
             }} 
           />
         </MenuItem>
@@ -2080,11 +2596,18 @@ const GoogleTasks: React.FC = () => {
 
       {/* Filter Menu */}
       <Menu
+        id="filter-menu"
         anchorEl={filterMenuAnchorEl}
         open={Boolean(filterMenuAnchorEl)}
         onClose={handleFilterMenuClose}
         PaperProps={{
-          sx: { width: 220, maxWidth: '100%' }
+          sx: { 
+            width: 'auto',
+            minWidth: '180px',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.12)',
+            borderRadius: '8px',
+            mt: 0.5
+          }
         }}
       >
         <MenuItem onClick={() => handleFilterOption('myOrder')}>
@@ -2095,22 +2618,24 @@ const GoogleTasks: React.FC = () => {
         </MenuItem>
         <MenuItem onClick={() => handleFilterOption('date')}>
           <ListItemIcon>
-            <SortIcon fontSize="small" />
+            <DateRangeIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Date</ListItemText>
+          <ListItemText>Due date</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => handleFilterOption('starredRecently')}>
           <ListItemIcon>
-            <StarIcon fontSize="small" />
+            <AccessTimeIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Starred recently</ListItemText>
+          <ListItemText>Creation time</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => handleFilterOption('title')}>
           <ListItemIcon>
-            <SortIcon fontSize="small" />
+            <SortByAlphaIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Title</ListItemText>
+          <ListItemText>Alphabetical</ListItemText>
         </MenuItem>
+        {/* Note: We can't add 'SubtasksFirst' without modifying the context type,
+            but we can still show subtask visual indicators */}
       </Menu>
 
       {/* New Task Dialog */}
@@ -2845,6 +3370,413 @@ const GoogleTasks: React.FC = () => {
         taskListId={detailsTask?.taskListId || ''}
         taskListTitle={detailsTask?.taskListTitle}
       />
+
+      {/* Task Breakdown Dialog */}
+      <Dialog
+        open={breakdownTaskDialogOpen}
+        onClose={() => setBreakdownTaskDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+          Break Down Task
+        </DialogTitle>
+        <DialogContent sx={dialogContentStyles}>
+          {taskToBreakdown && (
+            <>
+              <Typography variant="subtitle1" fontWeight="bold" mb={1}>
+                Parent Task: {taskToBreakdown.task.title}
+              </Typography>
+              
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Break this task into smaller, manageable subtasks. Each subtask will be created as a separate task with a link back to this parent task.
+              </Typography>
+              
+              <Box mb={3}>
+                <Button
+                  variant="outlined"
+                  startIcon={<SmartToyIcon />}
+                  onClick={handleOpenAIAssistant}
+                  sx={{ mb: 2 }}
+                >
+                  Ask AI to help break down this task
+                </Button>
+                
+                {aiAssistantVisible && (
+                  <Box 
+                    ref={aiAssistantRef}
+                    sx={{ 
+                      border: '1px solid rgba(0, 0, 0, 0.12)', 
+                      borderRadius: 1, 
+                      p: 2, 
+                      mb: 2,
+                      bgcolor: 'rgba(240, 240, 240, 0.5)'
+                    }}
+                  >
+                    <Typography variant="subtitle2" mb={1}>
+                      AI Assistant
+                    </Typography>
+                    <Typography variant="body2" mb={2}>
+                      Our AI system can help break down "{taskToBreakdown?.task.title}" into manageable subtasks.
+                    </Typography>
+                    <Box sx={{ height: 'auto' }}>
+                      <Button 
+                        variant="contained"
+                        fullWidth
+                        onClick={handleAIResponse}
+                        disabled={isBreakingDown || isLoading}
+                        startIcon={<SmartToyIcon />}
+                        sx={{ 
+                          backgroundColor: '#1056F5',
+                          '&:hover': {
+                            backgroundColor: '#0D47D9',
+                          },
+                          mb: 2
+                        }}
+                      >
+                        Ask AI to help break down this task
+                      </Button>
+                      
+                      <Button 
+                        variant="outlined"
+                        fullWidth
+                        onClick={handleImportFromAssistant}
+                        disabled={messages.filter(msg => msg.role === 'assistant').length === 0}
+                        startIcon={<ImportExportIcon />}
+                        sx={{ mb: 2 }}
+                      >
+                        Import Subtasks from Assistant
+                      </Button>
+                      
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        1. Click "Ask AI" to open the Pulse Assistant
+                        2. Wait for the AI to respond with suggested subtasks
+                        3. Click "Import Subtasks" to use the AI's suggestions
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+              
+              <Typography variant="subtitle1" mb={1}>
+                Subtasks
+              </Typography>
+              
+              {breakdownSubtasks.map((subtask, index) => (
+                <Box 
+                  key={index} 
+                  sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    mb: 2,
+                    border: '1px solid rgba(0, 0, 0, 0.12)',
+                    borderRadius: 1,
+                    p: 2
+                  }}
+                >
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={subtask.title}
+                    onChange={(e) => handleUpdateSubtask(index, { ...subtask, title: e.target.value })}
+                    placeholder={`Subtask ${index + 1}`}
+                    sx={{ mb: 2 }}
+                  />
+                  
+                  <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                      <TodayIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="outlined" 
+                        size="small"
+                        fullWidth
+                        onClick={(e) => handleSubtaskDatePickerOpen(e, index)}
+                        sx={{ justifyContent: 'flex-start' }}
+                      >
+                        {subtask.due ? formatDate(subtask.due) : 'Add due date'}
+                      </Button>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                      <AccessTimeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="outlined"
+                        size="small"
+                        fullWidth
+                        onClick={(e) => handleSubtaskTimePickerOpen(e, index)}
+                        sx={{ justifyContent: 'flex-start' }}
+                        disabled={!subtask.due}
+                      >
+                        {subtask.time ? subtask.time : 'Add time'}
+                      </Button>
+                    </Box>
+                    
+                    <IconButton onClick={() => handleRemoveSubtask(index)} color="error">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Box>
+              ))}
+              
+              <Button 
+                startIcon={<AddIcon />} 
+                onClick={handleAddSubtask}
+                variant="outlined"
+                sx={{ mt: 1 }}
+              >
+                Add Subtask
+              </Button>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setBreakdownTaskDialogOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleCreateSubtasks} 
+            variant="contained"
+            disabled={breakdownSubtasks.length === 0 || isBreakingDown}
+            startIcon={isBreakingDown ? <CircularProgress size={20} /> : null}
+            sx={{ 
+              fontFamily: 'Poppins',
+              backgroundColor: '#1056F5',
+              '&:hover': {
+                backgroundColor: '#0D47D9',
+              },
+            }}
+          >
+            {isBreakingDown ? 'Creating Subtasks...' : 'Create Subtasks'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Subtask Date picker popover */}
+      <Popover
+        open={subtaskDatePickerOpen}
+        anchorEl={subtaskDatePickerAnchorEl}
+        onClose={handleSubtaskDatePickerClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+      >
+        <Stack spacing={2} sx={{ 
+          p: 2,
+          width: 320,
+          maxHeight: 400,
+          overflow: 'auto',
+          ...scrollbarStyles 
+        }}>
+          <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+            Set due date
+          </Typography>
+          
+          <Stack direction="row" spacing={1}>
+            <Button 
+              variant="outlined" 
+              fullWidth 
+              sx={{ justifyContent: 'center' }}
+              onClick={handleSetSubtaskToday}
+            >
+              Today
+            </Button>
+            <Button 
+              variant="outlined" 
+              fullWidth 
+              sx={{ justifyContent: 'center' }}
+              onClick={handleSetSubtaskTomorrow}
+            >
+              Tomorrow
+            </Button>
+          </Stack>
+          
+          <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
+            <IconButton onClick={handlePreviousMonth}>
+              <ChevronLeftIcon />
+            </IconButton>
+            <Typography variant="subtitle1">
+              {format(currentMonth, 'MMMM yyyy')}
+            </Typography>
+            <IconButton onClick={handleNextMonth}>
+              <ChevronRightIcon />
+            </IconButton>
+          </Stack>
+          
+          <Grid container spacing={0} sx={{ textAlign: 'center' }}>
+            {/* Weekday headers */}
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <Grid item xs={12/7} key={`header-${index}`}>
+                <Typography variant="body2" color="text.secondary">
+                  {day}
+                </Typography>
+              </Grid>
+            ))}
+            
+            {/* Calendar days - dynamically generated */}
+            {(() => {
+              const daysInMonth = getDaysInMonth(currentMonth);
+              const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
+              
+              const days: React.ReactNode[] = [];
+              // Empty cells for days before first day of month
+              for (let i = 0; i < firstDayOfMonth; i++) {
+                days.push(
+                  <Grid item xs={12/7} key={`empty-${i}`} sx={{ textAlign: 'center' }}>
+                    <Box sx={{ width: 32, height: 32 }} />
+                  </Grid>
+                );
+              }
+              
+              // Days of the month
+              for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+                
+                // Determine if this date is selected
+                let dateIsSelected = false;
+                if (editingSubtaskIndex >= 0 && breakdownSubtasks[editingSubtaskIndex].due) {
+                  const subtaskDue = breakdownSubtasks[editingSubtaskIndex].due;
+                  if (subtaskDue) {
+                    const compareDate = new Date(subtaskDue);
+                    
+                    dateIsSelected = 
+                      date.getDate() === compareDate.getDate() && 
+                      date.getMonth() === compareDate.getMonth() && 
+                      date.getFullYear() === compareDate.getFullYear();
+                  }
+                }
+                
+                const isToday = 
+                  date.getDate() === new Date().getDate() && 
+                  date.getMonth() === new Date().getMonth() && 
+                  date.getFullYear() === new Date().getFullYear();
+                  
+                days.push(
+                  <Grid item xs={12/7} key={day} sx={{ textAlign: 'center' }}>
+                    <IconButton 
+                      size="small" 
+                      sx={{ 
+                        borderRadius: '50%',
+                        width: 32, 
+                        height: 32,
+                        ...(dateIsSelected && { 
+                          bgcolor: 'primary.main',
+                          color: 'white',
+                          '&:hover': { bgcolor: 'primary.dark' }
+                        }),
+                        ...(isToday && !dateIsSelected && {
+                          border: '1px solid',
+                          borderColor: 'primary.main',
+                        })
+                      }}
+                      onClick={() => {
+                        handleSetSubtaskDueDate(date);
+                      }}
+                    >
+                      <Typography variant="body2">{day}</Typography>
+                    </IconButton>
+                  </Grid>
+                );
+              }
+              
+              return days;
+            })()}
+          </Grid>
+          
+          <Divider />
+          
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+            <Button onClick={handleClearSubtaskDueDate}>Clear</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSubtaskDatePickerClose}
+              sx={{ bgcolor: 'primary.main' }}
+            >
+              Done
+            </Button>
+          </Box>
+        </Stack>
+      </Popover>
+      
+      {/* Subtask Time picker popover */}
+      <Popover
+        open={subtaskTimePickerOpen}
+        anchorEl={subtaskTimePickerAnchorEl}
+        onClose={handleSubtaskTimePickerClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+      >
+        <Stack spacing={1} sx={{ 
+          p: 2, 
+          width: 200, 
+          maxHeight: 400, 
+          overflow: 'auto',
+          ...scrollbarStyles
+        }}>
+          <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+            Set time
+          </Typography>
+          
+          {/* Time options in 30-minute increments */}
+          {[...Array(24)].map((_, hour) => (
+            <React.Fragment key={hour}>
+              <MenuItem
+                onClick={() => handleSetSubtaskDueTime(`${hour}:00`)}
+                dense
+                sx={{ 
+                  minHeight: '36px',
+                  py: 0.5,
+                  px: 2,
+                  borderRadius: 1,
+                  ...(editingSubtaskIndex >= 0 && 
+                    breakdownSubtasks[editingSubtaskIndex].time === `${hour}:00` && { 
+                    bgcolor: 'primary.light',
+                    '&:hover': { bgcolor: 'primary.light' }
+                  })
+                }}
+              >
+                <Typography variant="body2">
+                  {format(new Date().setHours(hour, 0), 'h:mm a')}
+                </Typography>
+              </MenuItem>
+              <MenuItem
+                onClick={() => handleSetSubtaskDueTime(`${hour}:30`)}
+                dense
+                sx={{ 
+                  minHeight: '36px',
+                  py: 0.5,
+                  px: 2,
+                  borderRadius: 1,
+                  ...(editingSubtaskIndex >= 0 && 
+                    breakdownSubtasks[editingSubtaskIndex].time === `${hour}:30` && { 
+                    bgcolor: 'primary.light',
+                    '&:hover': { bgcolor: 'primary.light' }
+                  })
+                }}
+              >
+                <Typography variant="body2">
+                  {format(new Date().setHours(hour, 30), 'h:mm a')}
+                </Typography>
+              </MenuItem>
+            </React.Fragment>
+          ))}
+          
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+            <Button onClick={handleClearSubtaskDueTime}>Clear</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSubtaskTimePickerClose}
+              sx={{ bgcolor: 'primary.main' }}
+            >
+              Done
+            </Button>
+          </Box>
+        </Stack>
+      </Popover>
     </Container>
   );
 };
