@@ -27,7 +27,13 @@ import {
   FormControlLabel,
   FormControl,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Checkbox,
+  CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -41,10 +47,14 @@ import PeopleIcon from '@mui/icons-material/People';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
-import { CalendarEvent, respondToEventInvitation } from '../services/calendarService';
+import TaskIcon from '@mui/icons-material/Task';
+import AddTaskIcon from '@mui/icons-material/AddTask';
+import { CalendarEvent, respondToEventInvitation, linkTasksToEvent, getTasksForEvent } from '../services/calendarService';
 import { format } from 'date-fns';
 import EventEditForm from './EventEditForm';
 import { useCalendar } from '../contexts/CalendarContext';
+import { useGoogleTasks } from '../contexts/GoogleTasksContext';
+import { GoogleTask } from '../services/googleTasksService';
 
 interface Guest {
   name: string;
@@ -72,6 +82,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   onDelete
 }) => {
   const { fetchEvents } = useCalendar();
+  const { taskLists, updateTask } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -101,6 +112,11 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false);
   const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
+  const [linkedTasks, setLinkedTasks] = useState<GoogleTask[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState<boolean>(false);
+  const [selectedTasks, setSelectedTasks] = useState<{[key: string]: boolean}>({});
+  const [taskDialogTab, setTaskDialogTab] = useState<string>('');
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -342,6 +358,131 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       }
     }
   }, [event]);
+
+  // Load linked tasks when event changes
+  useEffect(() => {
+    if (event && event.id) {
+      fetchLinkedTasks(event.id);
+    }
+  }, [event]);
+  
+  // Fetch tasks linked to the event
+  const fetchLinkedTasks = async (eventId: string) => {
+    try {
+      setLoadingTasks(true);
+      const response = await getTasksForEvent(eventId);
+      if (response.status === 'success') {
+        setLinkedTasks(response.linkedTasks);
+        
+        // Initialize selected tasks for the dialog
+        const initialSelection: {[key: string]: boolean} = {};
+        response.linkedTasks.forEach(task => {
+          const taskKey = `${task.task_list_id}:${task.id}`;
+          initialSelection[taskKey] = true;
+        });
+        setSelectedTasks(initialSelection);
+      }
+    } catch (error) {
+      console.error('Error fetching linked tasks:', error);
+      setSnackbarMessage('Failed to load tasks linked to this event');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+  
+  // Open dialog to manage tasks
+  const handleManageTasks = () => {
+    setTaskDialogOpen(true);
+    
+    // Set default task list tab to the first task list if available
+    if (taskLists.length > 0 && !taskDialogTab) {
+      setTaskDialogTab(taskLists[0].id);
+    }
+  };
+  
+  // Handle dialog close
+  const handleTaskDialogClose = () => {
+    setTaskDialogOpen(false);
+  };
+  
+  // Toggle task selection in the dialog
+  const handleTaskToggle = (taskListId: string, taskId: string) => {
+    const taskKey = `${taskListId}:${taskId}`;
+    setSelectedTasks(prev => ({
+      ...prev,
+      [taskKey]: !prev[taskKey]
+    }));
+  };
+  
+  // Save the selected tasks
+  const handleSaveTasks = async () => {
+    if (!event || !event.id) return;
+    
+    try {
+      // Convert selected tasks to the format expected by the API
+      const taskIds = Object.entries(selectedTasks)
+        .filter(([_, isSelected]) => isSelected)
+        .map(([key]) => {
+          const [taskListId, taskId] = key.split(':');
+          return { task_list_id: taskListId, task_id: taskId };
+        });
+      
+      // Call the API to link tasks
+      await linkTasksToEvent(event.id, taskIds);
+      
+      // Refresh the linked tasks
+      await fetchLinkedTasks(event.id);
+      
+      setTaskDialogOpen(false);
+      setSnackbarMessage('Tasks linked to event successfully');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error('Error linking tasks to event:', error);
+      setSnackbarMessage('Failed to link tasks to event');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+  
+  // Set the active tab in the task dialog
+  const handleTaskTabChange = (taskListId: string) => {
+    setTaskDialogTab(taskListId);
+  };
+
+  // Toggle task completion status
+  const handleToggleTaskComplete = async (task: GoogleTask) => {
+    if (!task || !task.id || !task.task_list_id) {
+      console.error('Cannot toggle task completion: Missing task data');
+      return;
+    }
+    
+    try {
+      // Toggle the status between 'completed' and 'needsAction'
+      const newStatus = task.status === 'completed' ? 'needsAction' : 'completed';
+      
+      // Update the task via the Google Tasks context
+      await updateTask(task.task_list_id, task.id, { status: newStatus });
+      
+      // Update the local state to reflect the change
+      setLinkedTasks(prevTasks => 
+        prevTasks.map(t => 
+          t.id === task.id ? { ...t, status: newStatus } : t
+        )
+      );
+      
+      setSnackbarMessage(`Task marked as ${newStatus === 'completed' ? 'completed' : 'active'}`);
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error('Error toggling task completion:', error);
+      setSnackbarMessage('Failed to update task status');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
 
   if (!event) return null;
   
@@ -1052,6 +1193,91 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
             </Box>
           )}
           
+          {/* Tasks Section - now with toggleable checkboxes */}
+          <Box sx={{ px: isMobile ? 2.5 : 3, pb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <TaskIcon 
+                  fontSize={isMobile ? "small" : "small"} 
+                  sx={{ 
+                    mr: 1, 
+                    color: 'text.secondary',
+                    width: isMobile ? 20 : 18, 
+                    height: isMobile ? 20 : 18
+                  }} 
+                />
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ fontSize: isMobile ? '0.9rem' : '0.85rem' }}
+                >
+                  Tasks for this event
+                </Typography>
+              </Box>
+              <Button
+                startIcon={<AddTaskIcon />}
+                size="small"
+                onClick={handleManageTasks}
+                sx={{ 
+                  textTransform: 'none', 
+                  fontSize: '0.75rem',
+                  minHeight: '28px', 
+                  p: '4px 8px',
+                  borderRadius: '4px',
+                  color: '#1A73E8'
+                }}
+              >
+                Manage
+              </Button>
+            </Box>
+            
+            {loadingTasks ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : linkedTasks.length > 0 ? (
+              <List dense sx={{ ml: 3, mt: 0, padding: 0 }}>
+                {linkedTasks.map((task) => (
+                  <ListItem key={task.id} sx={{ px: 0, py: 0.5 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Checkbox
+                        edge="start"
+                        checked={task.status === 'completed'}
+                        onChange={() => handleToggleTaskComplete(task)}
+                        tabIndex={-1}
+                        sx={{ 
+                          p: 0.5,
+                          color: '#5f6368',
+                          '&.Mui-checked': {
+                            color: '#1A73E8'
+                          }
+                        }}
+                      />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={task.title} 
+                      sx={{
+                        '& .MuiListItemText-primary': {
+                          fontSize: '0.85rem',
+                          textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                          color: task.status === 'completed' ? 'text.secondary' : 'text.primary'
+                        }
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ ml: 3, fontSize: '0.8rem', fontStyle: 'italic' }}
+              >
+                No tasks linked to this event
+              </Typography>
+            )}
+          </Box>
+          
           {/* Organizer section */}
           <Box sx={{ px: 3, pb: 2 }}>
             <Typography 
@@ -1538,6 +1764,111 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           </Button>
           <Button onClick={handleConfirmRecurringDelete} color="error" variant="contained">
             Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Tasks selection dialog */}
+      <Dialog
+        open={taskDialogOpen}
+        onClose={handleTaskDialogClose}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: { 
+            borderRadius: 1.5,
+            maxHeight: '80vh'
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          Link tasks to event
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex' }}>
+          {/* Task Lists Navigation */}
+          <Box sx={{ width: '30%', borderRight: '1px solid rgba(0, 0, 0, 0.12)', pr: 1 }}>
+            <List dense>
+              {taskLists.map((taskList) => (
+                <ListItem 
+                  key={taskList.id} 
+                  button 
+                  selected={taskDialogTab === taskList.id}
+                  onClick={() => handleTaskTabChange(taskList.id)}
+                  sx={{
+                    borderRadius: 1,
+                    mb: 0.5,
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                      color: '#1A73E8'
+                    }
+                  }}
+                >
+                  <ListItemText 
+                    primary={taskList.title} 
+                    primaryTypographyProps={{ 
+                      noWrap: true,
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+          
+          {/* Tasks Selection */}
+          <Box sx={{ width: '70%', pl: 2, overflow: 'auto' }}>
+            {taskDialogTab ? (
+              <List dense>
+                {taskLists
+                  .find(list => list.id === taskDialogTab)
+                  ?.tasks
+                  .filter(task => task.status !== 'completed')
+                  .map((task) => {
+                    const taskKey = `${taskDialogTab}:${task.id}`;
+                    return (
+                      <ListItem key={taskKey} dense>
+                        <ListItemIcon>
+                          <Checkbox
+                            edge="start"
+                            checked={!!selectedTasks[taskKey]}
+                            onChange={() => handleTaskToggle(taskDialogTab, task.id)}
+                            sx={{
+                              color: '#5f6368',
+                              '&.Mui-checked': {
+                                color: '#1A73E8'
+                              }
+                            }}
+                          />
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={task.title} 
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.9rem'
+                            }
+                          }}
+                        />
+                      </ListItem>
+                    );
+                  })}
+              </List>
+            ) : (
+              <Typography sx={{ p: 2, color: 'text.secondary' }}>
+                Select a task list to view tasks
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleTaskDialogClose}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveTasks} 
+            variant="contained"
+            color="primary"
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>

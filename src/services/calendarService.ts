@@ -1,4 +1,5 @@
 import { apiRequest, ApiOptions } from './apiUtils';
+import { GoogleTask } from './googleTasksService';
 
 export interface ConferenceEntryPoint {
   entryPointType: 'video' | 'phone' | 'more' | string;
@@ -975,5 +976,80 @@ export const removeAttendeesFromEvent = async (
   } catch (error) {
     console.error('Error removing attendees from event:', error);
     return null;
+  }
+};
+
+// Link tasks to a calendar event
+export const linkTasksToEvent = async (
+  eventId: string,
+  taskIds: Array<{task_list_id: string, task_id: string}>
+): Promise<{status: string, linkedTasks: Array<{task_list_id: string, task_id: string}>}> => {
+  try {
+    console.log(`Linking ${taskIds.length} tasks to event ${eventId}`);
+    
+    const response = await apiRequest<{
+      status: string, 
+      message: string, 
+      data: {
+        event_id: string,
+        linked_tasks: Array<{task_list_id: string, task_id: string}>
+      }
+    }>(`/api/calendar/events/${eventId}/tasks`, {
+      method: 'POST',
+      body: { task_ids: taskIds }
+    });
+    
+    console.log('API response for linking tasks:', response);
+    
+    if (response.status === 'success' && response.data) {
+      return {
+        status: 'success',
+        linkedTasks: response.data.linked_tasks
+      };
+    } else {
+      throw new Error(response.message || 'Failed to link tasks to event');
+    }
+  } catch (error) {
+    console.error('Error linking tasks to event:', error);
+    throw error;
+  }
+};
+
+// Get tasks linked to a calendar event
+export const getTasksForEvent = async (
+  eventId: string
+): Promise<{status: string, linkedTasks: Array<GoogleTask>}> => {
+  try {
+    console.log(`Fetching tasks linked to event ${eventId}`);
+    
+    const response = await apiRequest<{
+      status: string, 
+      message?: string, 
+      data: {
+        linked_tasks: Array<GoogleTask>
+      }
+    }>(`/api/calendar/events/${eventId}/tasks`, {
+      method: 'GET'
+    });
+    
+    console.log('API response for getting linked tasks:', response);
+    
+    if (response.status === 'success' && response.data) {
+      return {
+        status: 'success',
+        linkedTasks: response.data.linked_tasks
+      };
+    } else {
+      return {
+        status: 'success',
+        linkedTasks: []
+      };
+    }
+  } catch (error) {
+    console.error('Error getting tasks for event:', error);
+    return {
+      status: 'error',
+      linkedTasks: []
+    };
   }
 }; 
