@@ -31,7 +31,9 @@ import {
   useMediaQuery,
   ButtonGroup,
   Popover,
-  Stack
+  Stack,
+  InputAdornment,
+  Select
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided } from 'react-beautiful-dnd';
 import { 
@@ -130,7 +132,8 @@ const GoogleTasks: React.FC = () => {
     toggleTaskStar,
     toggleTaskComplete,
     filterTaskList,
-    toggleTaskListVisibility
+    toggleTaskListVisibility,
+    recordDuration
   } = useGoogleTasks();
 
   // State for task operations
@@ -152,6 +155,14 @@ const GoogleTasks: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+  
+  // Add state for estimated time
+  const [newTaskEstimatedMinutes, setNewTaskEstimatedMinutes] = useState<number | null>(null);
+  const [timeInputValue, setTimeInputValue] = useState<string>('');
+  
+  // Add state for edit task estimated time
+  const [editTaskEstimatedMinutes, setEditTaskEstimatedMinutes] = useState<number | null>(null);
+  const [editTimeInputValue, setEditTimeInputValue] = useState<string>('');
   
   // Due date related state
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
@@ -213,6 +224,13 @@ const GoogleTasks: React.FC = () => {
   
   // Add AI assistant reference
   const aiAssistantRef = useRef<HTMLDivElement>(null);
+
+  // Add state for duration dialog
+  const [durationDialogOpen, setDurationDialogOpen] = useState<boolean>(false);
+  const [taskForDuration, setTaskForDuration] = useState<{taskListId: string; taskId: string; task: EnhancedGoogleTask} | null>(null);
+  const [actualMinutes, setActualMinutes] = useState<number | null>(null);
+  const [actualHours, setActualHours] = useState<number>(0);
+  const [actualMinutesOnly, setActualMinutesOnly] = useState<number>(0);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -311,11 +329,17 @@ const GoogleTasks: React.FC = () => {
           timezone?: string;
           time_in_notes?: boolean;
           has_explicit_time?: boolean;
+          estimated_minutes?: number;
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
           time_in_notes: true // Add this parameter for the backend
         };
+        
+        // Add estimated minutes if set
+        if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
+          taskData.estimated_minutes = newTaskEstimatedMinutes;
+        }
         
         // Clean notes of any existing time entries and add if not empty
         if (taskNotes) {
@@ -362,6 +386,8 @@ const GoogleTasks: React.FC = () => {
           setNewTaskNotes('');
           setNewTaskDueDate(null);
           setNewTaskDueTime(null);
+          setNewTaskEstimatedMinutes(null);
+          setTimeInputValue('');
           setNewTaskDialogOpen(false);
           
           // Show success message
@@ -378,15 +404,49 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
-  // Toggle task completion status
+  // Toggle task completion status with duration dialog
   const handleToggleTaskComplete = async (taskListId: string, taskId: string) => {
     try {
-      const result = await toggleTaskComplete(taskListId, taskId);
-      if (result) {
-        showSnackbar(result.status === 'completed' ? 'Task completed' : 'Task marked as not completed', 'success');
-      } else {
-        showSnackbar('Failed to update task', 'error');
+      // Find the task first to check its current status
+      let task: EnhancedGoogleTask | undefined;
+      taskLists.forEach(list => {
+        if (list.id === taskListId) {
+          const foundTask = list.tasks.find(t => t.id === taskId);
+          if (foundTask) task = foundTask;
+        }
+      });
+      
+      if (!task) {
+        showSnackbar('Task not found', 'error');
+        return;
       }
+      
+      // If task is already completed, just toggle it back to active without showing the dialog
+      if (task.status === 'completed') {
+        const result = await toggleTaskComplete(taskListId, taskId);
+        if (result) {
+          showSnackbar('Task marked as not completed', 'success');
+        } else {
+          showSnackbar('Failed to update task', 'error');
+        }
+        return;
+      }
+      
+      // If the task is being marked as completed, show duration dialog
+      setTaskForDuration({taskListId, taskId, task});
+      
+      // Pre-populate with estimated time if available
+      if (task.estimated_minutes) {
+        setActualMinutes(task.estimated_minutes);
+        setActualHours(Math.floor(task.estimated_minutes / 60));
+        setActualMinutesOnly(task.estimated_minutes % 60);
+      } else {
+        setActualMinutes(null);
+        setActualHours(0);
+        setActualMinutesOnly(0);
+      }
+      
+      setDurationDialogOpen(true);
     } catch (err) {
       showSnackbar('Error updating task', 'error');
     }
@@ -824,6 +884,29 @@ const GoogleTasks: React.FC = () => {
     setEditTaskNotes(notes);
     setEditTaskDueDate(task.due || null);
     
+    // Load estimated time if available
+    if (task.estimated_minutes) {
+      setEditTaskEstimatedMinutes(task.estimated_minutes);
+      
+      // Format the display value appropriately
+      if (task.estimated_minutes >= 60) {
+        // For whole hours (60, 120, etc.)
+        if (task.estimated_minutes % 60 === 0) {
+          setEditTimeInputValue(`${task.estimated_minutes / 60}h`);
+        } else {
+          // For hour + minutes combinations (e.g., 90 = 1h30m)
+          const hours = Math.floor(task.estimated_minutes / 60);
+          const remainingMinutes = task.estimated_minutes % 60;
+          setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
+        }
+      } else {
+        setEditTimeInputValue(`${task.estimated_minutes}m`);
+      }
+    } else {
+      setEditTaskEstimatedMinutes(null);
+      setEditTimeInputValue('');
+    }
+    
     // If we found time in the notes, convert it to 24h format for the time picker
     if (timeString) {
       // Parse the time string (e.g., "3:00 AM" or "07:30")
@@ -912,7 +995,12 @@ const GoogleTasks: React.FC = () => {
     if (!notes) return '';
     
     // Remove all "Due Time: XX:XX" entries (including any following line breaks)
-    return notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '').trim();
+    let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
+    
+    // Also remove all "Estimated Time: X minutes" entries (including any following line breaks)
+    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+ minutes?(\r?\n|\r)?/g, '');
+    
+    return cleanedNotes.trim();
   };
 
   // Update an existing task
@@ -920,9 +1008,10 @@ const GoogleTasks: React.FC = () => {
     if (editingTask && editTaskTitle.trim()) {
       try {
         let taskTitle = editTaskTitle.trim();
+        let taskNotes = editTaskNotes.trim();
         let hasExplicitTimeSet = false;
         
-        // If time is set, we'll send it to the backend to add to notes
+        // If time is set, we'll send it to the backend which will add it to notes
         if (editTaskDueTime) {
           hasExplicitTimeSet = true;
           // No longer adding time to title - it will be in notes section
@@ -932,20 +1021,25 @@ const GoogleTasks: React.FC = () => {
           title: string; 
           notes?: string; 
           due?: string;
-          status?: string;
           timezone?: string;
           time_in_notes?: boolean;
           has_explicit_time?: boolean;
+          estimated_minutes?: number;
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
-          time_in_notes: true // Add this parameter for backend
+          time_in_notes: true // Add this parameter for the backend
         };
         
+        // Add estimated minutes if set
+        if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
+          taskData.estimated_minutes = editTaskEstimatedMinutes;
+        }
+        
         // Clean notes of any existing time entries and add if not empty
-        if (editTaskNotes.trim()) {
+        if (taskNotes) {
           // Remove any existing time entries from notes to prevent duplication
-          const cleanedNotes = cleanNotesOfTimeEntries(editTaskNotes);
+          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
           taskData.notes = cleanedNotes;
         }
         
@@ -1262,7 +1356,17 @@ const GoogleTasks: React.FC = () => {
   };
 
   // Handle task item click with single/double click detection
-  const handleTaskItemClick = (taskListId: string, task: EnhancedGoogleTask, taskListTitle?: string) => {
+  const handleTaskItemClick = (taskListId: string, task: EnhancedGoogleTask, taskListTitle?: string, event?: React.MouseEvent) => {
+    // If the click originated from a checkbox or its child elements, do nothing
+    // The checkbox's onClick handler will handle it with e.stopPropagation()
+    if (event && (
+      event.target instanceof HTMLElement && 
+      (event.target.closest('.MuiCheckbox-root') || 
+       event.target.closest('.MuiIconButton-root'))
+    )) {
+      return;
+    }
+    
     // Handle double click detection
     if (clickTimerRef.current) {
       // Double click detected
@@ -1722,6 +1826,201 @@ const GoogleTasks: React.FC = () => {
     handleSetSubtaskDueTime(null);
   };
 
+  // Time estimate formatter - detects hours/minutes and converts to minutes
+  const handleTimeInputChange = (value: string) => {
+    setTimeInputValue(value);
+    
+    // If empty, reset the estimate
+    if (!value.trim()) {
+      setNewTaskEstimatedMinutes(null);
+      return;
+    }
+    
+    // Check for combined format like "1h30m" or "1h 30m"
+    const combinedPattern = /(\d+)\s*h\s*(\d+)\s*m/i;
+    const combinedMatch = value.match(combinedPattern);
+    if (combinedMatch && combinedMatch[1] && combinedMatch[2]) {
+      const hours = parseInt(combinedMatch[1], 10);
+      const minutes = parseInt(combinedMatch[2], 10);
+      setNewTaskEstimatedMinutes(hours * 60 + minutes);
+      return;
+    }
+    
+    // Check for decimal hours like "1.5h"
+    const decimalHourPattern = /(\d+\.\d+)\s*h/i;
+    const decimalMatch = value.match(decimalHourPattern);
+    if (decimalMatch && decimalMatch[1]) {
+      const hours = parseFloat(decimalMatch[1]);
+      setNewTaskEstimatedMinutes(Math.round(hours * 60));
+      return;
+    }
+    
+    // Check if the input contains 'h' for hours
+    if (value.toLowerCase().includes('h')) {
+      const hourPattern = /(\d+)\s*h/i;
+      const match = value.match(hourPattern);
+      if (match && match[1]) {
+        const hours = parseInt(match[1], 10);
+        setNewTaskEstimatedMinutes(hours * 60);
+      }
+      return;
+    }
+    
+    // Check if input contains 'm' for minutes
+    if (value.toLowerCase().includes('m')) {
+      const minutePattern = /(\d+)\s*m/i;
+      const match = value.match(minutePattern);
+      if (match && match[1]) {
+        setNewTaskEstimatedMinutes(parseInt(match[1], 10));
+      }
+      return;
+    }
+    
+    // If just a number, assume minutes
+    const minutesValue = parseInt(value, 10);
+    if (!isNaN(minutesValue)) {
+      setNewTaskEstimatedMinutes(minutesValue);
+    }
+  };
+  
+  // Time estimate formatter for edit task - detects hours/minutes and converts to minutes
+  const handleEditTimeInputChange = (value: string) => {
+    setEditTimeInputValue(value);
+    
+    // If empty, reset the estimate
+    if (!value.trim()) {
+      setEditTaskEstimatedMinutes(null);
+      return;
+    }
+    
+    // Check for combined format like "1h30m" or "1h 30m"
+    const combinedPattern = /(\d+)\s*h\s*(\d+)\s*m/i;
+    const combinedMatch = value.match(combinedPattern);
+    if (combinedMatch && combinedMatch[1] && combinedMatch[2]) {
+      const hours = parseInt(combinedMatch[1], 10);
+      const minutes = parseInt(combinedMatch[2], 10);
+      setEditTaskEstimatedMinutes(hours * 60 + minutes);
+      return;
+    }
+    
+    // Check for decimal hours like "1.5h"
+    const decimalHourPattern = /(\d+\.\d+)\s*h/i;
+    const decimalMatch = value.match(decimalHourPattern);
+    if (decimalMatch && decimalMatch[1]) {
+      const hours = parseFloat(decimalMatch[1]);
+      setEditTaskEstimatedMinutes(Math.round(hours * 60));
+      return;
+    }
+    
+    // Check if the input contains 'h' for hours
+    if (value.toLowerCase().includes('h')) {
+      const hourPattern = /(\d+)\s*h/i;
+      const match = value.match(hourPattern);
+      if (match && match[1]) {
+        const hours = parseInt(match[1], 10);
+        setEditTaskEstimatedMinutes(hours * 60);
+      }
+      return;
+    }
+    
+    // Check if input contains 'm' for minutes
+    if (value.toLowerCase().includes('m')) {
+      const minutePattern = /(\d+)\s*m/i;
+      const match = value.match(minutePattern);
+      if (match && match[1]) {
+        setEditTaskEstimatedMinutes(parseInt(match[1], 10));
+      }
+      return;
+    }
+    
+    // If just a number, assume minutes
+    const minutesValue = parseInt(value, 10);
+    if (!isNaN(minutesValue)) {
+      setEditTaskEstimatedMinutes(minutesValue);
+    }
+  };
+
+  // Handle submitting the duration dialog
+  const handleDurationSubmit = async () => {
+    if (!taskForDuration || actualMinutes === null) return;
+    
+    try {
+      // First mark the task as complete
+      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
+      
+      if (result) {
+        try {
+          // Then record the duration
+          const durationResult = await recordDuration(
+            taskForDuration.taskListId, 
+            taskForDuration.taskId, 
+            actualMinutes
+          );
+          
+          // The API returns success in response even if durationResult is null
+          // based on the API response format seen in the network tab
+          showSnackbar('Task completed and duration recorded', 'success');
+        } catch (durationErr) {
+          // This will catch actual API failures during duration recording
+          console.error('Error recording duration:', durationErr);
+          showSnackbar('Task completed but failed to record duration', 'error');
+        }
+      } else {
+        showSnackbar('Failed to complete task', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling task completion:', err);
+      showSnackbar('Error updating task', 'error');
+    } finally {
+      // Close dialog and reset state
+      setDurationDialogOpen(false);
+      setTaskForDuration(null);
+      setActualMinutes(null);
+      setActualHours(0);
+      setActualMinutesOnly(0);
+    }
+  };
+  
+  // Handle duration input changes
+  const handleHoursChange = (value: number) => {
+    // Convert to a regular number to remove any leading zeros
+    const hours = parseInt(value.toString(), 10);
+    setActualHours(hours);
+    setActualMinutes(hours * 60 + actualMinutesOnly);
+  };
+  
+  const handleMinutesChange = (value: number) => {
+    // Convert to a regular number to remove any leading zeros
+    const minutes = parseInt(value.toString(), 10);
+    setActualMinutesOnly(minutes);
+    setActualMinutes(actualHours * 60 + minutes);
+  };
+  
+  // Skip recording duration
+  const handleSkipDuration = async () => {
+    if (!taskForDuration) return;
+    
+    try {
+      // Just mark the task as complete without recording duration
+      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
+      
+      if (result) {
+        showSnackbar('Task completed', 'success');
+      } else {
+        showSnackbar('Failed to complete task', 'error');
+      }
+    } catch (err) {
+      showSnackbar('Error updating task', 'error');
+    } finally {
+      // Close dialog and reset state
+      setDurationDialogOpen(false);
+      setTaskForDuration(null);
+      setActualMinutes(null);
+      setActualHours(0);
+      setActualMinutesOnly(0);
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1814,12 +2113,12 @@ const GoogleTasks: React.FC = () => {
                   return (
                     <ListItem
                       key={task.id}
-                      onClick={() => {
+                      onClick={(e) => {
                         const taskList = taskLists.find(list => 
                           list.tasks.some(t => t.id === task.id)
                         );
                         if (taskList) {
-                          handleTaskItemClick(taskList.id, task, taskList.title);
+                          handleTaskItemClick(taskList.id, task, taskList.title, e);
                         }
                       }}
                       sx={{
@@ -1990,7 +2289,7 @@ const GoogleTasks: React.FC = () => {
                                     ref={(el) => provided.innerRef(el)}
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
-                                    onClick={() => handleTaskItemClick(taskList.id, task, taskList.title)}
+                                    onClick={(e) => handleTaskItemClick(taskList.id, task, taskList.title, e)}
                                     sx={{
                                       py: 1,
                                       borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
@@ -2201,7 +2500,7 @@ const GoogleTasks: React.FC = () => {
                                   {sortTasksWithSubtasks(taskList.tasks).filter(task => task.status === 'completed').map((task) => (
                                     <ListItem
                                       key={task.id}
-                                      onClick={() => handleTaskItemClick(taskList.id, task, taskList.title)}
+                                      onClick={(e) => handleTaskItemClick(taskList.id, task, taskList.title, e)}
                                       sx={{
                                         py: 1,
                                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
@@ -2387,7 +2686,7 @@ const GoogleTasks: React.FC = () => {
                   }).map(({ task, listId, listTitle }) => (
                     <ListItem
                       key={task.id}
-                      onClick={() => handleTaskItemClick(listId, task, listTitle)}
+                      onClick={(e) => handleTaskItemClick(listId, task, listTitle, e)}
                       sx={{
                         py: 1,
                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
@@ -2641,7 +2940,15 @@ const GoogleTasks: React.FC = () => {
       {/* New Task Dialog */}
       <Dialog 
         open={newTaskDialogOpen} 
-        onClose={() => setNewTaskDialogOpen(false)}
+        onClose={() => {
+          setNewTaskDialogOpen(false);
+          setNewTaskTitle('');
+          setNewTaskNotes('');
+          setNewTaskDueDate(null);
+          setNewTaskDueTime(null);
+          setNewTaskEstimatedMinutes(null);
+          setTimeInputValue('');
+        }}
         fullWidth
         maxWidth="sm"
       >
@@ -2673,24 +2980,93 @@ const GoogleTasks: React.FC = () => {
             placeholder="Add details"
           />
           
+          {/* Time Estimation Field */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Time Estimate
+            </Typography>
+            
+            {/* Input field and preset buttons */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Minutes input field */}
+              <TextField
+                label="Time"
+                variant="outlined"
+                size="small"
+                value={timeInputValue}
+                onChange={(e) => handleTimeInputChange(e.target.value)}
+                placeholder="30m, 1h30m, 2h..."
+                sx={{ width: '180px', mb: 1 }}
+              />
+              
+              {/* Time preset buttons */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {[5, 15, 30, 45, 60, 120].map((minutes) => (
+                  <Button
+                    key={minutes}
+                    variant={newTaskEstimatedMinutes === minutes ? "contained" : "outlined"}
+                    size="small"
+                    onClick={() => {
+                      setNewTaskEstimatedMinutes(minutes);
+                      // Update display value appropriately
+                      if (minutes >= 60) {
+                        // For whole hours (60, 120, etc.)
+                        if (minutes % 60 === 0) {
+                          setTimeInputValue(`${minutes / 60}h`);
+                        } else {
+                          // For hour + minutes combinations (e.g., 90 = 1h30m)
+                          const hours = Math.floor(minutes / 60);
+                          const remainingMinutes = minutes % 60;
+                          setTimeInputValue(`${hours}h ${remainingMinutes}m`);
+                        }
+                      } else {
+                        setTimeInputValue(`${minutes}m`);
+                      }
+                    }}
+                    sx={{ minWidth: '60px' }}
+                  >
+                    {minutes >= 60 ? `${Math.floor(minutes / 60)}h` : `${minutes}m`}
+                  </Button>
+                ))}
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    setNewTaskEstimatedMinutes(null);
+                    setTimeInputValue('');
+                  }}
+                  sx={{ minWidth: '60px' }}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+          
           {/* Date selection options */}
-          <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 1 }}>
-            {newTaskDueDate ? (
-              <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
-                <Button startIcon={<DateRangeIcon />}>
-                  {formatDisplayDate(newTaskDueDate, newTaskDueTime)}
-                </Button>
-                <Button onClick={handleClearDueDate} sx={{ p: 0, minWidth: '30px' }}>
-                  <CloseIcon fontSize="small" />
-                </Button>
-              </ButtonGroup>
-            ) : (
-              <ButtonGroup variant="outlined" size="small">
-                <Button onClick={handleSetToday}>Today</Button>
-                <Button onClick={handleSetTomorrow}>Tomorrow</Button>
-                <Button onClick={handleDatePickerOpen}><DateRangeIcon fontSize="small" /></Button>
-              </ButtonGroup>
-            )}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Due Date & Time
+            </Typography>
+            
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {newTaskDueDate ? (
+                <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
+                  <Button startIcon={<DateRangeIcon />}>
+                    {formatDisplayDate(newTaskDueDate, newTaskDueTime)}
+                  </Button>
+                  <Button onClick={handleClearDueDate} sx={{ p: 0, minWidth: '30px' }}>
+                    <CloseIcon fontSize="small" />
+                  </Button>
+                </ButtonGroup>
+              ) : (
+                <ButtonGroup variant="outlined" size="small">
+                  <Button onClick={handleSetToday}>Today</Button>
+                  <Button onClick={handleSetTomorrow}>Tomorrow</Button>
+                  <Button onClick={handleDatePickerOpen}><DateRangeIcon fontSize="small" /></Button>
+                </ButtonGroup>
+              )}
+            </Box>
           </Box>
           
           {/* Date picker popover */}
@@ -3048,7 +3424,16 @@ const GoogleTasks: React.FC = () => {
       {/* Edit Task Dialog */}
       <Dialog 
         open={editTaskDialogOpen} 
-        onClose={() => setEditTaskDialogOpen(false)}
+        onClose={() => {
+          setEditTaskDialogOpen(false);
+          setEditingTask(null);
+          setEditTaskTitle('');
+          setEditTaskNotes('');
+          setEditTaskDueDate(null);
+          setEditTaskDueTime(null);
+          setEditTaskEstimatedMinutes(null);
+          setEditTimeInputValue('');
+        }}
         fullWidth
         maxWidth="sm"
       >
@@ -3098,6 +3483,69 @@ const GoogleTasks: React.FC = () => {
                 <Button onClick={handleEditDatePickerOpen}><DateRangeIcon fontSize="small" /></Button>
               </ButtonGroup>
             )}
+          </Box>
+          
+          {/* Time Estimation Field for Edit Task */}
+          <Box sx={{ mb: 3, mt: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Time Estimate
+            </Typography>
+            
+            {/* Input field and preset buttons */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Minutes input field */}
+              <TextField
+                label="Time"
+                variant="outlined"
+                size="small"
+                value={editTimeInputValue}
+                onChange={(e) => handleEditTimeInputChange(e.target.value)}
+                placeholder="30m, 1h30m, 2h..."
+                sx={{ width: '180px', mb: 1 }}
+              />
+              
+              {/* Time preset buttons */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {[5, 15, 30, 45, 60, 120].map((minutes) => (
+                  <Button
+                    key={minutes}
+                    variant={editTaskEstimatedMinutes === minutes ? "contained" : "outlined"}
+                    size="small"
+                    onClick={() => {
+                      setEditTaskEstimatedMinutes(minutes);
+                      // Update display value appropriately
+                      if (minutes >= 60) {
+                        // For whole hours (60, 120, etc.)
+                        if (minutes % 60 === 0) {
+                          setEditTimeInputValue(`${minutes / 60}h`);
+                        } else {
+                          // For hour + minutes combinations (e.g., 90 = 1h30m)
+                          const hours = Math.floor(minutes / 60);
+                          const remainingMinutes = minutes % 60;
+                          setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
+                        }
+                      } else {
+                        setEditTimeInputValue(`${minutes}m`);
+                      }
+                    }}
+                    sx={{ minWidth: '60px' }}
+                  >
+                    {minutes >= 60 ? `${Math.floor(minutes / 60)}h` : `${minutes}m`}
+                  </Button>
+                ))}
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    setEditTaskEstimatedMinutes(null);
+                    setEditTimeInputValue('');
+                  }}
+                  sx={{ minWidth: '60px' }}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Box>
           </Box>
           
           {/* Date picker popover for edit dialog */}
@@ -3777,6 +4225,134 @@ const GoogleTasks: React.FC = () => {
           </Box>
         </Stack>
       </Popover>
+
+      {/* Duration Dialog */}
+      <Dialog
+        open={durationDialogOpen}
+        onClose={() => setDurationDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>
+          Record Time Spent
+        </DialogTitle>
+        <DialogContent sx={dialogContentStyles}>
+          {taskForDuration && (
+            <>
+              <Typography variant="subtitle1" fontWeight="bold" mb={1}>
+                {taskForDuration.task.title}
+              </Typography>
+              
+              <Typography variant="body2" color="text.secondary" mb={3}>
+                How long did this task actually take to complete?
+                {taskForDuration.task.estimated_minutes && (
+                  <Box component="span" ml={1} fontWeight="medium" color="primary.main">
+                    (Estimated: {taskForDuration.task.estimated_minutes >= 60 
+                      ? `${Math.floor(taskForDuration.task.estimated_minutes / 60)}h ${taskForDuration.task.estimated_minutes % 60}m`
+                      : `${taskForDuration.task.estimated_minutes}m`})
+                  </Box>
+                )}
+              </Typography>
+              
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                  Actual Time
+                </Typography>
+                
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+                  <TextField
+                    label="Hours"
+                    type="number"
+                    variant="outlined"
+                    size="small"
+                    value={actualHours === 0 ? '' : Number(actualHours)}
+                    onChange={(e) => handleHoursChange(Number(e.target.value))}
+                    sx={{ mr: 2, width: '120px' }}
+                    InputProps={{
+                      inputProps: { min: 0 }
+                    }}
+                  />
+                  <TextField
+                    label="Minutes"
+                    type="number"
+                    variant="outlined"
+                    size="small"
+                    value={actualMinutesOnly === 0 ? '' : Number(actualMinutesOnly)}
+                    onChange={(e) => handleMinutesChange(Number(e.target.value))}
+                    sx={{ width: '120px' }}
+                    InputProps={{
+                      inputProps: { min: 0, max: 59 }
+                    }}
+                  />
+                </Box>
+                
+                {/* Preset time buttons */}
+                <Typography variant="body2" color="text.secondary" mb={1}>
+                  Quick select:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                  {[5, 15, 30, 45, 60, 120].map((minutes) => (
+                    <Button
+                      key={minutes}
+                      variant={actualMinutes === minutes ? "contained" : "outlined"}
+                      size="small"
+                      onClick={() => {
+                        setActualMinutes(minutes);
+                        setActualHours(Math.floor(minutes / 60));
+                        setActualMinutesOnly(minutes % 60);
+                      }}
+                      sx={{ minWidth: '60px' }}
+                    >
+                      {minutes >= 60 ? `${Math.floor(minutes / 60)}h` : `${minutes}m`}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => {
+                      setActualMinutes(null);
+                      setActualHours(0);
+                      setActualMinutesOnly(0);
+                    }}
+                    sx={{ minWidth: '60px' }}
+                  >
+                    Clear
+                  </Button>
+                </Box>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleSkipDuration}
+            sx={{ fontFamily: 'Poppins' }}
+          >
+            Skip
+          </Button>
+          <Box sx={{ flex: '1 0 0' }} />
+          <Button 
+            onClick={() => setDurationDialogOpen(false)}
+            sx={{ fontFamily: 'Poppins' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDurationSubmit} 
+            variant="contained"
+            disabled={!taskForDuration || actualMinutes === null || (actualHours === 0 && actualMinutesOnly === 0)}
+            sx={{ 
+              fontFamily: 'Poppins',
+              backgroundColor: '#1056F5',
+              '&:hover': {
+                backgroundColor: '#0D47D9',
+              },
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

@@ -45,7 +45,7 @@ export const fetchGoogleTaskLists = async (): Promise<GoogleTaskList[]> => {
 // Create a new task
 export const createGoogleTask = async (
   taskListId: string, 
-  task: { title: string; notes?: string; due?: string; parent?: string; }
+  task: { title: string; notes?: string; due?: string; parent?: string; estimated_minutes?: number; }
 ): Promise<GoogleTask | null> => {
   try {
     const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${taskListId}/tasks`, {
@@ -305,6 +305,45 @@ export const fetchStarredTasks = async (): Promise<GoogleTask[]> => {
     return [];
   } catch (error) {
     console.error('Failed to fetch starred tasks:', error);
+    throw error;
+  }
+};
+
+// Record actual duration for a task
+export const recordTaskDuration = async (
+  taskListId: string,
+  taskId: string,
+  actualMinutes: number,
+  updateNotes: boolean = true
+): Promise<GoogleTask | null> => {
+  try {
+    console.log(`Recording duration of ${actualMinutes} minutes for task ${taskId}`);
+    const response = await apiRequest<{ 
+      status: string; 
+      task?: GoogleTask;
+      data?: { task: GoogleTask };
+    }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}/duration`, {
+      method: 'POST',
+      body: {
+        actual_minutes: actualMinutes,
+        update_notes: updateNotes
+      }
+    });
+    
+    if (response.status === 'success') {
+      // Handle both response formats
+      if (response.task) {
+        return response.task;
+      }
+      if (response.data && response.data.task) {
+        return response.data.task;
+      }
+      console.warn('Duration recorded successfully but unexpected response format:', response);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to record task duration:', error);
     throw error;
   }
 }; 

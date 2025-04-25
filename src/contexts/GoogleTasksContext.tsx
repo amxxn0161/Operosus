@@ -10,6 +10,7 @@ import {
   deleteGoogleTaskList,
   clearCompletedTasks,
   toggleTaskStar as toggleTaskStarApi,
+  recordTaskDuration,
   GoogleTask,
   GoogleTaskList
 } from '../services/googleTasksService';
@@ -18,6 +19,8 @@ import { useAuth } from './AuthContext';
 // Define special local interface for tasks with star status
 export interface EnhancedGoogleTask extends GoogleTask {
   starred?: boolean;
+  actual_minutes?: number;
+  estimated_minutes?: number;
 }
 
 // Define interface for enhanced task lists
@@ -35,7 +38,7 @@ interface GoogleTasksContextType {
   error: string | null;
   starredTasks: EnhancedGoogleTask[];
   refreshTaskLists: () => Promise<void>;
-  createTask: (taskListId: string, task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string }) => Promise<EnhancedGoogleTask | null>;
+  createTask: (taskListId: string, task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string; estimated_minutes?: number }) => Promise<EnhancedGoogleTask | null>;
   updateTask: (taskListId: string, taskId: string, updates: Partial<EnhancedGoogleTask & { timezone?: string }>) => Promise<EnhancedGoogleTask | null>;
   deleteTask: (taskListId: string, taskId: string) => Promise<boolean>;
   moveTask: (sourceTaskListId: string, targetTaskListId: string, taskId: string) => Promise<EnhancedGoogleTask | null>;
@@ -45,6 +48,7 @@ interface GoogleTasksContextType {
   clearCompleted: (taskListId: string) => Promise<boolean>;
   toggleTaskStar: (taskListId: string, taskId: string) => Promise<EnhancedGoogleTask | null>;
   toggleTaskComplete: (taskListId: string, taskId: string) => Promise<EnhancedGoogleTask | null>;
+  recordDuration: (taskListId: string, taskId: string, actualMinutes: number) => Promise<EnhancedGoogleTask | null>;
   filterTaskList: (taskListId: string, filterOption: TaskListFilterOption) => void;
   toggleTaskListVisibility: (taskListId: string) => void;
 }
@@ -111,7 +115,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   // Create a new task
   const createTask = async (
     taskListId: string, 
-    task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string }
+    task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string; estimated_minutes?: number }
   ): Promise<EnhancedGoogleTask | null> => {
     try {
       setError(null);
@@ -576,6 +580,56 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
     }
   };
 
+  // Record actual duration for a task
+  const recordDuration = async (taskListId: string, taskId: string, actualMinutes: number): Promise<EnhancedGoogleTask | null> => {
+    try {
+      setError(null);
+      const updatedTask = await recordTaskDuration(taskListId, taskId, actualMinutes);
+      
+      if (updatedTask) {
+        // Update task in the list with updated duration
+        const enhancedTask: EnhancedGoogleTask = {
+          ...updatedTask,
+          starred: false // Default to false, will be updated later if needed
+        };
+        
+        // Find task in the list to check if it's starred
+        taskLists.forEach(list => {
+          if (list.id === taskListId) {
+            const task = list.tasks.find(t => t.id === taskId);
+            if (task && task.starred) {
+              enhancedTask.starred = true;
+            }
+          }
+        });
+        
+        // Update in taskLists
+        setTaskLists(prevLists => 
+          prevLists.map(list => 
+            list.id === taskListId 
+              ? { 
+                  ...list, 
+                  tasks: list.tasks.map(task => 
+                    task.id === taskId 
+                      ? enhancedTask 
+                      : task
+                  ) 
+                } 
+              : list
+          )
+        );
+        
+        return enhancedTask;
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Error recording duration for Google Task:', err);
+      setError('Failed to record task duration. Please try again.');
+      return null;
+    }
+  };
+
   // Filter a task list
   const filterTaskList = (taskListId: string, filterOption: TaskListFilterOption): void => {
     // Find the list
@@ -686,6 +740,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
     clearCompleted,
     toggleTaskStar,
     toggleTaskComplete,
+    recordDuration,
     filterTaskList,
     toggleTaskListVisibility
   };
