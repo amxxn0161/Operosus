@@ -110,10 +110,19 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isAuthenticated, selectedDate, viewMode]);
 
   // Fetch Google Tasks and convert them to events
-  const fetchGoogleTaskEvents = async () => {
+  const fetchGoogleTaskEvents = async (retryCount = 0, maxRetries = 2): Promise<CalendarEvent[]> => {
     try {
       console.log('Fetching Google Tasks for calendar integration...');
-      const taskLists = await fetchGoogleTaskLists();
+      
+      // Create an AbortController with a timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      // Store the fetch promise
+      const fetchPromise = fetchGoogleTaskLists();
+      
+      // Clear the timeout when the promise resolves
+      const taskLists = await fetchPromise.finally(() => clearTimeout(timeoutId));
       
       // Convert tasks to calendar events
       const taskEvents = convertTasksToEvents(taskLists);
@@ -125,6 +134,28 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return taskEvents;
     } catch (error) {
       console.error('Error fetching Google Tasks for calendar:', error);
+      
+      // If the error is a timeout, network error, or cancelation, retry the request
+      if (retryCount < maxRetries && 
+          (error instanceof Error && 
+           (error.message.includes('timed out') || 
+            error.message.includes('network') ||
+            error.message.includes('cancel') ||
+            error.name === 'AbortError'))) {
+        console.log(`Retrying task fetch (attempt ${retryCount + 1} of ${maxRetries})...`);
+        // Increase delay with each retry attempt (exponential backoff)
+        const delay = 1000 * Math.pow(2, retryCount);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return fetchGoogleTaskEvents(retryCount + 1, maxRetries);
+      }
+      
+      // Log detailed information about the error
+      console.error('Task fetch failed after retries:', {
+        error: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'Unknown',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       return [];
     }
   };
@@ -165,18 +196,63 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsLoading(true);
     setError(null);
     
+    let fetchedCalendarEvents: CalendarEvent[] = [];
+    let fetchedTaskEvents: CalendarEvent[] = [];
+    
     try {
       console.log(`Fetching events for ${viewMode} view with selected date ${selectedDate.toISOString()}`);
       
-      // Fetch regular calendar events
-      const fetchedEvents = await getCalendarEvents(viewMode, selectedDate);
-      console.log(`Successfully fetched ${fetchedEvents.length} calendar events`);
+      // Use Promise.allSettled to fetch both event types in parallel and handle failures independently
+      const [calendarResult, tasksResult] = await Promise.allSettled([
+        // Calendar events
+        (async () => {
+          try {
+            const events = await getCalendarEvents(viewMode, selectedDate);
+            console.log(`Successfully fetched ${events.length} calendar events`);
+            return events;
+          } catch (error) {
+            console.error('Error fetching calendar events:', error);
+            throw error;
+          }
+        })(),
+        
+        // Task events
+        (async () => {
+          try {
+            const tasks = await fetchGoogleTaskEvents();
+            console.log(`Successfully fetched ${tasks.length} task events`);
+            return tasks;
+          } catch (error) {
+            console.error('Error fetching task events:', error);
+            throw error;
+          }
+        })()
+      ]);
       
-      // Fetch Google Tasks as events
-      const taskEvents = await fetchGoogleTaskEvents();
+      // Process calendar events result
+      if (calendarResult.status === 'fulfilled') {
+        fetchedCalendarEvents = calendarResult.value;
+      } else {
+        console.error('Calendar events fetch rejected:', calendarResult.reason);
+        // Only set error if both fetches failed
+        if (!fetchedTaskEvents.length) {
+          setError('Failed to fetch calendar events');
+        }
+      }
+      
+      // Process task events result
+      if (tasksResult.status === 'fulfilled') {
+        fetchedTaskEvents = tasksResult.value;
+      } else {
+        console.error('Task events fetch rejected:', tasksResult.reason);
+        // Only set error if both fetches failed and we haven't set an error yet
+        if (!fetchedCalendarEvents.length && !error) {
+          setError('Failed to fetch task events');
+        }
+      }
       
       // Combine regular events with task events
-      const allEvents = [...fetchedEvents, ...taskEvents];
+      const allEvents = [...fetchedCalendarEvents, ...fetchedTaskEvents];
       
       // Check if we got any events back
       if (allEvents.length === 0) {
@@ -188,9 +264,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Update state with the fetched events
       setEvents(allEvents);
     } catch (error) {
-      console.error('Error fetching calendar events:', error);
-      setError('Failed to fetch calendar events');
+      console.error('Error in fetchEventsForViewMode:', error);
       // Don't clear existing events on error to prevent UI disruption
+      setError('Failed to fetch events and tasks');
     } finally {
       setIsLoading(false);
     }
@@ -362,47 +438,21 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Public method to refresh all data
+  // Add a method to refresh calendar data
   const refreshCalendarData = async () => {
-    console.log('Refreshing all calendar data...');
+    console.log('Refreshing calendar data...');
     
-    if (!isAuthenticated) {
-      console.log('Not authenticated, skipping refresh');
-      return;
-    }
-    
-    setIsLoading(true);
+    // Don't set loading state for refresh to avoid UI flicker
+    // but do clear any previous errors
     setError(null);
     
     try {
-      // Fetch all data in parallel
-      const [eventsPromise, tasksPromise] = await Promise.all([
-        getCalendarEvents(viewMode, selectedDate),
-        fetchGoogleTaskEvents()
-      ]);
-      
-      // Handle calendar events
-      const fetchedEvents = await eventsPromise;
-      console.log(`Successfully refreshed ${fetchedEvents.length} calendar events`);
-      
-      // Handle task events
-      const fetchedTaskEvents = await tasksPromise;
-      console.log(`Successfully refreshed ${fetchedTaskEvents.length} task events`);
-      
-      // Combine all events
-      const allEvents = [...fetchedEvents, ...fetchedTaskEvents];
-      
-      // Update the state
-      setEvents(allEvents);
-      
-      // Also check connection status in case it changed
-      await checkConnectionStatus();
+      // Re-fetch events based on current view mode
+      await fetchEventsForViewMode();
+      console.log('Calendar data refreshed successfully');
     } catch (error) {
       console.error('Error refreshing calendar data:', error);
-      setError('Failed to refresh calendar data');
-      // Don't clear existing events on error
-    } finally {
-      setIsLoading(false);
+      // Don't set error state here, as fetchEventsForViewMode will have already handled it
     }
   };
 
