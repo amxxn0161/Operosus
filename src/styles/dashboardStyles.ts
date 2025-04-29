@@ -88,6 +88,55 @@ export const dashboardStyles = (isEditMode: boolean) => ({
       borderRadius: '4px'
     }
   },
+  '.react-grid-item > .react-resizable-handle.react-resizable-handle-w': {
+    left: '2px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    cursor: 'w-resize',
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      width: '4px',
+      height: '30px',
+      left: '5px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      backgroundColor: 'rgba(16, 86, 245, 0.5)',
+      borderRadius: '4px'
+    }
+  },
+  '.react-grid-item > .react-resizable-handle.react-resizable-handle-sw': {
+    bottom: '2px',
+    left: '2px',
+    cursor: 'sw-resize',
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      width: '12px',
+      height: '12px',
+      bottom: '2px',
+      left: '2px',
+      borderLeft: '2px solid rgba(16, 86, 245, 0.8)',
+      borderBottom: '2px solid rgba(16, 86, 245, 0.8)',
+      borderRadius: '0 0 0 2px'
+    }
+  },
+  '.react-grid-item > .react-resizable-handle.react-resizable-handle-nw': {
+    top: '2px',
+    left: '2px',
+    cursor: 'nw-resize',
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      width: '12px',
+      height: '12px',
+      top: '2px',
+      left: '2px',
+      borderLeft: '2px solid rgba(16, 86, 245, 0.8)',
+      borderTop: '2px solid rgba(16, 86, 245, 0.8)',
+      borderRadius: '2px 0 0 0'
+    }
+  },
   '.dashboard-widget': {
     transition: 'all 0.3s ease',
     border: isEditMode ? '1px dashed #1056F5' : 'none',

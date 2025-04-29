@@ -7,6 +7,7 @@ interface StatCardProps {
   icon?: React.ReactNode;
   color?: string;
   subtitle?: string;
+  forceCompact?: boolean;
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -14,7 +15,8 @@ const StatCard: React.FC<StatCardProps> = ({
   value,
   icon,
   color = '#1056F5',
-  subtitle
+  subtitle,
+  forceCompact = false
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -38,8 +40,8 @@ const StatCard: React.FC<StatCardProps> = ({
   }, []);
   
   // Determine text size classes based on container width
-  const isSmallCard = cardWidth > 0 && cardWidth < 120;
-  const isMediumCard = cardWidth >= 120 && cardWidth < 180;
+  const isSmallCard = forceCompact || cardWidth > 0 && cardWidth < 120;
+  const isMediumCard = !isSmallCard && (cardWidth >= 120 && cardWidth < 180);
   
   return (
     <Paper
@@ -56,11 +58,11 @@ const StatCard: React.FC<StatCardProps> = ({
         transition: 'all 0.2s ease-in-out',
         overflow: 'auto',
         boxSizing: 'border-box',
-        minHeight: isExtraSmall ? '50px' : '80px',
+        minHeight: isExtraSmall ? '50px' : isSmallCard ? '60px' : '80px',
         minWidth: 0,
         '&:hover': {
-          transform: isExtraSmall ? 'none' : 'translateY(-4px)',
-          boxShadow: isExtraSmall ? 1 : 3
+          transform: isExtraSmall || isSmallCard ? 'none' : 'translateY(-4px)',
+          boxShadow: isExtraSmall || isSmallCard ? 1 : 3
         }
       }}
     >

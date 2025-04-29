@@ -24,7 +24,16 @@ import {
   Tooltip as MuiTooltip,
   Card,
   CardHeader,
-  CardContent
+  CardContent,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  DialogContentText
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,6 +77,9 @@ import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 import { alpha } from '@mui/material/styles';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import TuneIcon from '@mui/icons-material/Tune';
+import dashboardService from '../services/dashboardService';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 // Import default layouts from DashboardLayout component
 const defaultLayout: Layout[] = [
@@ -121,7 +133,87 @@ const mockStatsService = {
 // Use the mock service for now
 const statsServiceImpl = mockStatsService;
 
-const Dashboard: React.FC = () => {
+// API service for dashboard layout
+const dashboardLayoutService = {
+  // Get saved layout from backend
+  getLayout: async (): Promise<any> => {
+    try {
+      const response = await fetch('/api/dashboard/layout', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          // Add any authentication headers needed
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch layout: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching dashboard layout:', error);
+      throw error;
+    }
+  },
+  
+  // Save layout to backend
+  saveLayout: async (layoutData: any): Promise<any> => {
+    try {
+      const response = await fetch('/api/dashboard/layout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          // Add any authentication headers needed
+        },
+        body: JSON.stringify(layoutData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save layout: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error saving dashboard layout:', error);
+      throw error;
+    }
+  },
+  
+  // Reset layout to default
+  resetLayout: async (): Promise<any> => {
+    try {
+      const response = await fetch('/api/dashboard/layout', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          // Add any authentication headers needed
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to reset layout: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error resetting dashboard layout:', error);
+      throw error;
+    }
+  },
+};
+
+// Add dashboard service types
+interface DashboardLayoutResponse {
+  status: string;
+  data?: any;
+  message?: string;
+}
+
+const Dashboard: React.FC<{}> = () => {
   const { isAuthenticated } = useAuth();
   const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
   const { events, isConnected, connectCalendar } = useCalendar();
@@ -154,20 +246,47 @@ const Dashboard: React.FC = () => {
     xl: defaultLayout
   });
 
+  // State to track widget visibility
+  const [visibleWidgets, setVisibleWidgets] = useState<string[]>([
+    'quickStats', 'calendar', 'progress', 'recentEntries', 'topDistractions'
+  ]);
+  
+  // State to control the widget visibility dialog
+  const [widgetDialogOpen, setWidgetDialogOpen] = useState(false);
+
+  // State for reset confirmation dialog
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+
   // Add a state for container width
   const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Add ref and state for calendar widget width
   const calendarWidgetRef = useRef<HTMLDivElement>(null);
+  const quickStatsWidgetRef = useRef<HTMLDivElement>(null);
+  const topDistractionsWidgetRef = useRef<HTMLDivElement>(null);
+  const recentEntriesWidgetRef = useRef<HTMLDivElement>(null);
   const [calendarWidgetWidth, setCalendarWidgetWidth] = useState<number>(0);
+  const [quickStatsWidgetWidth, setQuickStatsWidgetWidth] = useState<number>(0);
+  const [topDistractionsWidgetWidth, setTopDistractionsWidgetWidth] = useState<number>(0);
+  const [recentEntriesWidgetWidth, setRecentEntriesWidgetWidth] = useState<number>(0);
+  const [quickStatsCompactLayout, setQuickStatsCompactLayout] = useState<boolean>(false);
+  const [topDistractionsCompactLayout, setTopDistractionsCompactLayout] = useState<boolean>(false);
+  const [recentEntriesCompactLayout, setRecentEntriesCompactLayout] = useState<boolean>(false);
 
   const isExtraSmall = useMediaQuery('(max-width:375px)');
   
+  // Add loading state for API operations
+  const [isLayoutLoading, setIsLayoutLoading] = useState(false);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+
   // Replace SWR with our own state and useEffect
   const [quickStats, setQuickStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  
+  // Add loading state for API operations
+  const [isLayoutSaving, setIsLayoutSaving] = useState(false);
   
   // Fetch quick stats on mount
   useEffect(() => {
@@ -186,7 +305,7 @@ const Dashboard: React.FC = () => {
     
     fetchQuickStats();
   }, []);
-  
+
   // Custom tooltip component for the chart
   const CustomTooltip = ({ active, payload, label, ...props }: any) => {
     // For desktop view, use the standard recharts active/payload system
@@ -348,7 +467,7 @@ const Dashboard: React.FC = () => {
       </Paper>
     );
   };
-  
+
   // Tooltip component for distractions pie chart
   const DistractionTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -561,110 +680,148 @@ const Dashboard: React.FC = () => {
     }
   }, [entries, updateScreenContext]);
 
-  // Define resetToDefaultLayout before using it in useEffect
-  const resetToDefaultLayout = () => {
-    // Clear any saved layouts from localStorage
-    localStorage.removeItem('dashboardLayout');
-    localStorage.removeItem('userCustomizedLayout');
-    localStorage.removeItem('lastSavedLayout');
-    
-    // Get the appropriate default layout based on screen size
-    const defaultLayoutToApply = isMobile ? 
-      (isExtraSmall ? 
-        // iPhone SE layout
-        [
-          { i: 'quickStats', x: 0, y: 0, w: 12, h: 8, minW: 12, minH: 8, maxW: 12, maxH: 20 },
-          { i: 'calendar', x: 0, y: 8, w: 12, h: 16, minW: 12, minH: 12, maxW: 12, maxH: 30 },
-          { i: 'progress', x: 0, y: 24, w: 12, h: 16, minW: 12, minH: 10, maxW: 12, maxH: 24 },
-          { i: 'recentEntries', x: 0, y: 40, w: 12, h: 16, minW: 12, minH: 10, maxW: 12, maxH: 32 },
-          { i: 'topDistractions', x: 0, y: 56, w: 12, h: 11, minW: 12, minH: 8, maxW: 12, maxH: 24 }
-        ] : 
-        defaultMobileLayout) : 
-      (getBreakpoint() === 'xl' ? 
-        // XL layout
-        [
-          { i: 'quickStats', x: 0, y: 0, w: 60, h: 7, minW: 4, minH: 4, maxW: 100, maxH: 12 },
-          { i: 'calendar', x: 0, y: 7, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-          { i: 'progress', x: 0, y: 22, w: 60, h: 15, minW: 4, minH: 8, maxW: 100, maxH: 30 },
-          { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-          { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
-        ] : 
-        defaultLayout);
-    
-    // Reset layouts with a clean array reference
-    setCurrentLayout([...defaultLayoutToApply]);
-    
-    // Reset savedLayouts state to defaults
-    setSavedLayouts({
-      lg: defaultLayout,
-      md: defaultLayout,
-      sm: defaultLayout,
-      xs: defaultMobileLayout,
-      xl: defaultLayout
-    });
-    
-    // Force a complete re-render of the grid by changing its key
-    setGridKey('grid-layout-' + Date.now());
-    
-    // For extra measure, force a resize event
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 50);
-    
-    console.log('Layout has been reset to default');
+  // Reset to default layout using the API
+  const resetToDefaultLayout = async () => {
+    try {
+      setIsLayoutLoading(true);
+      setLayoutError(null);
+      
+      // Call the API to reset the layout on the server
+      const response = await dashboardService.resetLayout() as DashboardLayoutResponse;
+      
+      if (response.status === 'success') {
+        console.log('Layout reset successfully via API');
+        
+        // Clear all saved layout data from localStorage
+        localStorage.removeItem('dashboardLayout');
+        localStorage.removeItem('userCustomizedLayout');
+        localStorage.removeItem('lastSavedLayout');
+        localStorage.removeItem('layoutMigrationV1');
+        
+        // Reset to original visible widgets
+        setVisibleWidgets([
+          'quickStats', 'calendar', 'progress', 'recentEntries', 'topDistractions'
+        ]);
+        
+        // Save the default visibility settings to localStorage
+        localStorage.setItem('dashboardVisibleWidgets', JSON.stringify([
+          'quickStats', 'calendar', 'progress', 'recentEntries', 'topDistractions'
+        ]));
+        
+        // IMPORTANT: Use the hard-coded default layouts instead of any saved layouts
+        // This ensures we're truly resetting to the original default
+        let newLayout;
+        if (isMobile) {
+          newLayout = [...defaultMobileLayout]; // Create a fresh copy
+        } else if (window.innerWidth >= 1920) {
+          newLayout = [  // XL layout
+            { i: 'quickStats', x: 0, y: 0, w: 60, h: 7, minW: 4, minH: 4, maxW: 100, maxH: 12 },
+            { i: 'calendar', x: 0, y: 7, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 },
+            { i: 'progress', x: 0, y: 22, w: 60, h: 15, minW: 4, minH: 8, maxW: 100, maxH: 30 },
+            { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
+            { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
+          ];
+        } else {
+          newLayout = [...defaultLayout]; // Create a fresh copy
+        }
+        
+        // Reset saved layouts back to defaults
+        setSavedLayouts({
+          lg: [...defaultLayout],
+          md: [...defaultLayout],
+          sm: [...defaultLayout],
+          xs: [...defaultMobileLayout],
+          xl: defaultLayout.map(item => ({ ...item }))
+        });
+        
+        // Apply the default layout
+        setCurrentLayout(newLayout);
+        
+        // Force a remount of the GridLayout component
+        const newKey = 'grid-layout-' + Date.now();
+        setGridKey(newKey);
+        console.log('Setting grid key to force remount:', newKey);
+        
+        // Exit edit mode if active
+        if (isEditMode) {
+          setIsEditMode(false);
+        }
+        
+        // Force a resize event to ensure proper rendering
+        setTimeout(() => {
+          window.dispatchEvent(new Event('resize'));
+        }, 100);
+      } else {
+        console.error('API returned error when resetting layout:', response);
+        setLayoutError('Failed to reset your dashboard layout from the server.');
+      }
+    } catch (error) {
+      console.error('Error resetting dashboard layout:', error);
+      setLayoutError('Failed to reset your dashboard layout. Please try again later.');
+    } finally {
+      setIsLayoutLoading(false);
+      // Close the confirmation dialog
+      setResetConfirmOpen(false);
+    }
   };
 
-  // Load saved layout from localStorage on component mount
+  // Load saved layout from the API when the component mounts
   useEffect(() => {
-    try {
-      // First check for the most reliable saved layout
-      const lastSavedLayout = localStorage.getItem('lastSavedLayout');
-      if (lastSavedLayout) {
-        const parsedLayout = JSON.parse(lastSavedLayout);
-        // Normalize the layout to ensure it has the updated constraints
-        setCurrentLayout(normalizeLayout(parsedLayout));
-      } else {
-        // Otherwise check for regular saved layouts
-        const savedLayout = localStorage.getItem('dashboardLayout');
-        const userHasCustomized = localStorage.getItem('userCustomizedLayout') === 'true';
+    const fetchSavedLayout = async () => {
+      try {
+        setIsLayoutLoading(true);
+        setLayoutError(null);
         
-        if (savedLayout && userHasCustomized) {
+        // Load saved widget visibility settings from localStorage
+        const savedVisibleWidgets = localStorage.getItem('dashboardVisibleWidgets');
+        if (savedVisibleWidgets) {
           try {
-            const parsed = JSON.parse(savedLayout);
-            // Store the normalized layouts
-            const normalizedLayouts = {
-              lg: parsed.lg ? normalizeLayout(parsed.lg) : defaultLayout,
-              md: parsed.md ? normalizeLayout(parsed.md) : defaultLayout,
-              sm: parsed.sm ? normalizeLayout(parsed.sm) : defaultLayout,
-              xs: parsed.xs ? normalizeLayout(parsed.xs) : defaultMobileLayout,
-              xl: parsed.xl ? normalizeLayout(parsed.xl) : defaultLayout
-            };
-            setSavedLayouts(normalizedLayouts);
-            
-            // Apply the correct layout for current breakpoint
-            const breakpoint = getBreakpoint();
-            if (parsed[breakpoint]) {
-              // Use normalized layout
-              setCurrentLayout(normalizeLayout(parsed[breakpoint]));
-            } else {
-              // Default to current device type
-              setCurrentLayout(isMobile ? defaultMobileLayout : defaultLayout);
+            const parsedWidgets = JSON.parse(savedVisibleWidgets);
+            if (Array.isArray(parsedWidgets) && parsedWidgets.length > 0) {
+              setVisibleWidgets(parsedWidgets);
             }
-          } catch (e) {
-            console.error('Error parsing saved layout', e);
-            // If there's an error parsing, reset to default
-            resetToDefaultLayout();
+          } catch (error) {
+            console.error('Error parsing saved widget visibility settings:', error);
           }
+        }
+        
+        const response = await dashboardService.getLayout() as DashboardLayoutResponse;
+        
+        if (response.status === 'success' && response.data) {
+          // If we have saved layout data, parse and use it
+          console.log('Loading saved layout from API');
+          const parsedLayout = response.data;
+          
+          // Apply the normalized layout
+          setCurrentLayout(normalizeLayout(parsedLayout));
+          
+          // Store a key to force re-render after layout is set
+          const newKey = 'grid-layout-' + Date.now();
+          setGridKey(newKey);
+          console.log('Setting grid key to force remount:', newKey);
         } else {
-          // If user hasn't customized or no saved layout, ensure we're using default
+          console.log('No saved layout found on server, using default');
+          // If no saved layout, use the default based on device type
           setCurrentLayout(isMobile ? defaultMobileLayout : defaultLayout);
         }
+      } catch (e) {
+        console.error('Error loading saved layout from API', e);
+        setLayoutError('Failed to load your dashboard layout. Default layout applied.');
+        // If there's an error, use the default layout
+        setCurrentLayout(isMobile ? defaultMobileLayout : defaultLayout);
+      } finally {
+        setIsLayoutLoading(false);
+        
+        // Force a resize event after layout is set to ensure proper rendering
+        setTimeout(() => {
+          window.dispatchEvent(new Event('resize'));
+        }, 100);
       }
-    } catch (e) {
-      console.error('Error loading saved layout', e);
-      setCurrentLayout(isMobile ? defaultMobileLayout : defaultLayout);
-    }
-  }, [isMobile]);
+    };
+    
+    // Call the function to fetch the layout
+    fetchSavedLayout();
+  }, []);  // Run only on component mount
 
   // Update container width on resize
   useEffect(() => {
@@ -1013,70 +1170,103 @@ const Dashboard: React.FC = () => {
   };
 
   // Save the current layout
-  const saveLayout = () => {
-    const breakpoint = getBreakpoint();
-    
-    // Update the saved layouts with current settings
-    // Set expanded maxW values for all widgets
-    const expandedLayout = currentLayout.map(item => ({
-      ...item,
-      maxW: 100
-    }));
-    
-    // Save current layout to state
-    setSavedLayouts({
-      ...savedLayouts,
-      [breakpoint]: expandedLayout
-    });
+  const saveLayout = async () => {
+    try {
+      setIsLayoutSaving(true);
+      setLayoutError(null);
+      
+      const breakpoint = getBreakpoint();
+      
+      // Update the saved layouts with current settings
+      // Set expanded maxW values for all widgets
+      const expandedLayout = currentLayout.map(item => ({
+        ...item,
+        maxW: 100
+      }));
+      
+      // Save current layout to state
+      setSavedLayouts({
+        ...savedLayouts,
+        [breakpoint]: expandedLayout
+      });
 
-    // Save to localStorage with the exact current layout
-    localStorage.setItem('dashboardLayout', JSON.stringify({
-      ...savedLayouts,
-      [breakpoint]: expandedLayout
-    }));
-    
-    // Set flag that user has customized the layout
-    localStorage.setItem('userCustomizedLayout', 'true');
-    
-    // Also save this as a snapshot for persistence
-    localStorage.setItem('lastSavedLayout', JSON.stringify(expandedLayout));
-    
-    // Set edit mode to false
-    setIsEditMode(false);
+      // Save to the API
+      console.log('Saving layout to API:', expandedLayout);
+      const response = await dashboardService.saveLayout(expandedLayout) as DashboardLayoutResponse;
+      
+      if (response.status === 'success') {
+        console.log('Layout saved successfully to API');
+      } else {
+        console.error('API returned error when saving layout:', response);
+        setLayoutError('Failed to save your dashboard layout to the server.');
+      }
+      
+      // Close widget dialog if open
+      if (widgetDialogOpen) {
+        setWidgetDialogOpen(false);
+      }
+      
+      // Set edit mode to false
+      setIsEditMode(false);
+      
+      // Force a re-render and update on save
+      setGridKey('grid-layout-' + Date.now());
+      
+      // Trigger a resize event to ensure everything renders correctly
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
+
+      console.log('Layout saved successfully:', expandedLayout);
+    } catch (error) {
+      console.error('Error saving layout to API:', error);
+      setLayoutError('Failed to save your dashboard layout. Please try again later.');
+    } finally {
+      setIsLayoutSaving(false);
+    }
   };
 
   // Force refresh all layouts and apply expanded maxW values
-  const forceRefreshLayouts = () => {
-    // Clear current layouts from localStorage
-    localStorage.removeItem('dashboardLayout');
-    localStorage.removeItem('lastSavedLayout');
-    
-    // Don't clear userCustomizedLayout flag to preserve customizations
-    
-    // Apply expanded maxW values to current layout
-    const expandedLayout = currentLayout.map(item => ({
-      ...item,
-      maxW: 100
-    }));
-    
-    // Set current layout
-    setCurrentLayout(expandedLayout);
-    
-    // Save the updated layout
-    const breakpoint = getBreakpoint();
-    localStorage.setItem('dashboardLayout', JSON.stringify({
-      ...savedLayouts,
-      [breakpoint]: expandedLayout
-    }));
-    localStorage.setItem('lastSavedLayout', JSON.stringify(expandedLayout));
-    
-    // Refresh the grid
-    setGridKey('grid-layout-' + Date.now());
-    
-    // Force a resize event
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 50);
+  const forceRefreshLayouts = async () => {
+    try {
+      setIsLayoutLoading(true);
+      setLayoutError(null);
+      
+      // Apply expanded maxW values to current layout
+      const expandedLayout = currentLayout.map(item => ({
+        ...item,
+        maxW: 100
+      }));
+      
+      // Set current layout
+      setCurrentLayout(expandedLayout);
+      
+      // Save to the API
+      console.log('Saving refreshed layout to API:', expandedLayout);
+      const response = await dashboardService.saveLayout(expandedLayout) as DashboardLayoutResponse;
+      
+      if (response.status === 'success') {
+        console.log('Refreshed layout saved successfully to API');
+      } else {
+        console.error('API returned error when saving refreshed layout:', response);
+        setLayoutError('Failed to save your refreshed dashboard layout to the server.');
+      }
+      
+      // Refresh the grid
+      setGridKey('grid-layout-' + Date.now());
+      
+      // Force a resize event
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
+      
+      console.log('Layout has been refreshed');
+    } catch (error) {
+      console.error('Error refreshing layout via API:', error);
+      setLayoutError('Failed to refresh your dashboard layout. Please try again later.');
+    } finally {
+      setIsLayoutLoading(false);
+    }
   };
 
   // Handle layout change
@@ -1123,43 +1313,19 @@ const Dashboard: React.FC = () => {
           { i: 'recentEntries', x: 0, y: 40, w: 12, h: 16, minW: 12, minH: 10, maxW: 12, maxH: 32 },
           { i: 'topDistractions', x: 0, y: 56, w: 12, h: 11, minW: 12, minH: 8, maxW: 12, maxH: 24 }
         ];
-        return iphoneSELayout;
+        return getVisibleLayout(iphoneSELayout);
       }
       // For other mobile devices, always use default mobile layout 
-      return defaultMobileLayout;
+      return getVisibleLayout(defaultMobileLayout);
     }
     
-    // For non-mobile devices, check if we have a saved layout
-    const userHasCustomized = Boolean(localStorage.getItem('userCustomizedLayout'));
-    
-    // Check for the last saved layout first (most reliable)
-    const lastSavedLayout = localStorage.getItem('lastSavedLayout');
-    if (userHasCustomized && lastSavedLayout) {
-      try {
-        // Apply the normalizeLayout function to ensure proper constraints
-        return normalizeLayout(JSON.parse(lastSavedLayout));
-      } catch (e) {
-        console.error('Error parsing last saved layout', e);
-      }
+    // For desktop devices, use the current layout
+    // The currentLayout state will be populated from the API on initial load
+    if (currentLayout && currentLayout.length > 0) {
+      return getVisibleLayout(currentLayout);
     }
     
-    // Try the breakpoint-specific saved layout
-    if (userHasCustomized) {
-      try {
-        const savedLayoutStr = localStorage.getItem('dashboardLayout');
-        if (savedLayoutStr) {
-          const savedLayouts = JSON.parse(savedLayoutStr);
-          if (savedLayouts[breakpoint]) {
-            // Apply the normalizeLayout function to ensure proper constraints
-            return normalizeLayout(savedLayouts[breakpoint]);
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing saved layout for breakpoint', e);
-      }
-    }
-    
-    // If no valid saved layout was found, use the default
+    // If no valid layout was found, use the default based on screen size
     if (breakpoint === 'xl') {
       // Special wide layout for xl screens that matches the desired default view
       const xlLayout: Layout[] = [
@@ -1169,10 +1335,15 @@ const Dashboard: React.FC = () => {
         { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
         { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
       ];
-      return xlLayout;
+      return getVisibleLayout(xlLayout);
     }
     
-    return defaultLayout;
+    return getVisibleLayout(defaultLayout);
+  };
+
+  // Filter layout to only show visible widgets
+  const getVisibleLayout = (layout: Layout[]): Layout[] => {
+    return layout.filter(item => visibleWidgets.includes(item.i));
   };
 
   // Check loading state after all hooks are declared
@@ -1192,12 +1363,192 @@ const Dashboard: React.FC = () => {
       disableGutters={isMobile}
       maxWidth="xl" 
       sx={{ 
-        mt: { xs: isExtraSmall ? 0.5 : 1, sm: 4 }, 
-        mb: { xs: isExtraSmall ? 0.5 : 1, sm: 4 }, 
-        paddingBottom: { xs: isExtraSmall ? 4 : 6, sm: 10 },
-        px: { xs: isExtraSmall ? 0.2 : 0.5, sm: 1, md: 1 } // Reduced horizontal padding
+        pt: 4,
+        pb: 8,
+        minHeight: '100vh',
+        position: 'relative'
       }}
     >
+      {/* Display layout loading indicator */}
+      {isLayoutLoading && (
+        <Box sx={{ 
+          position: 'fixed', 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)',
+          zIndex: 9999,
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          p: 3,
+          boxShadow: 3
+        }}>
+          <CircularProgress size={40} />
+          <Typography variant="body1" sx={{ mt: 2 }}>
+            Updating dashboard layout...
+          </Typography>
+        </Box>
+      )}
+      
+      {/* Widget Visibility Dialog */}
+      <Dialog 
+        open={widgetDialogOpen} 
+        onClose={() => setWidgetDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontFamily: 'Poppins', fontWeight: 'bold' }}>
+          Show/Hide Widgets
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2, fontFamily: 'Poppins', fontSize: '0.9rem' }}>
+            Select which widgets you want to display on your dashboard.
+          </Typography>
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={visibleWidgets.includes('quickStats')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setVisibleWidgets(prev => [...prev, 'quickStats']);
+                    } else {
+                      setVisibleWidgets(prev => prev.filter(w => w !== 'quickStats'));
+                    }
+                    setGridKey('grid-layout-' + Date.now()); // Force remount
+                  }}
+                  sx={{
+                    color: '#1056F5',
+                    '&.Mui-checked': {
+                      color: '#1056F5',
+                    },
+                  }}
+                />
+              }
+              label="Quick Stats"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={visibleWidgets.includes('calendar')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setVisibleWidgets(prev => [...prev, 'calendar']);
+                    } else {
+                      setVisibleWidgets(prev => prev.filter(w => w !== 'calendar'));
+                    }
+                    setGridKey('grid-layout-' + Date.now()); // Force remount
+                  }}
+                  sx={{
+                    color: '#1056F5',
+                    '&.Mui-checked': {
+                      color: '#1056F5',
+                    },
+                  }}
+                />
+              }
+              label="Calendar"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={visibleWidgets.includes('progress')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setVisibleWidgets(prev => [...prev, 'progress']);
+                    } else {
+                      setVisibleWidgets(prev => prev.filter(w => w !== 'progress'));
+                    }
+                    setGridKey('grid-layout-' + Date.now()); // Force remount
+                  }}
+                  sx={{
+                    color: '#1056F5',
+                    '&.Mui-checked': {
+                      color: '#1056F5',
+                    },
+                  }}
+                />
+              }
+              label="Progress Chart"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={visibleWidgets.includes('recentEntries')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setVisibleWidgets(prev => [...prev, 'recentEntries']);
+                    } else {
+                      setVisibleWidgets(prev => prev.filter(w => w !== 'recentEntries'));
+                    }
+                    setGridKey('grid-layout-' + Date.now()); // Force remount
+                  }}
+                  sx={{
+                    color: '#1056F5',
+                    '&.Mui-checked': {
+                      color: '#1056F5',
+                    },
+                  }}
+                />
+              }
+              label="Recent Entries"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={visibleWidgets.includes('topDistractions')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setVisibleWidgets(prev => [...prev, 'topDistractions']);
+                    } else {
+                      setVisibleWidgets(prev => prev.filter(w => w !== 'topDistractions'));
+                    }
+                    setGridKey('grid-layout-' + Date.now()); // Force remount
+                  }}
+                  sx={{
+                    color: '#1056F5',
+                    '&.Mui-checked': {
+                      color: '#1056F5',
+                    },
+                  }}
+                />
+              }
+              label="Top Distractions"
+            />
+          </FormGroup>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              // Save visibility settings to localStorage
+              localStorage.setItem('dashboardVisibleWidgets', JSON.stringify(visibleWidgets));
+              
+              // Update the layout if in edit mode
+              if (isEditMode) {
+                setCurrentLayout(getCurrentLayout());
+              }
+              
+              // Close the dialog
+              setWidgetDialogOpen(false);
+            }} 
+            color="primary"
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Display layout error if there is one */}
+      {layoutError && (
+        <Alert 
+          severity="error" 
+          onClose={() => setLayoutError(null)}
+          sx={{ mb: 2 }}
+        >
+          {layoutError}
+        </Alert>
+      )}
+      
       {/* Add CSS for the pulsing dot animation using MUI's GlobalStyles */}
       <GlobalStyles 
         styles={{
@@ -1299,24 +1650,24 @@ const Dashboard: React.FC = () => {
           {/* Customize button - only show on desktop */}
           {!isMobile && (
             <MuiTooltip title={isEditMode ? "Save layout" : "Customize dashboard"}>
-              <Button 
+          <Button 
                 variant={isEditMode ? "contained" : "outlined"}
                 startIcon={isEditMode ? <SaveIcon /> : <DashboardCustomizeIcon />}
                 onClick={handleToggleEditMode}
-                sx={{
-                  borderColor: '#1056F5',
+            sx={{
+              borderColor: '#1056F5',
                   backgroundColor: isEditMode ? '#1056F5' : 'transparent',
                   color: isEditMode ? 'white' : '#1056F5',
-                  fontFamily: 'Poppins',
-                  textTransform: 'none',
-                  '&:hover': {
-                    borderColor: '#0D47D9',
+              fontFamily: 'Poppins',
+              textTransform: 'none',
+              '&:hover': {
+                borderColor: '#0D47D9',
                     backgroundColor: isEditMode ? '#0D47D9' : '#f5f9ff',
-                  },
-                }}
-              >
+              },
+            }}
+          >
                 {isEditMode ? "Save Layout" : "Customize"}
-              </Button>
+          </Button>
             </MuiTooltip>
           )}
           
@@ -1344,25 +1695,25 @@ const Dashboard: React.FC = () => {
         minWidth: '100%',
         overflow: 'visible'  // Allow content to overflow, important for dragging
       }}>
-        {journalLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 10 }}>
-            <CircularProgress />
-          </Box>
-        ) : journalError ? (
-          <Paper sx={{ p: 4, textAlign: 'center', my: 4 }}>
-            <Typography variant="h6" color="error" sx={{ mb: 2 }}>
-              Error loading journal entries
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={<RefreshIcon />}
-              onClick={handleRefresh}
-            >
-              Try Again
-            </Button>
-          </Paper>
-        ) : (
-          <>
+      {journalLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 10 }}>
+          <CircularProgress />
+        </Box>
+      ) : journalError ? (
+        <Paper sx={{ p: 4, textAlign: 'center', my: 4 }}>
+          <Typography variant="h6" color="error" sx={{ mb: 2 }}>
+            Error loading journal entries
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+          >
+            Try Again
+          </Button>
+        </Paper>
+      ) : (
+        <>
             {isEditMode && !isMobile && (
               <Paper 
                 className="edit-mode-banner"
@@ -1381,6 +1732,27 @@ const Dashboard: React.FC = () => {
                     {' '}<span style={{ fontSize: '0.85rem' }}>If you have issues dragging widgets past a certain point, use the Fix Layout button.</span>
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      size="medium"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => setWidgetDialogOpen(true)}
+                      sx={{ 
+                        fontFamily: 'Poppins',
+                        borderColor: '#2196F3',
+                        color: '#2196F3', 
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        fontWeight: 'medium',
+                        py: 0.8,
+                        '&:hover': {
+                          backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                          borderColor: '#1976D2',
+                        }
+                      }}
+                    >
+                      Show/Hide Widgets
+                    </Button>
                     <Button
                       variant="outlined"
                       size="medium"
@@ -1406,7 +1778,7 @@ const Dashboard: React.FC = () => {
                       variant="outlined"
                       size="medium"
                       startIcon={<RestartAltIcon />}
-                      onClick={resetToDefaultLayout}
+                      onClick={() => setResetConfirmOpen(true)}
                       sx={{ 
                         fontFamily: 'Poppins',
                         borderColor: '#F29702',
@@ -1422,6 +1794,38 @@ const Dashboard: React.FC = () => {
                       }}
                     >
                       Reset to Default
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="medium"
+                      startIcon={<CancelIcon />}
+                      onClick={() => {
+                        setIsEditMode(false);
+                        // Don't save changes - revert to the last saved layout
+                        const breakpoint = getBreakpoint();
+                        if (savedLayouts[breakpoint]) {
+                          setCurrentLayout(savedLayouts[breakpoint]);
+                        } else {
+                          // If no saved layout exists, use default
+                          setCurrentLayout(isMobile ? defaultMobileLayout : defaultLayout);
+                        }
+                        setGridKey('grid-layout-' + Date.now()); // Force refresh
+                      }}
+                      sx={{ 
+                        fontFamily: 'Poppins',
+                        borderColor: '#F44336',
+                        color: '#F44336', 
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        fontWeight: 'medium',
+                        py: 0.8,
+                        '&:hover': {
+                          backgroundColor: 'rgba(244, 67, 54, 0.08)',
+                          borderColor: '#D32F2F',
+                        }
+                      }}
+                    >
+                      Cancel
                     </Button>
                   </Box>
                 </Box>
@@ -1441,7 +1845,7 @@ const Dashboard: React.FC = () => {
               isResizable={isEditMode}
               onLayoutChange={handleLayoutChange}
               draggableHandle=".drag-handle"
-              resizeHandles={['se', 'e', 's']}
+              resizeHandles={['se', 'e', 's', 'sw', 'w', 'nw']}
               compactType={null}
               useCSSTransforms={true}
               autoSize={true}
@@ -1455,15 +1859,26 @@ const Dashboard: React.FC = () => {
               onResizeStop={(layout) => {
                 setCurrentLayout(layout);
               }}
+              onResize={(layout, oldItem, newItem) => {
+                // This is important for left-side resizing to properly update the layout
+                const updatedLayout = layout.map(item => {
+                  if (item.i === newItem.i) {
+                    return newItem;
+                  }
+                  return item;
+                });
+                setCurrentLayout(updatedLayout);
+              }}
               onDrag={handleDrag}
             >
-              {/* Quick Stats Section */}
+          {/* Quick Stats Section */}
+              {visibleWidgets.includes('quickStats') && (
               <div key="quickStats" className="dashboard-widget">
-                <Paper 
-                  sx={{ 
+          <Paper 
+            sx={{ 
                     p: isMobile ? isExtraSmall ? 1 : 1.5 : 4, 
                     height: '100%',
-                    borderRadius: 2,
+              borderRadius: 2,
                     overflow: 'auto',
                     position: 'relative',
                     boxShadow: isMobile ? 1 : 3
@@ -1501,26 +1916,26 @@ const Dashboard: React.FC = () => {
                     mb: isExtraSmall ? 0.5 : 2,
                     pt: isEditMode ? 4 : 0 
                   }}>
-                    <Typography 
-                      variant={isMobile ? "subtitle1" : "h6"}
+              <Typography 
+                variant={isMobile ? "subtitle1" : "h6"}
                       sx={{ 
                         fontWeight: 'bold', 
                         fontFamily: 'Poppins',
                         fontSize: isExtraSmall ? '0.9rem' : undefined
                       }}
-                    >
-                      Quick Stats
-                    </Typography>
-                    <Button 
-                      size="small" 
-                      startIcon={<RefreshIcon />}
-                      onClick={handleRefresh}
-                      disabled={isRefreshing}
-                      sx={{ display: { xs: 'none', sm: 'flex' } }}
-                    >
-                      Refresh
-                    </Button>
-                  </Box>
+              >
+                Quick Stats
+              </Typography>
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
+              >
+                Refresh
+              </Button>
+            </Box>
                   <Box
                     sx={{
                       display: 'grid',
@@ -1547,12 +1962,12 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       } 
                     }}>
-                      <StatCard 
-                        title="Average Score" 
-                        value={stats.averageScore}
-                        color="#1056F5"
-                        subtitle="Comprehensive rating of all factors"
-                      />
+                <StatCard 
+                  title="Average Score" 
+                  value={stats.averageScore}
+                  color="#1056F5"
+                  subtitle="Comprehensive rating of all factors"
+                />
                     </Box>
                     <Box sx={{ 
                       height: isExtraSmall ? 'auto' : '100%', 
@@ -1561,12 +1976,12 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       } 
                     }}>
-                      <StatCard 
-                        title="Avg Productivity" 
-                        value={stats.avgProductivity}
-                        color="#071C73"
-                        subtitle="Based on productivity ratings only"
-                      />
+                <StatCard 
+                  title="Avg Productivity" 
+                  value={stats.avgProductivity}
+                  color="#071C73"
+                  subtitle="Based on productivity ratings only"
+                />
                     </Box>
                     <Box sx={{ 
                       height: isExtraSmall ? 'auto' : '100%', 
@@ -1575,12 +1990,12 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       } 
                     }}>
-                      <StatCard 
-                        title="Avg Meeting Score" 
-                        value={stats.avgMeetingScore}
-                        color="#016C9E"
-                        subtitle="Average meeting effectiveness"
-                      />
+                <StatCard 
+                  title="Avg Meeting Score" 
+                  value={stats.avgMeetingScore}
+                  color="#016C9E"
+                  subtitle="Average meeting effectiveness"
+                />
                     </Box>
                     <Box sx={{ 
                       height: isExtraSmall ? 'auto' : '100%', 
@@ -1589,12 +2004,12 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       } 
                     }}>
-                      <StatCard 
-                        title="Break Rate" 
-                        value={stats.breakRate}
-                        color="#F29702"
-                        subtitle="How often you took breaks"
-                      />
+                <StatCard 
+                  title="Break Rate" 
+                  value={stats.breakRate}
+                  color="#F29702"
+                  subtitle="How often you took breaks"
+                />
                     </Box>
                     <Box sx={{ 
                       height: isExtraSmall ? 'auto' : '100%', 
@@ -1603,12 +2018,12 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       } 
                     }}>
-                      <StatCard 
-                        title="Focus Success" 
-                        value={stats.focusSuccess}
-                        color="#49C1E3"
-                        subtitle="Focus time achievement rate"
-                      />
+                <StatCard 
+                  title="Focus Success" 
+                  value={stats.focusSuccess}
+                  color="#49C1E3"
+                  subtitle="Focus time achievement rate"
+                />
                     </Box>
                     <Box sx={{ 
                       height: isExtraSmall ? 'auto' : '100%', 
@@ -1617,18 +2032,20 @@ const Dashboard: React.FC = () => {
                         sm: '80px' 
                       }
                     }}>
-                      <StatCard 
-                        title="Journal Streak" 
-                        value={stats.journalStreak}
-                        color="#E04330"
-                        subtitle="Consecutive days with entries"
-                      />
+                <StatCard 
+                  title="Journal Streak" 
+                  value={stats.journalStreak}
+                  color="#E04330"
+                  subtitle="Consecutive days with entries"
+                />
                     </Box>
                   </Box>
-                </Paper>
+          </Paper>
               </div>
+              )}
 
               {/* Calendar Section */}
+              {visibleWidgets.includes('calendar') && (
               <div key="calendar" className="dashboard-widget">
                 <Paper sx={{ 
                   p: 0, 
@@ -1670,16 +2087,18 @@ const Dashboard: React.FC = () => {
                       overflow: 'auto'
                     }}
                   >
-                    <CalendarView 
-                      onEventClick={handleCalendarEventClick}
-                      onAddEvent={handleAddCalendarEvent}
+            <CalendarView 
+              onEventClick={handleCalendarEventClick}
+              onAddEvent={handleAddCalendarEvent}
                       containerWidth={calendarWidgetWidth}
-                    />
+            />
                   </Box>
-                </Paper>
+          </Paper>
               </div>
+              )}
 
-              {/* Progress Graph Section */}
+          {/* Progress Graph Section */}
+              {visibleWidgets.includes('progress') && (
               <div key="progress" className="dashboard-widget">
                 <Paper sx={{ 
                   p: isMobile ? 1.5 : 4, 
@@ -1720,176 +2139,176 @@ const Dashboard: React.FC = () => {
                     mb: 3,
                     pt: isEditMode ? 4 : 0 
                   }}>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
-                    >
-                      Your Progress
-                    </Typography>
-                    <Button 
-                      startIcon={isRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />} 
-                      onClick={handleRefresh}
-                      disabled={isRefreshing}
-                      sx={{ 
-                        fontFamily: 'Poppins', 
-                        textTransform: 'none',
-                        color: '#1056F5',
-                        fontWeight: 'medium'
-                      }}
-                    >
-                      {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                    </Button>
-                  </Box>
+              <Typography 
+                variant="h6" 
+                sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+              >
+                Your Progress
+              </Typography>
+              <Button 
+                startIcon={isRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />} 
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{ 
+                  fontFamily: 'Poppins', 
+                  textTransform: 'none',
+                  color: '#1056F5',
+                  fontWeight: 'medium'
+                }}
+              >
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </Box>
                   
                   <Box sx={{ 
-                    position: 'relative', 
-                    width: '100%', 
+                position: 'relative', 
+                width: '100%', 
                     height: 'calc(100% - 80px)', // Adjust for header
                     mb: isMobile ? 1 : 2,
                     minHeight: '200px',
                     overflow: 'auto'
                   }}>
-                    {isRefreshing && (
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '50%',
-                          transform: 'translate(-50%, -50%)',
-                          zIndex: 10,
-                          bgcolor: 'rgba(255,255,255,0.8)',
-                          borderRadius: 2,
-                          p: 3,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          boxShadow: 3
+              {isRefreshing && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    bgcolor: 'rgba(255,255,255,0.8)',
+                    borderRadius: 2,
+                    p: 3,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    boxShadow: 3
+                  }}
+                >
+                  <Typography variant="body1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', mb: 1 }}>
+                    Refreshing data...
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
+                    Dashboard is updating with latest reflections.
+                  </Typography>
+                </Box>
+              )}
+              {hasData && chartData.length > 0 ? (
+                <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{
+                        top: 20,
+                        right: isMobile ? 10 : 30,
+                        left: isMobile ? 0 : 10,
+                        bottom: isMobile ? 60 : 80, // Adjusted bottom margin for mobile
+                      }}
+                      onMouseUp={(data) => {
+                        if (data && data.activePayload && data.activePayload.length > 0) {
+                          // Only for mobile devices
+                          if (isMobile) {
+                            setActiveDataPoint(data.activePayload[0].payload);
+                            
+                            if (data.chartX !== undefined && data.chartY !== undefined) {
+                              // Simple positioning - always position tooltips with fixed offsets
+                              // that ensure they're fully visible
+                              setTooltipPosition({
+                                x: data.chartX,
+                                y: data.chartY
+                              });
+                            }
+                          }
+                        }
+                      }}
+                      onClick={() => {
+                        if (!isMobile) {
+                          setActiveDataPoint(null);
+                          setTooltipPosition(null);
+                        }
+                      }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={true} stroke="#e0e0e0" />
+                      <XAxis 
+                        dataKey={isMobile ? "mobileName" : "name"}
+                        angle={isMobile ? -35 : -45}
+                        textAnchor="end"
+                        tick={{ 
+                          fontSize: isMobile ? 10 : 12, 
+                          fontFamily: 'Poppins', 
+                          fontWeight: 'medium' 
                         }}
-                      >
-                        <Typography variant="body1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', mb: 1 }}>
-                          Refreshing data...
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
-                          Dashboard is updating with latest reflections.
-                        </Typography>
-                      </Box>
-                    )}
-                    {hasData && chartData.length > 0 ? (
-                      <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart
-                            data={chartData}
-                            margin={{
-                              top: 20,
-                              right: isMobile ? 10 : 30,
-                              left: isMobile ? 0 : 10,
-                              bottom: isMobile ? 60 : 80, // Adjusted bottom margin for mobile
-                            }}
-                            onMouseUp={(data) => {
-                              if (data && data.activePayload && data.activePayload.length > 0) {
-                                // Only for mobile devices
-                                if (isMobile) {
-                                  setActiveDataPoint(data.activePayload[0].payload);
-                                  
-                                  if (data.chartX !== undefined && data.chartY !== undefined) {
-                                    // Simple positioning - always position tooltips with fixed offsets
-                                    // that ensure they're fully visible
-                                    setTooltipPosition({
-                                      x: data.chartX,
-                                      y: data.chartY
-                                    });
-                                  }
-                                }
-                              }
-                            }}
-                            onClick={() => {
-                              if (!isMobile) {
-                                setActiveDataPoint(null);
-                                setTooltipPosition(null);
-                              }
-                            }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={true} stroke="#e0e0e0" />
-                            <XAxis 
-                              dataKey={isMobile ? "mobileName" : "name"}
-                              angle={isMobile ? -35 : -45}
-                              textAnchor="end"
-                              tick={{ 
-                                fontSize: isMobile ? 10 : 12, 
-                                fontFamily: 'Poppins', 
-                                fontWeight: 'medium' 
-                              }}
-                              height={isMobile ? 60 : 90}
-                              tickMargin={isMobile ? 10 : 20}
-                              axisLine={{ stroke: '#e0e0e0' }}
-                              tickLine={{ stroke: '#e0e0e0' }}
-                              interval={isMobile ? 1 : 0} // Skip some labels on mobile
-                              tickFormatter={(value, index) => {
-                                if (isMobile) {
-                                  return index % 2 === 0 ? value : '';
-                                }
-                                return value;
-                              }}
-                            />
-                            <YAxis 
-                              domain={[0, 100]} 
-                              tick={{ 
-                                fontSize: isMobile ? 10 : 12, 
-                                fontFamily: 'Poppins', 
-                                fontWeight: 'medium' 
-                              }}
-                              tickCount={isMobile ? 4 : 6}
-                              axisLine={{ stroke: '#e0e0e0' }}
-                              tickLine={{ stroke: '#e0e0e0' }}
-                              width={isMobile ? 30 : 40}
-                            />
-                            <Tooltip 
-                              content={<CustomTooltip />} 
-                              // Use default positioning behavior for desktop
-                              // On mobile, we'll show our custom fixed tooltip instead
-                              cursor={{ strokeDasharray: '3 3' }}
-                              // Use standard hover behavior - our fixed tooltip handles the mobile case
-                              trigger="hover"
-                            />
-                          
-                            <ReferenceArea y1={0} y2={50} fill="#ffebee" fillOpacity={0.7} />
-                            <ReferenceArea y1={50} y2={70} fill="#fff8e1" fillOpacity={0.7} />
-                            <ReferenceArea y1={70} y2={100} fill="#e8f5e9" fillOpacity={0.7} />
-                          
-                            <ReferenceLine y={70} stroke="#e0e0e0" strokeDasharray="3 3" />
-                            <ReferenceLine y={50} stroke="#e0e0e0" strokeDasharray="3 3" />
-                          
-                            <Line 
-                              type="monotone" 
-                              dataKey="comprehensive" 
-                              stroke="#1056F5" 
-                              strokeWidth={2}
-                              dot={{ 
-                                fill: '#1056F5', 
-                                r: isMobile ? 5 : 5
-                              }} 
-                              activeDot={{ 
-                                r: isMobile ? 8 : 7,
-                                strokeWidth: 1, 
-                                stroke: '#fff',
-                                fill: '#1056F5',
-                                strokeOpacity: isMobile ? 0.8 : 1,
-                                className: isMobile ? 'pulsing-dot' : ''
-                              }}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                        
-                        {/* Place the mobile tooltip directly on top of the chart */}
-                        {isMobile && activeDataPoint && tooltipPosition && (
+                        height={isMobile ? 60 : 90}
+                        tickMargin={isMobile ? 10 : 20}
+                        axisLine={{ stroke: '#e0e0e0' }}
+                        tickLine={{ stroke: '#e0e0e0' }}
+                        interval={isMobile ? 1 : 0} // Skip some labels on mobile
+                        tickFormatter={(value, index) => {
+                          if (isMobile) {
+                            return index % 2 === 0 ? value : '';
+                          }
+                          return value;
+                        }}
+                      />
+                      <YAxis 
+                        domain={[0, 100]} 
+                        tick={{ 
+                          fontSize: isMobile ? 10 : 12, 
+                          fontFamily: 'Poppins', 
+                          fontWeight: 'medium' 
+                        }}
+                        tickCount={isMobile ? 4 : 6}
+                        axisLine={{ stroke: '#e0e0e0' }}
+                        tickLine={{ stroke: '#e0e0e0' }}
+                        width={isMobile ? 30 : 40}
+                      />
+                      <Tooltip 
+                        content={<CustomTooltip />} 
+                        // Use default positioning behavior for desktop
+                        // On mobile, we'll show our custom fixed tooltip instead
+                        cursor={{ strokeDasharray: '3 3' }}
+                        // Use standard hover behavior - our fixed tooltip handles the mobile case
+                        trigger="hover"
+                      />
+                    
+                      <ReferenceArea y1={0} y2={50} fill="#ffebee" fillOpacity={0.7} />
+                      <ReferenceArea y1={50} y2={70} fill="#fff8e1" fillOpacity={0.7} />
+                      <ReferenceArea y1={70} y2={100} fill="#e8f5e9" fillOpacity={0.7} />
+                    
+                      <ReferenceLine y={70} stroke="#e0e0e0" strokeDasharray="3 3" />
+                      <ReferenceLine y={50} stroke="#e0e0e0" strokeDasharray="3 3" />
+                    
+                      <Line 
+                        type="monotone" 
+                        dataKey="comprehensive" 
+                        stroke="#1056F5" 
+                        strokeWidth={2}
+                        dot={{ 
+                          fill: '#1056F5', 
+                          r: isMobile ? 5 : 5
+                        }} 
+                        activeDot={{ 
+                          r: isMobile ? 8 : 7,
+                          strokeWidth: 1, 
+                          stroke: '#fff',
+                          fill: '#1056F5',
+                          strokeOpacity: isMobile ? 0.8 : 1,
+                          className: isMobile ? 'pulsing-dot' : ''
+                        }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Place the mobile tooltip directly on top of the chart */}
+                  {isMobile && activeDataPoint && tooltipPosition && (
                           <MobileFixedTooltip />
-                        )}
-                      </Box>
-                    ) : (
-                      <Box sx={{ 
-                        height: '100%', 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                  )}
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  height: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
                         justifyContent: 'center',
                         flexDirection: 'column',
                         p: 2
@@ -1899,14 +2318,16 @@ const Dashboard: React.FC = () => {
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins', textAlign: 'center' }}>
                           Create entries to track your productivity journey.
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                </Paper>
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
               </div>
+              )}
 
               {/* Recent Entries Section */}
+              {visibleWidgets.includes('recentEntries') && (
               <div key="recentEntries" className="dashboard-widget">
                 <Paper sx={{ 
                   p: isMobile ? 1.5 : 4, 
@@ -1919,7 +2340,7 @@ const Dashboard: React.FC = () => {
                   {isEditMode && (
                     <Box 
                       className="drag-handle"
-                      sx={{ 
+              sx={{ 
                         position: 'absolute',
                         top: 0,
                         left: 0,
@@ -1929,17 +2350,17 @@ const Dashboard: React.FC = () => {
                         backgroundColor: 'rgba(16, 86, 245, 0.05)',
                         borderBottom: '1px dashed #1056F5',
                         zIndex: 10,
-                        display: 'flex',
-                        alignItems: 'center',
+                display: 'flex',
+                alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '12px',
                         color: '#1056F5'
                       }}
                     >
                       Drag to move
-                    </Box>
-                  )}
-                  
+            </Box>
+          )}
+
                   <Box sx={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
@@ -1947,40 +2368,40 @@ const Dashboard: React.FC = () => {
                     mb: 3,
                     pt: isEditMode ? 4 : 0 
                   }}>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
-                    >
-                      Recent Entries
-                    </Typography>
-                    <Button 
-                      onClick={() => navigate('/all-entries')}
-                      sx={{ 
-                        fontFamily: 'Poppins', 
-                        textTransform: 'none',
-                        color: '#1056F5',
-                        fontWeight: 'medium'
-                      }}
-                    >
-                      View all
-                    </Button>
-                  </Box>
-                  
-                  {entries && entries.length > 0 ? (
+                  <Typography 
+                    variant="h6" 
+                    sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+                  >
+                    Recent Entries
+                  </Typography>
+                  <Button 
+                    onClick={() => navigate('/all-entries')}
+                    sx={{ 
+                      fontFamily: 'Poppins', 
+                      textTransform: 'none',
+                      color: '#1056F5',
+                      fontWeight: 'medium'
+                    }}
+                  >
+                    View all
+                  </Button>
+                </Box>
+                
+                {entries && entries.length > 0 ? (
                     <Box sx={{ overflow: 'auto', height: 'calc(100% - 70px)' }}>
-                      <TableContainer sx={{ 
-                        overflowX: 'auto',
-                        '&::-webkit-scrollbar': {
-                          height: '6px'
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                          backgroundColor: 'rgba(0,0,0,0.2)',
-                          borderRadius: '4px'
-                        }
-                      }}>
+                  <TableContainer sx={{ 
+                    overflowX: 'auto',
+                    '&::-webkit-scrollbar': {
+                      height: '6px'
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '4px'
+                    }
+                  }}>
                         <Table size="small" sx={{ tableLayout: 'fixed' }}>
-                          <TableHead>
-                            <TableRow>
+                      <TableHead>
+                        <TableRow>
                               <TableCell sx={{ 
                                 fontFamily: 'Poppins', 
                                 fontWeight: 'medium', 
@@ -2039,11 +2460,11 @@ const Dashboard: React.FC = () => {
                                 color: '#666',
                                 width: { xs: '60px', sm: '80px' }
                               }}></TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {entries.slice(0, 6).map((entry, index) => (
-                              <TableRow key={entry.id || index} hover>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {entries.slice(0, 6).map((entry, index) => (
+                          <TableRow key={entry.id || index} hover>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2051,50 +2472,50 @@ const Dashboard: React.FC = () => {
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis'
                                 }}>
-                                  {new Date(entry.date).toLocaleDateString('en-US', { 
-                                    month: 'short', 
-                                    day: 'numeric'
-                                  })}
-                                </TableCell>
+                              {new Date(entry.date).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric'
+                              })}
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle',
                                   padding: { xs: '6px 2px', md: '8px 16px' }
                                 }}>
-                                  <Box sx={{ 
-                                    backgroundColor: '#1056F5', 
-                                    display: 'inline-block', 
+                              <Box sx={{ 
+                                backgroundColor: '#1056F5', 
+                                display: 'inline-block', 
                                     px: { xs: 1, sm: 1.5 },
-                                    py: 0.5, 
-                                    borderRadius: 16,
-                                    fontWeight: 'medium',
-                                    color: 'white',
+                                py: 0.5, 
+                                borderRadius: 16,
+                                fontWeight: 'medium',
+                                color: 'white',
                                     fontSize: { xs: '0.65rem', sm: '0.75rem' },
                                     whiteSpace: 'nowrap'
-                                  }}>
-                                    {calculateEntryScore(entry)}%
-                                  </Box>
-                                </TableCell>
+                              }}>
+                                {calculateEntryScore(entry)}%
+                              </Box>
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
                                   display: { xs: 'none', sm: 'table-cell' },
                                   padding: { xs: '6px 2px', md: '8px 16px' }
                                 }}>
-                                  <Box sx={{ 
-                                    backgroundColor: '#1056F5', 
-                                    display: 'inline-block',
+                              <Box sx={{ 
+                                backgroundColor: '#1056F5', 
+                                display: 'inline-block',
                                     px: { xs: 1, sm: 1.5 },
-                                    py: 0.5, 
-                                    borderRadius: 16,
-                                    fontWeight: 'medium',
+                                py: 0.5, 
+                                borderRadius: 16,
+                                fontWeight: 'medium',
                                     color: 'white',
                                     fontSize: { xs: '0.65rem', sm: '0.75rem' },
                                     whiteSpace: 'nowrap'
-                                  }}>
-                                    {Math.round(entry.productivityScore * 10)}
-                                  </Box>
-                                </TableCell>
+                              }}>
+                                {Math.round(entry.productivityScore * 10)}
+                              </Box>
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2102,26 +2523,26 @@ const Dashboard: React.FC = () => {
                                   padding: { xs: '6px 2px', md: '8px 16px' },
                                   whiteSpace: 'nowrap'
                                 }}>
-                                  {entry.hadNoMeetings ? (
-                                    <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
-                                      -
-                                    </Box>
-                                  ) : (
-                                    <Box sx={{ 
-                                      backgroundColor: '#1056F5', 
-                                      display: 'inline-block', 
+                              {entry.hadNoMeetings ? (
+                                <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
+                                  -
+                                </Box>
+                              ) : (
+                                <Box sx={{ 
+                                  backgroundColor: '#1056F5', 
+                                  display: 'inline-block', 
                                       px: { xs: 1, sm: 1.5 },
-                                      py: 0.5, 
-                                      borderRadius: 16,
-                                      fontWeight: 'medium',
+                                  py: 0.5, 
+                                  borderRadius: 16,
+                                  fontWeight: 'medium',
                                       color: 'white',
                                       fontSize: { xs: '0.65rem', sm: '0.75rem' },
                                       whiteSpace: 'nowrap'
-                                    }}>
-                                      {entry.meetingScore}
-                                    </Box>
-                                  )}
-                                </TableCell>
+                                }}>
+                                  {entry.meetingScore}
+                                </Box>
+                              )}
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2129,23 +2550,23 @@ const Dashboard: React.FC = () => {
                                   padding: { xs: '6px 2px', md: '8px 16px' },
                                   whiteSpace: 'nowrap'
                                 }}>
-                                  {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                              {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                                       <CheckCircleIcon sx={{ mr: 0.5, fontSize: '0.875rem' }} /> 
                                       <Box component="span" sx={{ display: { md: 'inline', lg: 'inline' } }}>Yes</Box>
-                                    </Box>
-                                  ) : entry.focusTime === 'Partially' || entry.focusTime === 'partially' ? (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F29D38' }}>
+                                </Box>
+                              ) : entry.focusTime === 'Partially' || entry.focusTime === 'partially' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F29D38' }}>
                                       <CoffeeIcon sx={{ mr: 0.5, fontSize: '0.875rem' }} /> 
                                       <Box component="span" sx={{ display: { md: 'none', lg: 'inline' } }}>Partial</Box>
-                                    </Box>
-                                  ) : (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                                </Box>
+                              ) : (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
                                       <CloseIcon sx={{ mr: 0.5, fontSize: '0.875rem' }} /> 
                                       <Box component="span" sx={{ display: { md: 'none', lg: 'inline' } }}>No</Box>
-                                    </Box>
-                                  )}
-                                </TableCell>
+                                </Box>
+                              )}
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2153,18 +2574,18 @@ const Dashboard: React.FC = () => {
                                   padding: { xs: '6px 2px', md: '8px 16px' },
                                   whiteSpace: 'nowrap'
                                 }}>
-                                  {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                              {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
                                       <CheckCircleIcon sx={{ mr: 0.5, fontSize: '0.875rem' }} /> 
                                       <Box component="span" sx={{ display: { md: 'none', lg: 'inline' } }}>Yes</Box>
-                                    </Box>
-                                  ) : (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                                </Box>
+                              ) : (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
                                       <CloseIcon sx={{ mr: 0.5, fontSize: '0.875rem' }} /> 
                                       <Box component="span" sx={{ display: { md: 'none', lg: 'inline' } }}>No</Box>
-                                    </Box>
-                                  )}
-                                </TableCell>
+                                </Box>
+                              )}
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2175,7 +2596,7 @@ const Dashboard: React.FC = () => {
                                   maxWidth: '150px'
                                 }}>
                                   {entry.supportNeeded || '-'}
-                                </TableCell>
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
@@ -2186,55 +2607,57 @@ const Dashboard: React.FC = () => {
                                   maxWidth: '150px'
                                 }}>
                                   {entry.improvementPlans || '-'}
-                                </TableCell>
+                            </TableCell>
                                 <TableCell sx={{ 
                                   fontFamily: 'Poppins', 
                                   verticalAlign: 'middle', 
                                   padding: { xs: '8px 2px', sm: '16px' },
                                   textAlign: 'center'
                                 }}>
-                                  <Button
-                                    onClick={() => handleViewEntry(index)}
-                                    size="small"
-                                    sx={{ 
-                                      fontFamily: 'Poppins', 
-                                      textTransform: 'none', 
-                                      color: '#1056F5',
-                                      fontWeight: 'medium',
-                                      minWidth: { xs: '40px', sm: '64px' },
+                              <Button
+                                onClick={() => handleViewEntry(index)}
+                                size="small"
+                                sx={{ 
+                                  fontFamily: 'Poppins', 
+                                  textTransform: 'none', 
+                                  color: '#1056F5',
+                                  fontWeight: 'medium',
+                                  minWidth: { xs: '40px', sm: '64px' },
                                       px: { xs: 0.5, sm: 1 }
-                                    }}
-                                  >
-                                    View
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
+                                }}
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                     </Box>
-                  ) : (
-                    <Box sx={{ 
+                ) : (
+                  <Box sx={{ 
                       height: 'calc(100% - 70px)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center'
-                    }}>
-                      <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                        No entries yet. Start your reflection journey today!
-                      </Typography>
-                    </Box>
-                  )}
-                </Paper>
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center'
+                  }}>
+                    <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                      No entries yet. Start your reflection journey today!
+                    </Typography>
+                  </Box>
+                )}
+              </Paper>
               </div>
+              )}
 
               {/* Top Distractions Section */}
+              {visibleWidgets.includes('topDistractions') && (
               <div key="topDistractions" className="dashboard-widget">
-                <Paper sx={{ 
+                  <Paper sx={{ 
                   p: isMobile ? (isExtraSmall ? 0.6 : 0.8) : { xs: 2, sm: 3, md: 4 }, 
                   height: '100%',
-                  borderRadius: 2,
+                    borderRadius: 2,
                   position: 'relative',
                   overflow: 'auto',
                   boxShadow: isMobile ? 1 : 3
@@ -2263,8 +2686,8 @@ const Dashboard: React.FC = () => {
                     </Box>
                   )}
                   
-                  <Typography 
-                    variant="h6" 
+                    <Typography 
+                      variant="h6" 
                     sx={{ 
                       mb: { xs: isExtraSmall ? 0.2 : 0.3, sm: 1.5 }, 
                       fontWeight: 'bold', 
@@ -2273,11 +2696,11 @@ const Dashboard: React.FC = () => {
                       fontSize: { xs: '0.95rem', sm: '1.1rem', md: '1.25rem' },
                       textAlign: 'center'
                     }}
-                  >
-                    Top Distractions
-                  </Typography>
-                  
-                  {entries && entries.length > 0 ? (
+                    >
+                      Top Distractions
+                    </Typography>
+                    
+                    {entries && entries.length > 0 ? (
                     <Box sx={{ 
                       height: `calc(100% - ${isEditMode ? '75px' : '35px'})`, 
                       width: '100%',
@@ -2336,7 +2759,7 @@ const Dashboard: React.FC = () => {
                         mx: 'auto', // Center the legend horizontally
                         width: '98%',
                         pb: 0,
-                        display: 'flex',
+                        display: 'flex', 
                         justifyContent: 'center'
                       }}>
                         <Box sx={{ 
@@ -2371,7 +2794,7 @@ const Dashboard: React.FC = () => {
                                   flexShrink: 0
                                 }}
                               />
-                              <Typography 
+            <Typography 
                                 sx={{ 
                                   fontSize: { xs: isExtraSmall ? '0.65rem' : '0.75rem', sm: '0.85rem', md: '0.9rem' },
                                   fontWeight: 'medium',
@@ -2383,31 +2806,32 @@ const Dashboard: React.FC = () => {
                                 }}
                               >
                                 {entry.name}: {entry.percentage}
-                              </Typography>
-                            </Box>
+            </Typography>
+                          </Box>
                           ))}
-                        </Box>
-                      </Box>
-                    </Box>
-                  ) : (
+                            </Box>
+                            </Box>
+                            </Box>
+                          ) : (
                     // No changes to the empty state
-                    <Box sx={{ 
+                <Box sx={{ 
                       height: 'calc(100% - 70px)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center'
-                    }}>
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
                       <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
                         No distraction data available yet.
-                      </Typography>
-                    </Box>
+                  </Typography>
+                </Box>
                   )}
-                </Paper>
+              </Paper>
               </div>
+            )}
             </GridLayout>
-          </>
-        )}
-      </Box>
+        </>
+      )}
+          </Box>
 
       {/* Mobile fixed tooltip */}
       {isMobile && activeDataPoint && tooltipPosition && (
@@ -2428,22 +2852,129 @@ const Dashboard: React.FC = () => {
           position: absolute;
           width: 20px;
           height: 20px;
+          background-repeat: no-repeat;
+          background-origin: content-box;
+          box-sizing: border-box;
+          z-index: 20; /* Ensure handles are above other content */
+        }
+        /* Southeast (bottom-right) resize handle */
+        .react-resizable-handle-se {
           bottom: 0;
           right: 0;
           background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
           background-position: bottom right;
           padding: 0 3px 3px 0;
-          background-repeat: no-repeat;
-          background-origin: content-box;
-          box-sizing: border-box;
           cursor: se-resize;
+          width: 24px;
+          height: 24px;
         }
+        /* South (bottom) resize handle */
+        .react-resizable-handle-s {
+          bottom: 0;
+          left: 50%;
+          margin-left: -10px;
+          background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDYgNC4yIEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
+          background-position: bottom center;
+          padding: 0 0 3px 0;
+          cursor: s-resize;
+        }
+        /* East (right) resize handle */
+        .react-resizable-handle-e {
+          right: 0;
+          top: 50%;
+          margin-top: -10px;
+          background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCA0LjIgNiBMIDQuMiAwIEwgNiAwIEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
+          background-position: center right;
+          padding: 0 3px 0 0;
+          cursor: e-resize;
+        }
+        /* Southwest (bottom-left) resize handle */
+        .react-resizable-handle-sw {
+          bottom: 0;
+          left: 0;
+          background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSAwIDYgTCAwIDAgTCAxLjggMCBMIDEuOCA0IEwgNiA0IEwgNiA2IEwgMCA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
+          background-position: bottom left;
+          padding: 0 0 3px 3px;
+          cursor: sw-resize;
+          transform: rotate(90deg);
+          width: 24px;
+          height: 24px;
+          background-color: rgba(200, 200, 200, 0.1); /* Light background to make it more visible */
+        }
+        /* West (left) resize handle */
+        .react-resizable-handle-w {
+          left: 0;
+          top: 50%;
+          margin-top: -10px;
+          background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSAwIDAgTCAxLjggMCBMIDEuOCA2IEwgMCA2IEwgMCAwIFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
+          background-position: center left;
+          padding: 0 0 0 3px;
+          cursor: w-resize;
+        }
+        /* Northwest (top-left) resize handle */
+        .react-resizable-handle-nw {
+          top: 0;
+          left: 0;
+          background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSAwIDAgTCA2IDAgTCA2IDEuOCBMIDIgMS44IEwgMS44IDEuOCBMIDEuOCA2IEwgMCA2IEwgMCAwIEwgMCAwIFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
+          background-position: top left;
+          padding: 3px 0 0 3px;
+          cursor: nw-resize;
+          transform: rotate(180deg);
+        }
+        
+        /* Add hover effect for all resize handles to make them more noticeable */
+        .react-resizable-handle:hover {
+          background-color: rgba(16, 86, 245, 0.1);
+        }
+        
+        /* Special treatment for the southwest handle to ensure it's always visible and accessible */
+        .dashboard-widget .react-resizable-handle-sw {
+          z-index: 25; /* Higher z-index than other handles */
+          width: 26px;
+          height: 26px;
+          bottom: 0;
+          left: 0;
+          background-size: 12px 12px; /* Make the icon slightly larger */
+          pointer-events: all; /* Ensure it captures mouse events */
+          position: absolute; /* Ensure absolute positioning */
+          background-color: rgba(200, 200, 200, 0.2); /* Light background to make it more visible */
+        }
+        
+        /* Ensure southwest handle is visible even with different overflow settings */
+        .dashboard-widget .react-resizable-handle-sw:before {
+          content: '';
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          bottom: 2px;
+          left: 2px;
+          border-left: 2px solid rgba(16, 86, 245, 0.3);
+          border-bottom: 2px solid rgba(16, 86, 245, 0.3);
+          border-radius: 0 0 0 3px;
+        }
+        
+        /* Enhance southwest handle on hover */
+        .dashboard-widget .react-resizable-handle-sw:hover {
+          background-color: rgba(16, 86, 245, 0.15);
+        }
+        
+        .dashboard-widget .react-resizable-handle-sw:hover:before {
+          border-left: 2px solid rgba(16, 86, 245, 0.6);
+          border-bottom: 2px solid rgba(16, 86, 245, 0.6);
+        }
+        
+        /* Make sure overflow doesn't hide resize handles */
+        .dashboard-widget .MuiPaper-root {
+          overflow: visible !important;
+        }
+        
         .edit-mode-banner.highlight-reset {
           background-color: #FFECB3;
           border-color: #FFA000;
           transform: scale(1.01);
           box-shadow: 0 0 8px rgba(255, 160, 0, 0.3);
         }
+        
         @media (max-width: 375px) {
           .dashboard-widget {
             padding: 0.25rem !important;
@@ -2488,6 +3019,54 @@ const Dashboard: React.FC = () => {
           }
         }
       `}} />
+      
+      
+      {/* Reset Layout Confirmation Dialog */}
+      <Dialog
+        open={resetConfirmOpen}
+        onClose={() => setResetConfirmOpen(false)}
+        aria-labelledby="reset-layout-dialog-title"
+        aria-describedby="reset-layout-dialog-description"
+      >
+        <DialogTitle id="reset-layout-dialog-title" sx={{ fontFamily: 'Poppins', fontWeight: 'bold' }}>
+          Reset Dashboard Layout
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="reset-layout-dialog-description" sx={{ fontFamily: 'Poppins' }}>
+            Are you sure you want to reset your dashboard to the default layout? This will remove all customizations you've made, including widget positions, sizes, and visibility settings.
+            <Box mt={1} sx={{ color: '#F29702', fontWeight: 'medium' }}>
+              This action cannot be undone.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setResetConfirmOpen(false)} 
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              color: '#666'
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={resetToDefaultLayout} 
+            variant="contained"
+            color="primary"
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              bgcolor: '#F29702',
+              '&:hover': {
+                bgcolor: '#D18702',
+              }
+            }}
+          >
+            Reset Layout
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
