@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Paper, Box, Typography, useTheme, useMediaQuery } from '@mui/material';
 
 interface StatCardProps {
@@ -18,50 +18,106 @@ const StatCard: React.FC<StatCardProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isExtraSmall = useMediaQuery('(max-width:375px)');
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardWidth, setCardWidth] = useState<number>(0);
+  
+  // Use ResizeObserver to track container size changes
+  useEffect(() => {
+    if (!cardRef.current) return;
+    
+    const resizeObserver = new ResizeObserver(entries => {
+      if (!entries[0]) return;
+      setCardWidth(entries[0].contentRect.width);
+    });
+    
+    resizeObserver.observe(cardRef.current);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+  
+  // Determine text size classes based on container width
+  const isSmallCard = cardWidth > 0 && cardWidth < 120;
+  const isMediumCard = cardWidth >= 120 && cardWidth < 180;
   
   return (
     <Paper
+      ref={cardRef}
       elevation={1}
       sx={{
-        p: isMobile ? 2 : 3,
+        p: isExtraSmall ? 0.5 : isSmallCard ? 0.75 : isMediumCard ? 1 : 1.5,
         borderRadius: 2,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        borderLeft: `4px solid ${color}`,
-        transition: 'transform 0.2s, box-shadow 0.2s',
+        borderLeft: `${isExtraSmall ? 3 : 4}px solid ${color}`,
+        transition: 'all 0.2s ease-in-out',
+        overflow: 'auto',
+        boxSizing: 'border-box',
+        minHeight: isExtraSmall ? '50px' : '80px',
+        minWidth: 0,
         '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: 3
+          transform: isExtraSmall ? 'none' : 'translateY(-4px)',
+          boxShadow: isExtraSmall ? 1 : 3
         }
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: isMobile ? 1 : 2 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        mb: isExtraSmall ? 0.1 : isSmallCard ? 0.25 : isMediumCard ? 0.5 : 1,
+        minWidth: 0,
+        alignItems: 'center'
+      }}>
         <Typography
-          variant={isMobile ? "body2" : "subtitle1"}
+          variant="subtitle2"
           sx={{
             fontFamily: 'Poppins',
             color: 'text.secondary',
             fontWeight: 'medium',
+            fontSize: isExtraSmall ? '0.6rem' : isSmallCard ? '0.65rem' : isMediumCard ? '0.75rem' : '0.875rem',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: icon ? '80%' : '100%'
           }}
         >
           {title}
         </Typography>
         {icon && (
-          <Box sx={{ color }}>
+          <Box sx={{ 
+            color, 
+            flexShrink: 0, 
+            ml: 0.5,
+            fontSize: isExtraSmall ? '0.75rem' : isSmallCard ? '0.875rem' : isMediumCard ? '1rem' : '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            '& svg': {
+              fontSize: 'inherit'
+            }
+          }}>
             {icon}
           </Box>
         )}
       </Box>
       
-      <Box>
+      <Box sx={{ 
+        minWidth: 0,
+        width: '100%'
+      }}>
         <Typography
-          variant={isMobile ? "h5" : "h4"}
           sx={{
             fontFamily: 'Poppins',
             fontWeight: 'bold',
             color,
+            fontSize: isExtraSmall ? '0.9rem' : isSmallCard ? '1rem' : isMediumCard ? '1.5rem' : '2rem',
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            width: '100%'
           }}
         >
           {value}
@@ -73,8 +129,14 @@ const StatCard: React.FC<StatCardProps> = ({
             sx={{
               fontFamily: 'Poppins',
               color: 'text.secondary',
-              mt: 1,
-              fontSize: isMobile ? '0.75rem' : '0.875rem',
+              mt: isExtraSmall ? 0.1 : isSmallCard ? 0.25 : 0.5,
+              fontSize: isExtraSmall ? '0.55rem' : isSmallCard ? '0.6rem' : isMediumCard ? '0.7rem' : '0.75rem',
+              whiteSpace: 'normal',
+              overflow: 'hidden',
+              lineHeight: 1.2,
+              maxHeight: isExtraSmall ? '1.2em' : isSmallCard ? '1.2em' : isMediumCard ? '2.4em' : '2.4em',
+              width: '100%',
+              display: isExtraSmall ? (title === 'Average Score' ? 'block' : 'none') : isSmallCard ? 'none' : 'block'
             }}
           >
             {subtitle}

@@ -276,26 +276,17 @@ const formatEventTime = (event: CalendarEvent): string => {
   return `${formatTime(event.start)} - ${formatTime(event.end)}`;
 };
 
-// Update the component interface to include containerWidth
 interface CalendarViewProps {
   onEventClick?: (event: CalendarEvent) => void;
   onAddEvent?: () => void;
-  containerWidth?: number;
 }
 
-// Update the component to use containerWidth
 const CalendarView: React.FC<CalendarViewProps> = ({ 
   onEventClick, 
-  onAddEvent,
-  containerWidth = 0
+  onAddEvent 
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  // Add this: determine if we should use mobile view based on container width
-  // Use 500px as the threshold to switch to mobile view (typical small widget width)
-  const useMobileView = isMobile || (containerWidth > 0 && containerWidth < 500);
-  
   const { 
     events, 
     selectedDate,
@@ -338,11 +329,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // State for task list popup (multiple tasks)
   const [tasksForDay, setTasksForDay] = useState<CalendarEvent[]>([]);
   const [taskListPopupAnchorEl, setTaskListPopupAnchorEl] = useState<HTMLElement | null>(null);
-  
-  // Debug logging
-  useEffect(() => {
-    console.log(`Calendar containerWidth: ${containerWidth}, isMobile: ${isMobile}, useMobileView: ${useMobileView}`);
-  }, [containerWidth, isMobile, useMobileView]);
   
   // Make sure we're loading the data when the component mounts
   useEffect(() => {
@@ -3050,12 +3036,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Button 
             variant="outlined"
-            size={useMobileView ? "small" : "medium"}
+            size={isMobile ? "small" : "medium"}
             sx={{ 
-              minWidth: useMobileView ? 0 : 64,
-              px: useMobileView ? 1 : 2,
+              minWidth: isMobile ? 0 : 64,
+              px: isMobile ? 1 : 2,
               mr: 1,
-              display: useMobileView ? 'none' : 'block'
+              display: isMobile ? 'none' : 'block'
             }}
             onClick={goToToday}
           >
@@ -3065,8 +3051,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <IconButton
             size="small"
             sx={{ 
-              mr: useMobileView ? 0 : 1,
-              display: useMobileView ? 'flex' : 'none'
+              mr: isMobile ? 0 : 1,
+              display: isMobile ? 'flex' : 'none'
             }}
             onClick={goToToday}
           >
@@ -3077,14 +3063,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             value={viewMode}
             exclusive
             onChange={handleViewModeChange} 
-            size={useMobileView ? "small" : "medium"}
+            size={isMobile ? "small" : "medium"}
             sx={{
               '& .MuiToggleButton-root': {
-                px: useMobileView ? 1 : 2
+                px: isMobile ? 1 : 2
               }
             }}
           >
-            {useMobileView ? (
+            {isMobile ? (
               <>
                 <ToggleButton value="day">D</ToggleButton>
                 <ToggleButton value="week">W</ToggleButton>
@@ -3108,7 +3094,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           flexGrow: 1, 
           overflow: 'auto',
           height: 'calc(100% - 130px)', // Ensure the content area has a defined height
-          minHeight: useMobileView ? '350px' : '400px' // Set a minimum height so it's always scrollable
+          minHeight: isMobile ? '350px' : '400px' // Set a minimum height so it's always scrollable
         }}
       >
         {error ? (
@@ -3148,13 +3134,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           </Box>
         ) : (
           <>
-            {/* Use mobile or desktop views based on screen size OR container width */}
-            {useMobileView && viewMode === 'day' && renderMobileDayView()}
-            {useMobileView && viewMode === 'week' && renderMobileWeekView()}
-            {useMobileView && viewMode === 'month' && renderMobileMonthView()}
-            {!useMobileView && viewMode === 'day' && renderDayView()}
-            {!useMobileView && viewMode === 'week' && renderWeekView()}
-            {!useMobileView && viewMode === 'month' && renderMonthView()}
+            {/* Use mobile or desktop views based on screen size */}
+            {isMobile && viewMode === 'day' && renderMobileDayView()}
+            {isMobile && viewMode === 'week' && renderMobileWeekView()}
+            {isMobile && viewMode === 'month' && renderMobileMonthView()}
+            {!isMobile && viewMode === 'day' && renderDayView()}
+            {!isMobile && viewMode === 'week' && renderWeekView()}
+            {!isMobile && viewMode === 'month' && renderMonthView()}
             {viewMode === 'all' && renderAllEventsView()}
           </>
         )}
