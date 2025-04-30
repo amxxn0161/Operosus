@@ -88,17 +88,30 @@ const AllEntries: React.FC = () => {
         >
           All Journal Entries
         </Typography>
-        <Button 
-          variant="outlined"
-          onClick={() => navigate('/dashboard')}
-          sx={{ 
-            fontFamily: 'Poppins', 
-            textTransform: 'none',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          Back to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/journal-insights')}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Journal Insights
+          </Button>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/dashboard')}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 4, borderRadius: 2 }}>

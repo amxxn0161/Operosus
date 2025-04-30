@@ -334,6 +334,17 @@ const EntryDetail: React.FC = () => {
           >
             Back
           </Button>
+          <Button 
+            onClick={() => navigate('/journal-insights')}
+            sx={{ 
+              mr: 2,
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              color: '#1056F5'
+            }}
+          >
+            Journal Insights
+          </Button>
           <Box>
             <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
               {isAdminEntry && entry.user ? `${entry.user.name}'s Reflection` : 'Daily Reflection'}
