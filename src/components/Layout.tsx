@@ -37,7 +37,11 @@ const Layout: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Header />
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 } }}>
+      <Box component="main" sx={{ 
+        flexGrow: 1, 
+        p: { xs: 2, sm: 3 },
+        ml: { xs: 0, sm: 0 } // No additional left margin needed since sidebar is now a drawer
+      }}>
         <Outlet />
       </Box>
     </Box>

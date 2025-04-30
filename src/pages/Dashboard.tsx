@@ -1663,7 +1663,8 @@ const Dashboard: React.FC<{}> = () => {
           sx={{ 
             fontWeight: 'bold', 
             fontFamily: 'Poppins',
-            fontSize: { xs: isExtraSmall ? '1.1rem' : '1.25rem', sm: '2rem' }
+            fontSize: { xs: isExtraSmall ? '1.1rem' : '1.25rem', sm: '2rem' },
+            pl: { xs: 1, sm: 2 } // Add left padding to move it to the right
           }}
         >
           Your Dashboard

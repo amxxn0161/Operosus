@@ -1375,3 +1375,4 @@ const JournalInsights: React.FC = () => {
 };
 
 export default JournalInsights;
+ 

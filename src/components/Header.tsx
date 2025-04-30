@@ -17,7 +17,8 @@ import {
   ListItemText,
   useMediaQuery,
   useTheme,
-  ListItemButton
+  ListItemButton,
+  Collapse
 } from '@mui/material';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -26,6 +27,9 @@ import HomeIcon from '@mui/icons-material/Home';
 import BookIcon from '@mui/icons-material/Book';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import InsightsIcon from '@mui/icons-material/Insights';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 
@@ -37,6 +41,9 @@ const Header: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // State for the journal submenu
+  const [journalSubmenuOpen, setJournalSubmenuOpen] = useState(false);
   
   // Check admin access by calling the API endpoint
   useEffect(() => {
@@ -82,7 +89,7 @@ const Header: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
   
-  // State for mobile drawer
+  // State for sidebar
   const [drawerOpen, setDrawerOpen] = useState(false);
   
   // Handle opening and closing the menu
@@ -118,6 +125,11 @@ const Header: React.FC = () => {
     setDrawerOpen(false);
   };
   
+  // Toggle the journal submenu
+  const handleJournalSubmenuToggle = () => {
+    setJournalSubmenuOpen(!journalSubmenuOpen);
+  };
+  
   // Check if we're on the login page
   const isLoginPage = location.pathname === '/login';
 
@@ -148,7 +160,7 @@ const Header: React.FC = () => {
     return 'U';
   };
 
-  // Mobile drawer content
+  // Sidebar drawer content - same for both mobile and desktop
   const drawer = (
     <Box sx={{ width: 250, height: '100%', bgcolor: 'background.paper' }}>
       <Box sx={{ 
@@ -171,52 +183,99 @@ const Header: React.FC = () => {
           onClick={() => handleNavigation('/dashboard')}
           selected={isActive('/dashboard')}
           sx={{ 
-            py: 1.5,
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
             bgcolor: isActive('/dashboard') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <HomeIcon sx={{ mr: 2, color: isActive('/dashboard') ? 'primary.main' : 'text.secondary' }} />
+          <HomeIcon sx={{ mr: 2, color: isActive('/dashboard') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="Home" 
             primaryTypographyProps={{
               fontWeight: 'bold',
-              color: isActive('/dashboard') ? 'primary.main' : 'text.primary'
+              color: isActive('/dashboard') ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
         </ListItemButton>
         
-        <ListItemButton 
-          onClick={() => handleNavigation('/journal')}
-          selected={isActive('/journal')}
-          sx={{ 
-            py: 1.5,
-            bgcolor: isActive('/journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-          }}
-        >
-          <BookIcon sx={{ mr: 2, color: isActive('/journal') ? 'primary.main' : 'text.secondary' }} />
-          <ListItemText 
-            primary="Daily Journal" 
-            primaryTypographyProps={{
-              fontWeight: 'bold',
-              color: isActive('/journal') ? 'primary.main' : 'text.primary'
+        {/* Daily Journal with collapsible submenu */}
+        <Box>
+          <ListItemButton 
+            onClick={() => handleNavigation('/journal')}
+            selected={isActive('/journal')}
+            sx={{ 
+              py: 1.8,
+              mx: 1,
+              borderRadius: '12px',
+              bgcolor: isActive('/journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
             }}
-          />
-        </ListItemButton>
+          >
+            <BookIcon sx={{ mr: 2, color: isActive('/journal') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+            <ListItemText 
+              primary="Daily Journal" 
+              primaryTypographyProps={{
+                fontWeight: 'bold',
+                color: isActive('/journal') ? 'primary.main' : 'text.primary',
+                fontSize: { xs: '0.95rem', sm: '1rem' }
+              }}
+            />
+            <IconButton 
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent the parent ListItemButton click from firing
+                handleJournalSubmenuToggle();
+              }}
+              size="small"
+              sx={{ p: 0.5 }}
+            >
+              {journalSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+          </ListItemButton>
+          
+          <Collapse in={journalSubmenuOpen} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              <ListItemButton 
+                onClick={() => handleNavigation('/journal-insights')} 
+                selected={isActive('/journal-insights')}
+                sx={{ 
+                  py: 1.5, 
+                  pl: 6,
+                  mx: 1,
+                  borderRadius: '12px',
+                  bgcolor: isActive('/journal-insights') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+                }}
+              >
+                <InsightsIcon sx={{ mr: 2, color: isActive('/journal-insights') ? 'primary.main' : 'text.secondary', fontSize: { xs: 18, sm: 20 } }} />
+                <ListItemText 
+                  primary="Journal Insights" 
+                  primaryTypographyProps={{
+                    color: isActive('/journal-insights') ? 'primary.main' : 'text.primary',
+                    fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  }}
+                />
+              </ListItemButton>
+            </List>
+          </Collapse>
+        </Box>
         
         <ListItemButton 
           onClick={() => handleNavigation('/google-tasks')}
           selected={isActive('/google-tasks')}
           sx={{ 
-            py: 1.5,
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
             bgcolor: isActive('/google-tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <AssignmentIcon sx={{ mr: 2, color: isActive('/google-tasks') ? 'primary.main' : 'text.secondary' }} />
+          <AssignmentIcon sx={{ mr: 2, color: isActive('/google-tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="Google Tasks" 
             primaryTypographyProps={{
               fontWeight: 'bold',
-              color: isActive('/google-tasks') ? 'primary.main' : 'text.primary'
+              color: isActive('/google-tasks') ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
         </ListItemButton>
@@ -227,40 +286,23 @@ const Header: React.FC = () => {
             onClick={() => handleNavigation('/admin-journal')}
             selected={isActive('/admin-journal')}
             sx={{ 
-              py: 1.5,
+              py: 1.8,
+              mx: 1,
+              borderRadius: '12px',
               bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
             }}
           >
-            <AdminPanelSettingsIcon sx={{ mr: 2, color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary' }} />
+            <AdminPanelSettingsIcon sx={{ mr: 2, color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
             <ListItemText 
               primary="Admin Journal" 
               primaryTypographyProps={{
                 fontWeight: 'bold',
-                color: isActive('/admin-journal') ? 'primary.main' : 'text.primary'
+                color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
+                fontSize: { xs: '0.95rem', sm: '1rem' }
               }}
             />
           </ListItemButton>
         )}
-        
-        {/* Worksheet option hidden temporarily
-        <ListItemButton 
-          onClick={() => handleNavigation('/worksheet')}
-          selected={isActive('/worksheet')}
-          sx={{ 
-            py: 1.5,
-            bgcolor: isActive('/worksheet') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-          }}
-        >
-          <AssignmentIcon sx={{ mr: 2, color: isActive('/worksheet') ? 'primary.main' : 'text.secondary' }} />
-          <ListItemText 
-            primary="Worksheet" 
-            primaryTypographyProps={{
-              fontWeight: 'bold',
-              color: isActive('/worksheet') ? 'primary.main' : 'text.primary'
-            }}
-          />
-        </ListItemButton>
-        */}
       </List>
 
       <Divider sx={{ my: 2 }} />
@@ -274,8 +316,8 @@ const Header: React.FC = () => {
           }}>
             <Avatar 
               sx={{ 
-                width: 35, 
-                height: 35, 
+                width: { xs: 35, sm: 38 }, 
+                height: { xs: 35, sm: 38 }, 
                 bgcolor: 'primary.main',
                 fontFamily: 'Poppins',
                 mr: 2
@@ -283,7 +325,7 @@ const Header: React.FC = () => {
             >
               {getUserInitials()}
             </Avatar>
-            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+            <Typography variant="body1" sx={{ fontWeight: 'medium', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               {user && user.name ? user.name : localStorage.getItem('userName') || 'User'}
             </Typography>
           </Box>
@@ -291,7 +333,7 @@ const Header: React.FC = () => {
             fullWidth 
             variant="outlined" 
             onClick={handleLogout}
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', py: { xs: 1, sm: 1.2 } }}
           >
             Sign out
           </Button>
@@ -299,6 +341,13 @@ const Header: React.FC = () => {
       )}
     </Box>
   );
+
+  // Auto-open the journal submenu if we're on journal-insights page
+  useEffect(() => {
+    if (isActive('/journal-insights') && !journalSubmenuOpen) {
+      setJournalSubmenuOpen(true);
+    }
+  }, [location.pathname, journalSubmenuOpen, isActive]);
 
   return (
     <AppBar 
@@ -310,19 +359,32 @@ const Header: React.FC = () => {
         backgroundColor: 'white'
       }}
     >
-      <Container>
-        <Toolbar disableGutters sx={{ justifyContent: 'space-between' }}>
+      <Container maxWidth="xl">
+        <Toolbar 
+          disableGutters 
+          sx={{ 
+            justifyContent: 'space-between',
+            py: { xs: 0.5, sm: 1 }
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {/* Mobile menu button - now on the left */}
-            {isMobile && isAuthenticated && (
+            {/* Menu button for both mobile and desktop */}
+            {isAuthenticated && (
               <IconButton
                 color="inherit"
                 aria-label="open drawer"
                 edge="start"
                 onClick={handleDrawerToggle}
-                sx={{ mr: 2 }}
+                sx={{ 
+                  mr: 2,
+                  color: 'primary.main',
+                  '&:hover': {
+                    backgroundColor: 'rgba(16, 86, 245, 0.08)'
+                  },
+                  p: { xs: 1, sm: 1.2 }
+                }}
               >
-                <MenuIcon />
+                <MenuIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
               </IconButton>
             )}
             
@@ -353,175 +415,90 @@ const Header: React.FC = () => {
                   color: '#1056F5',
                   letterSpacing: '0.5px',
                   textDecoration: 'none',
-                  fontSize: { xs: '1rem', sm: '1.25rem' }
+                  fontSize: { xs: '1rem', sm: '1.25rem', md: '1.4rem' }
                 }}
               >
                 {isMobile ? 'PP' : 'Productivity Pulse'}
               </Typography>
             </Box>
-
-            {/* Navigation Links (only show if authenticated and not mobile) */}
-            {isAuthenticated && !isMobile && (
-              <Box sx={{ display: 'flex' }}>
-                <Button 
-                  component={Link}
-                  to="/dashboard"
-                  sx={{ 
-                    fontFamily: 'Poppins',
-                    textTransform: 'none',
-                    color: '#333',
-                    fontSize: '1rem',
-                    mx: 1,
-                    fontWeight: isActive('/dashboard') || isActive('/') ? 'bold' : 'normal'
-                  }}
-                >
-                  Home
-                </Button>
-                <Button 
-                  component={Link}
-                  to="/journal"
-                  sx={{ 
-                    fontFamily: 'Poppins',
-                    textTransform: 'none',
-                    color: '#333',
-                    fontSize: '1rem',
-                    mx: 1,
-                    fontWeight: isActive('/journal') ? 'bold' : 'normal'
-                  }}
-                >
-                  Daily Journal
-                </Button>
-                <Button 
-                  component={Link}
-                  to="/google-tasks"
-                  sx={{ 
-                    fontFamily: 'Poppins',
-                    textTransform: 'none',
-                    color: '#333',
-                    fontSize: '1rem',
-                    mx: 1,
-                    fontWeight: isActive('/google-tasks') ? 'bold' : 'normal'
-                  }}
-                >
-                  Google Tasks
-                </Button>
-                {/* Admin Journal Button - only shown to admin users */}
-                {isAdmin && (
-                  <Button 
-                    component={Link}
-                    to="/admin-journal"
-                    sx={{ 
-                      fontFamily: 'Poppins',
-                      textTransform: 'none',
-                      color: '#333',
-                      fontSize: '1rem',
-                      mx: 1,
-                      fontWeight: isActive('/admin-journal') ? 'bold' : 'normal'
-                    }}
-                  >
-                    Admin Journal
-                  </Button>
-                )}
-                {/* Worksheet option hidden temporarily
-                <Button 
-                  component={Link}
-                  to="/worksheet"
-                  sx={{ 
-                    fontFamily: 'Poppins',
-                    textTransform: 'none',
-                    color: '#333',
-                    fontSize: '1rem',
-                    mx: 1,
-                    fontWeight: isActive('/worksheet') ? 'bold' : 'normal'
-                  }}
-                >
-                  Worksheet
-                </Button>
-                */}
-              </Box>
-            )}
           </Box>
 
-          {/* Profile/Login Button (not mobile) */}
-          {!isMobile && (
-            <Box>
-              {isAuthenticated ? (
-                <Box>
-                  <Avatar 
-                    onClick={handleClick}
-                    sx={{ 
-                      width: 35, 
-                      height: 35, 
-                      bgcolor: '#1056F5',
-                      fontFamily: 'Poppins',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {getUserInitials()}
-                  </Avatar>
-                  <Menu
-                    anchorEl={anchorEl}
-                    open={open}
-                    onClose={handleClose}
-                    onClick={handleClose}
-                    transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-                    anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-                    PaperProps={{
-                      elevation: 3,
-                      sx: {
-                        width: '250px',
-                        mt: 1.5,
-                        '& .MuiMenuItem-root': {
-                          fontFamily: 'Poppins',
-                          fontSize: '0.9rem',
-                          py: 1.5
-                        }
-                      }
-                    }}
-                  >
-                    <MenuItem onClick={(e) => e.stopPropagation()} sx={{ color: '#333' }}>
-                      <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        width: '100%'
-                      }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          Signed in as
-                        </Typography>
-                        <Typography sx={{ fontWeight: 'bold', wordBreak: 'break-word' }}>
-                          {user && user.name ? user.name : localStorage.getItem('userName') || 'User'}
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                    <Divider />
-                    <MenuItem onClick={handleLogout}>Sign out</MenuItem>
-                  </Menu>
+          {/* Profile Button - shown in both mobile and desktop */}
+          <Box>
+            {isAuthenticated ? (
+              <Avatar 
+                onClick={handleClick}
+                sx={{ 
+                  width: 35, 
+                  height: 35, 
+                  bgcolor: '#1056F5',
+                  fontFamily: 'Poppins',
+                  cursor: 'pointer'
+                }}
+              >
+                {getUserInitials()}
+              </Avatar>
+            ) : (
+              !isLoginPage && (
+                <Button
+                  variant="contained"
+                  onClick={() => navigate('/login')}
+                  sx={{
+                    backgroundColor: '#1056F5',
+                    color: 'white',
+                    fontFamily: 'Poppins',
+                    textTransform: 'none',
+                    '&:hover': {
+                      backgroundColor: '#0D47D9',
+                    },
+                  }}
+                >
+                  Log In
+                </Button>
+              )
+            )}
+            <Menu
+              anchorEl={anchorEl}
+              open={open}
+              onClose={handleClose}
+              onClick={handleClose}
+              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+              PaperProps={{
+                elevation: 3,
+                sx: {
+                  width: '250px',
+                  mt: 1.5,
+                  '& .MuiMenuItem-root': {
+                    fontFamily: 'Poppins',
+                    fontSize: '0.9rem',
+                    py: 1.5
+                  }
+                }
+              }}
+            >
+              <MenuItem onClick={(e) => e.stopPropagation()} sx={{ color: '#333' }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  width: '100%'
+                }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                    Signed in as
+                  </Typography>
+                  <Typography sx={{ fontWeight: 'bold', wordBreak: 'break-word' }}>
+                    {user && user.name ? user.name : localStorage.getItem('userName') || 'User'}
+                  </Typography>
                 </Box>
-              ) : (
-                !isLoginPage && (
-                  <Button
-                    variant="contained"
-                    onClick={() => navigate('/login')}
-                    sx={{
-                      backgroundColor: '#1056F5',
-                      color: 'white',
-                      fontFamily: 'Poppins',
-                      textTransform: 'none',
-                      '&:hover': {
-                        backgroundColor: '#0D47D9',
-                      },
-                    }}
-                  >
-                    Log In
-                  </Button>
-                )
-              )}
-            </Box>
-          )}
+              </MenuItem>
+              <Divider />
+              <MenuItem onClick={handleLogout}>Sign out</MenuItem>
+            </Menu>
+          </Box>
         </Toolbar>
       </Container>
 
-      {/* Mobile drawer */}
+      {/* Sidebar drawer - for both mobile and desktop */}
       <Drawer
         anchor="left"
         open={drawerOpen}
@@ -531,7 +508,7 @@ const Header: React.FC = () => {
         }}
         sx={{
           '& .MuiDrawer-paper': { 
-            width: 250,
+            width: { xs: 250, sm: 280 },
             boxSizing: 'border-box',
           },
         }}

@@ -185,13 +185,22 @@ const Journal: React.FC = () => {
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
           Daily Journal
         </Typography>
-        <Button 
-          variant="outlined"
-          onClick={() => navigate('/dashboard')}
-          sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
-        >
-          Back to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/journal-insights')}
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Journal Insights
+          </Button>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/dashboard')}
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 4 }}>

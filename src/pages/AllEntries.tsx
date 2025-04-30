@@ -100,17 +100,17 @@ const AllEntries: React.FC = () => {
           >
             Journal Insights
           </Button>
-          <Button 
-            variant="outlined"
-            onClick={() => navigate('/dashboard')}
-            sx={{ 
-              fontFamily: 'Poppins', 
-              textTransform: 'none',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            Back to Dashboard
-          </Button>
+        <Button 
+          variant="outlined"
+          onClick={() => navigate('/dashboard')}
+          sx={{ 
+            fontFamily: 'Poppins', 
+            textTransform: 'none',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          Back to Dashboard
+        </Button>
         </Box>
       </Box>
 

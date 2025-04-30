@@ -150,9 +150,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       // If the error is a timeout, network error, or cancelation, retry the request
       const isRetriableError = error instanceof Error && 
-        (error.message.includes('timed out') || 
-         error.message.includes('network') ||
-         error.message.includes('cancel') ||
+           (error.message.includes('timed out') || 
+            error.message.includes('network') ||
+            error.message.includes('cancel') ||
          error.name === 'AbortError' ||
          error.message.includes('Failed to fetch'));
       
@@ -338,7 +338,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setError('Failed to fetch calendar events');
       } else if (tasksFetchFailed) {
         hasError = true;
-        setError('Failed to fetch task events');
+          setError('Failed to fetch task events');
       } else {
         // Clear error only if both fetches succeeded
         setError(null);
@@ -356,7 +356,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       // Update state with the fetched events
       if (allEvents.length > 0 || (!calendarFetchFailed && !tasksFetchFailed)) {
-        setEvents(allEvents);
+      setEvents(allEvents);
       } else {
         // If both fetches failed and no events were returned, keep existing events
         console.log('Keeping existing events to prevent UI disruption');
