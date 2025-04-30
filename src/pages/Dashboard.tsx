@@ -784,8 +784,23 @@ const Dashboard: React.FC<{}> = () => {
           console.log('Loading saved layout from API');
           const parsedLayout = response.data;
           
-          // Apply the normalized layout
-          setCurrentLayout(normalizeLayout(parsedLayout));
+          // Ensure the layout is appropriate for the current device
+          if (isMobile) {
+            // Always use default mobile layout for mobile devices
+            setCurrentLayout(isExtraSmall ? defaultMobileLayout : defaultMobileLayout);
+          } else {
+            // For desktop, check if the saved layout has valid desktop dimensions
+            const normalizedLayout = normalizeLayout(parsedLayout);
+            const calendarWidget = normalizedLayout.find(item => item.i === 'calendar');
+            
+            if (calendarWidget && calendarWidget.w >= 20) {
+              // Valid desktop layout with proper dimensions
+              setCurrentLayout(normalizedLayout);
+            } else {
+              // Invalid desktop dimensions, use default
+              setCurrentLayout(defaultLayout);
+            }
+          }
           
           // Store a key to force re-render after layout is set
           const newKey = 'grid-layout-' + Date.now();
@@ -839,7 +854,16 @@ const Dashboard: React.FC<{}> = () => {
         // Reset to default layouts when screen size changes significantly
         const newIsMobile = window.innerWidth < theme.breakpoints.values.sm;
         if (newIsMobile !== isMobile) {
+          // Set the appropriate layout based on device size
           setCurrentLayout(newIsMobile ? defaultMobileLayout : defaultLayout);
+          
+          // Force a complete re-render of the grid layout
+          setGridKey('grid-layout-' + Date.now());
+          
+          // Force a resize event after a short delay to ensure proper re-rendering
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 100);
         }
       }
     };
@@ -1110,13 +1134,62 @@ const Dashboard: React.FC<{}> = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([
-        refreshEntries()
+      // Use Promise.allSettled to handle multiple refresh operations independently
+      const results = await Promise.allSettled([
+        refreshEntries(),
+        (async () => {
+          try {
+            // Attempt to refresh calendar data if available
+            if (typeof connectCalendar === 'function') {
+              console.log('Refreshing calendar data from dashboard');
+              // Check if the refreshCalendarData function is available in the Calendar context
+              // This is a safer approach than directly calling refreshCalendarData
+              if (events && Array.isArray(events)) {
+                // If we have events, we're likely connected to calendar
+                await new Promise<void>((resolve) => {
+                  // Set timeout to prevent blocking the UI
+                  setTimeout(async () => {
+                    try {
+                      // Attempt to refresh calendar data
+                      await fetch('/api/calendar/events', { 
+                        method: 'GET',
+                        headers: { 'Cache-Control': 'no-cache' } 
+                      });
+                      console.log('Calendar data refresh triggered');
+                    } catch (error) {
+                      console.error('Error during calendar refresh:', error);
+                    }
+                    resolve();
+                  }, 100);
+                });
+              }
+            }
+          } catch (calendarError) {
+            console.error('Error refreshing calendar:', calendarError);
+            // Don't rethrow to prevent blocking other refresh operations
+          }
+        })()
       ]);
+      
+      // Log results for debugging
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Refresh operation ${index} failed:`, result.reason);
+        }
+      });
+      
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
       setIsRefreshing(false);
+      
+      // Force grid to remount to prevent display issues
+      setGridKey('grid-layout-' + Date.now());
+      
+      // Force a resize event after a short delay
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 100);
     }
   };
 
@@ -1263,7 +1336,17 @@ const Dashboard: React.FC<{}> = () => {
 
   // Handle layout change
   const handleLayoutChange = (layout: Layout[]) => {
-    // Save the new layout immediately
+    // Don't apply mobile layout to desktop or vice versa to prevent layout corruption
+    const breakpoint = getBreakpoint();
+    const isCurrentlyMobile = breakpoint === 'xs';
+    
+    // If this is a mobile layout but we're on desktop, or vice versa, don't apply it
+    if ((isCurrentlyMobile && !isMobile) || (!isCurrentlyMobile && isMobile)) {
+      console.log('Preventing layout corruption between mobile/desktop views');
+      return;
+    }
+    
+    // Save the new layout
     setCurrentLayout(layout);
     
     // When layout changes in edit mode, update the calendar width
@@ -1311,32 +1394,64 @@ const Dashboard: React.FC<{}> = () => {
       return getVisibleLayout(defaultMobileLayout);
     }
     
-    // For desktop devices, use the current layout
-    // The currentLayout state will be populated from the API on initial load
+    // For desktop devices, check if current layout has proper desktop dimensions
     if (currentLayout && currentLayout.length > 0) {
+      // Check if the calendar widget has proper desktop dimensions
+      const calendarWidget = currentLayout.find(item => item.i === 'calendar');
+      if (calendarWidget && calendarWidget.w >= 20) {
       return getVisibleLayout(currentLayout);
+      }
     }
     
-    // If no valid layout was found, use the default based on screen size
+    // If current layout isn't valid for desktop or doesn't exist,
+    // use appropriate default layout based on screen size
     if (breakpoint === 'xl') {
-      // Special wide layout for xl screens that matches the desired default view
+      // Special wide layout for xl screens
       const xlLayout: Layout[] = [
+        { i: 'calendar', x: 0, y: 0, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 }
+      ];
+      return getVisibleLayout(xlLayout);
+    }
+    
+    // For all other desktop sizes, use the default layout
+    return getVisibleLayout(defaultLayout);
+  };
+  
+  // Helper function to get XL layout
+  const getXLLayout = (): Layout[] => {
+    // Special wide layout for xl screens that matches the desired default view
+    return [
         { i: 'quickStats', x: 0, y: 0, w: 60, h: 7, minW: 4, minH: 4, maxW: 100, maxH: 12 },
         { i: 'calendar', x: 0, y: 7, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 },
         { i: 'progress', x: 0, y: 22, w: 60, h: 15, minW: 4, minH: 8, maxW: 100, maxH: 30 },
         { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
         { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
       ];
-      return getVisibleLayout(xlLayout);
-    }
-    
-    return getVisibleLayout(defaultLayout);
   };
 
   // Filter layout to only show visible widgets
   const getVisibleLayout = (layout: Layout[]): Layout[] => {
     return layout.filter(item => visibleWidgets.includes(item.i));
   };
+
+  // Effect to ensure layout is properly set when component mounts
+  useEffect(() => {
+    // Force a resize to make sure everything renders correctly
+    window.dispatchEvent(new Event('resize'));
+    
+    // Reset grid key to force a remount if needed
+    setGridKey('grid-layout-' + Date.now());
+    
+    // Ensure proper layout is applied based on screen size
+    const currentBreakpoint = getBreakpoint();
+    if (currentBreakpoint !== 'xs' && isMobile) {
+      // Screen is desktop but isMobile state hasn't caught up
+      setCurrentLayout(defaultLayout);
+    } else if (currentBreakpoint === 'xs' && !isMobile) {
+      // Screen is mobile but isMobile state hasn't caught up
+      setCurrentLayout(defaultMobileLayout);
+    }
+  }, []); // Only run this effect once on mount
 
   // Check loading state after all hooks are declared
   if (isLoading) return <CircularProgress />;
@@ -1837,7 +1952,7 @@ const Dashboard: React.FC<{}> = () => {
           {/* Progress Graph Section - Removed, now in Journal Insights */}
               
               {/* Recent Entries Section - Removed, now in Journal Insights */}
-              
+
               {/* Top Distractions Section - Removed, now in Journal Insights */}
             </GridLayout>
         </>

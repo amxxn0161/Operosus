@@ -102,7 +102,8 @@ export const connectGoogleCalendar = async (): Promise<boolean> => {
 // Get calendar events for a specific date range
 export const getCalendarEvents = async (
   viewMode: 'day' | 'week' | 'month' | 'all' = 'week',
-  selectedDate: Date = new Date()
+  selectedDate: Date = new Date(),
+  options?: { signal?: AbortSignal }
 ): Promise<CalendarEvent[]> => {
   try {
     console.log(`Fetching calendar events for ${viewMode} view with date ${selectedDate.toISOString()}`);
@@ -129,7 +130,8 @@ export const getCalendarEvents = async (
     
     // Make the API request using the apiRequest utility which handles auth
     const response = await apiRequest<any>(url, {
-      method: 'GET'
+      method: 'GET',
+      signal: options?.signal
     });
     
     console.log('Calendar API raw response:', JSON.stringify(response));

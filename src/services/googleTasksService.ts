@@ -25,10 +25,16 @@ export interface GoogleTaskList {
 }
 
 // Fetch all task lists and their tasks
-export const fetchGoogleTaskLists = async (): Promise<GoogleTaskList[]> => {
+export const fetchGoogleTaskLists = async (options?: { signal?: AbortSignal }): Promise<GoogleTaskList[]> => {
   try {
     console.log('Fetching Google Task lists from API...');
-    const response = await apiRequest<{ status: string; data: { taskLists: GoogleTaskList[] } }>('/api/google/tasks?showCompleted=true&showHidden=true');
+    const response = await apiRequest<{ status: string; data: { taskLists: GoogleTaskList[] } }>(
+      '/api/google/tasks?showCompleted=true&showHidden=true', 
+      { 
+        method: 'GET',
+        signal: options?.signal 
+      }
+    );
     
     if (response.status === 'success' && response.data && response.data.taskLists) {
       console.log(`Fetched ${response.data.taskLists.length} task lists`);

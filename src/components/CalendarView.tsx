@@ -347,7 +347,39 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Make sure we're loading the data when the component mounts
   useEffect(() => {
     console.log('Initial calendar refresh from CalendarView');
-    refreshCalendarData();
+    
+    // Initial data load with retry mechanism
+    const fetchCalendarData = async (retryCount = 0, maxRetries = 2) => {
+      try {
+        await refreshCalendarData();
+        console.log('Calendar data refreshed successfully');
+      } catch (error) {
+        console.error(`Error refreshing calendar data (attempt ${retryCount + 1}):`, error);
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff for retries
+          const delay = 1000 * Math.pow(2, retryCount);
+          console.log(`Retrying calendar refresh in ${delay}ms...`);
+          
+          setTimeout(() => {
+            fetchCalendarData(retryCount + 1, maxRetries);
+          }, delay);
+        } else {
+          console.error('Maximum retry attempts reached for calendar refresh');
+        }
+      }
+    };
+    
+    // Start the initial fetch with retry capability
+    fetchCalendarData();
+    
+    // Set up periodic refresh to keep calendar data updated
+    const refreshInterval = setInterval(() => {
+      console.log('Performing periodic calendar refresh');
+      refreshCalendarData().catch(error => {
+        console.error('Error during periodic calendar refresh:', error);
+      });
+    }, 5 * 60 * 1000); // Refresh every 5 minutes
     
     // Log current events if available
     if (events.length > 0) {
@@ -356,6 +388,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     } else {
       console.log('No events in calendar context yet');
     }
+    
+    // Clean up on unmount
+    return () => {
+      clearInterval(refreshInterval);
+    };
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

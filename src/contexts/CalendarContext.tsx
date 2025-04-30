@@ -110,23 +110,36 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isAuthenticated, selectedDate, viewMode]);
 
   // Fetch Google Tasks and convert them to events
-  const fetchGoogleTaskEvents = async (retryCount = 0, maxRetries = 2): Promise<CalendarEvent[]> => {
+  const fetchGoogleTaskEvents = async (retryCount = 0, maxRetries = 3): Promise<CalendarEvent[]> => {
     try {
       console.log('Fetching Google Tasks for calendar integration...');
       
       // Create an AbortController with a timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // Increase timeout to 45 seconds
       
       // Store the fetch promise
-      const fetchPromise = fetchGoogleTaskLists();
+      const fetchPromise = fetchGoogleTaskLists({ signal: controller.signal });
       
       // Clear the timeout when the promise resolves
       const taskLists = await fetchPromise.finally(() => clearTimeout(timeoutId));
       
+      if (!taskLists || taskLists.length === 0) {
+        console.log('No task lists returned or empty response');
+        return [];
+      }
+      
       // Convert tasks to calendar events
       const taskEvents = convertTasksToEvents(taskLists);
       console.log(`Converted ${taskEvents.length} tasks to calendar events`);
+      
+      // Cache the tasks to localStorage for offline/fallback access
+      try {
+        localStorage.setItem('cachedTaskEvents', JSON.stringify(taskEvents));
+        localStorage.setItem('cachedTaskEventsTimestamp', Date.now().toString());
+      } catch (cacheError) {
+        console.warn('Could not cache task events to localStorage:', cacheError);
+      }
       
       // Update state with task events
       setTaskEvents(taskEvents);
@@ -136,12 +149,14 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('Error fetching Google Tasks for calendar:', error);
       
       // If the error is a timeout, network error, or cancelation, retry the request
-      if (retryCount < maxRetries && 
-          (error instanceof Error && 
-           (error.message.includes('timed out') || 
-            error.message.includes('network') ||
-            error.message.includes('cancel') ||
-            error.name === 'AbortError'))) {
+      const isRetriableError = error instanceof Error && 
+        (error.message.includes('timed out') || 
+         error.message.includes('network') ||
+         error.message.includes('cancel') ||
+         error.name === 'AbortError' ||
+         error.message.includes('Failed to fetch'));
+      
+      if (retryCount < maxRetries && isRetriableError) {
         console.log(`Retrying task fetch (attempt ${retryCount + 1} of ${maxRetries})...`);
         // Increase delay with each retry attempt (exponential backoff)
         const delay = 1000 * Math.pow(2, retryCount);
@@ -155,6 +170,27 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         name: error instanceof Error ? error.name : 'Unknown',
         stack: error instanceof Error ? error.stack : undefined
       });
+      
+      // Try to load cached tasks if available
+      try {
+        const cachedTasksJson = localStorage.getItem('cachedTaskEvents');
+        const cachedTimestamp = localStorage.getItem('cachedTaskEventsTimestamp');
+        
+        if (cachedTasksJson && cachedTimestamp) {
+          const timestamp = parseInt(cachedTimestamp, 10);
+          const currentTime = Date.now();
+          const hoursSinceCached = (currentTime - timestamp) / (1000 * 60 * 60);
+          
+          // Only use cache if it's less than 24 hours old
+          if (hoursSinceCached < 24) {
+            const cachedTasks = JSON.parse(cachedTasksJson) as CalendarEvent[];
+            console.log(`Using ${cachedTasks.length} cached task events from localStorage`);
+            return cachedTasks;
+          }
+        }
+      } catch (cacheError) {
+        console.error('Error loading cached tasks:', cacheError);
+      }
       
       return [];
     }
@@ -194,7 +230,12 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Fetch events based on current view mode and selected date
   const fetchEventsForViewMode = async () => {
     setIsLoading(true);
-    setError(null);
+    
+    // Don't clear the error immediately to avoid UI flickering if the error persists
+    // We'll only clear it after successful fetch
+    let hasError = false;
+    let calendarFetchFailed = false;
+    let tasksFetchFailed = false;
     
     let fetchedCalendarEvents: CalendarEvent[] = [];
     let fetchedTaskEvents: CalendarEvent[] = [];
@@ -207,11 +248,30 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Calendar events
         (async () => {
           try {
-            const events = await getCalendarEvents(viewMode, selectedDate);
+            // Create an AbortController with a timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            // Add signal to getCalendarEvents
+            const events = await getCalendarEvents(viewMode, selectedDate, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            
             console.log(`Successfully fetched ${events.length} calendar events`);
+            
+            // Cache calendar events
+            try {
+              localStorage.setItem('cachedCalendarEvents', JSON.stringify(events));
+              localStorage.setItem('cachedCalendarEventsTimestamp', Date.now().toString());
+              localStorage.setItem('cachedCalendarViewMode', viewMode);
+              localStorage.setItem('cachedCalendarDate', selectedDate.toISOString());
+            } catch (cacheError) {
+              console.warn('Could not cache calendar events:', cacheError);
+            }
+            
             return events;
           } catch (error) {
             console.error('Error fetching calendar events:', error);
+            calendarFetchFailed = true;
             throw error;
           }
         })(),
@@ -224,6 +284,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return tasks;
           } catch (error) {
             console.error('Error fetching task events:', error);
+            tasksFetchFailed = true;
             throw error;
           }
         })()
@@ -234,9 +295,29 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchedCalendarEvents = calendarResult.value;
       } else {
         console.error('Calendar events fetch rejected:', calendarResult.reason);
-        // Only set error if both fetches failed
-        if (!fetchedTaskEvents.length) {
-          setError('Failed to fetch calendar events');
+        calendarFetchFailed = true;
+        
+        // Try to load from cache
+        try {
+          const cachedCalendarJson = localStorage.getItem('cachedCalendarEvents');
+          const cachedTimestamp = localStorage.getItem('cachedCalendarEventsTimestamp');
+          const cachedViewMode = localStorage.getItem('cachedCalendarViewMode');
+          
+          if (cachedCalendarJson && cachedTimestamp && cachedViewMode === viewMode) {
+            const timestamp = parseInt(cachedTimestamp, 10);
+            const currentTime = Date.now();
+            const hoursSinceCached = (currentTime - timestamp) / (1000 * 60 * 60);
+            
+            // Only use cache if it's less than 12 hours old
+            if (hoursSinceCached < 12) {
+              const cachedEvents = JSON.parse(cachedCalendarJson) as CalendarEvent[];
+              console.log(`Using ${cachedEvents.length} cached calendar events from localStorage`);
+              fetchedCalendarEvents = cachedEvents;
+              calendarFetchFailed = false;
+            }
+          }
+        } catch (cacheError) {
+          console.error('Error loading cached calendar events:', cacheError);
         }
       }
       
@@ -245,10 +326,22 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchedTaskEvents = tasksResult.value;
       } else {
         console.error('Task events fetch rejected:', tasksResult.reason);
-        // Only set error if both fetches failed and we haven't set an error yet
-        if (!fetchedCalendarEvents.length && !error) {
-          setError('Failed to fetch task events');
-        }
+        tasksFetchFailed = true;
+      }
+      
+      // Set error state based on individual failures
+      if (calendarFetchFailed && tasksFetchFailed) {
+        hasError = true;
+        setError('Failed to fetch events and tasks');
+      } else if (calendarFetchFailed) {
+        hasError = true;
+        setError('Failed to fetch calendar events');
+      } else if (tasksFetchFailed) {
+        hasError = true;
+        setError('Failed to fetch task events');
+      } else {
+        // Clear error only if both fetches succeeded
+        setError(null);
       }
       
       // Combine regular events with task events
@@ -262,14 +355,22 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       
       // Update state with the fetched events
-      setEvents(allEvents);
+      if (allEvents.length > 0 || (!calendarFetchFailed && !tasksFetchFailed)) {
+        setEvents(allEvents);
+      } else {
+        // If both fetches failed and no events were returned, keep existing events
+        console.log('Keeping existing events to prevent UI disruption');
+      }
     } catch (error) {
       console.error('Error in fetchEventsForViewMode:', error);
       // Don't clear existing events on error to prevent UI disruption
+      hasError = true;
       setError('Failed to fetch events and tasks');
     } finally {
       setIsLoading(false);
     }
+    
+    return !hasError;
   };
 
   // Public method to fetch events (used in components)
