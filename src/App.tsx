@@ -15,6 +15,7 @@ import Header from './components/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Journal from './pages/Journal';
+import JournalInsights from './pages/JournalInsights';
 import EntryDetail from './pages/EntryDetail';
 import Worksheet from './pages/Worksheet';
 import AllEntries from './pages/AllEntries';
@@ -242,6 +243,7 @@ const App: React.FC = () => {
                       <Route index element={<Navigate replace to="/dashboard" />} />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/journal" element={<Journal />} />
+                      <Route path="/journal-insights" element={<JournalInsights />} />
                       <Route path="/entry/:entryId" element={
                         <ProtectedRoute>
                           <EntryDetail />

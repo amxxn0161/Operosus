@@ -2814,7 +2814,7 @@ const Dashboard: React.FC<{}> = () => {
                             </Box>
                           ) : (
                     // No changes to the empty state
-                <Box sx={{ 
+                            <Box sx={{ 
                       height: 'calc(100% - 70px)', 
                   display: 'flex', 
                   alignItems: 'center', 
@@ -2823,15 +2823,15 @@ const Dashboard: React.FC<{}> = () => {
                       <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
                         No distraction data available yet.
                   </Typography>
-                </Box>
-                  )}
+                            </Box>
+                          )}
               </Paper>
               </div>
             )}
             </GridLayout>
         </>
       )}
-          </Box>
+                            </Box>
 
       {/* Mobile fixed tooltip */}
       {isMobile && activeDataPoint && tooltipPosition && (
@@ -3040,16 +3040,16 @@ const Dashboard: React.FC<{}> = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button 
+                          <Button
             onClick={() => setResetConfirmOpen(false)} 
-            sx={{ 
-              fontFamily: 'Poppins', 
-              textTransform: 'none',
+                            sx={{ 
+                              fontFamily: 'Poppins', 
+                              textTransform: 'none', 
               color: '#666'
-            }}
-          >
+                            }}
+                          >
             Cancel
-          </Button>
+                          </Button>
           <Button 
             onClick={resetToDefaultLayout} 
             variant="contained"
