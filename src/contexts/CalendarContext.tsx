@@ -12,6 +12,9 @@ import {
 } from '../services/calendarService';
 import { useAuth } from './AuthContext';
 import { fetchGoogleTaskLists, GoogleTask, GoogleTaskList } from '../services/googleTasksService';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchTaskLists } from '../store/slices/tasksSlice';
+import { store } from '../store';
 
 // Convert Google Tasks to Calendar Events
 const convertTasksToEvents = (taskLists: GoogleTaskList[]): CalendarEvent[] => {
@@ -93,6 +96,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
 
   // Check connection status on mount
   useEffect(() => {
@@ -109,20 +113,25 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [isAuthenticated, selectedDate, viewMode]);
 
+  // Helper function to get tasks from Redux
+  const getTasksFromRedux = async () => {
+    // Dispatch the action to fetch tasks
+    await dispatch(fetchTaskLists());
+    
+    // Get the Redux store state
+    const state = store.getState();
+    
+    // Return the task lists from the store
+    return state.tasks.taskLists;
+  };
+
   // Fetch Google Tasks and convert them to events
   const fetchGoogleTaskEvents = async (retryCount = 0, maxRetries = 3): Promise<CalendarEvent[]> => {
     try {
       console.log('Fetching Google Tasks for calendar integration...');
       
-      // Create an AbortController with a timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // Increase timeout to 45 seconds
-      
-      // Store the fetch promise
-      const fetchPromise = fetchGoogleTaskLists({ signal: controller.signal });
-      
-      // Clear the timeout when the promise resolves
-      const taskLists = await fetchPromise.finally(() => clearTimeout(timeoutId));
+      // Use Redux store to get Google Tasks
+      const taskLists = await getTasksFromRedux();
       
       if (!taskLists || taskLists.length === 0) {
         console.log('No task lists returned or empty response');
