@@ -94,7 +94,20 @@ export const updateGoogleTask = async (
   updates: Partial<GoogleTask>
 ): Promise<GoogleTask | null> => {
   try {
-    const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
+    // Sanitize the task ID
+    const sanitizedTaskId = sanitizeTaskId(taskId);
+    if (!sanitizedTaskId) {
+      console.error('Invalid task ID after sanitization');
+      return null;
+    }
+    
+    console.log(`Updating task:`, {
+      originalTaskId: taskId,
+      sanitizedTaskId,
+      taskListId
+    });
+    
+    const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${taskListId}/tasks/${sanitizedTaskId}`, {
       method: 'PUT',
       body: updates
     });
@@ -122,7 +135,20 @@ export const updateGoogleTask = async (
 // Delete a task
 export const deleteGoogleTask = async (taskListId: string, taskId: string): Promise<boolean> => {
   try {
-    const response = await apiRequest<{ status: string }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}`, {
+    // Sanitize the task ID
+    const sanitizedTaskId = sanitizeTaskId(taskId);
+    if (!sanitizedTaskId) {
+      console.error('Invalid task ID after sanitization');
+      return false;
+    }
+    
+    console.log(`Deleting task:`, {
+      originalTaskId: taskId,
+      sanitizedTaskId,
+      taskListId
+    });
+    
+    const response = await apiRequest<{ status: string }>(`/api/google/tasklists/${taskListId}/tasks/${sanitizedTaskId}`, {
       method: 'DELETE'
     });
     
@@ -158,6 +184,20 @@ export const moveGoogleTask = async (
       return null;
     }
     
+    // Sanitize the task ID
+    const sanitizedTaskId = sanitizeTaskId(taskId);
+    if (!sanitizedTaskId) {
+      console.error('Invalid task ID after sanitization');
+      return null;
+    }
+    
+    console.log(`Moving task between lists:`, {
+      originalTaskId: taskId,
+      sanitizedTaskId,
+      sourceTaskListId,
+      targetTaskListId
+    });
+    
     // Step 1: Create a new task with the same data in the target list
     const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${targetTaskListId}/tasks`, {
       method: 'POST',
@@ -187,7 +227,7 @@ export const moveGoogleTask = async (
     }
     
     // Step 2: Delete the original task
-    const deleteResponse = await apiRequest<{ status: string }>(`/api/google/tasklists/${sourceTaskListId}/tasks/${taskId}`, {
+    const deleteResponse = await apiRequest<{ status: string }>(`/api/google/tasklists/${sourceTaskListId}/tasks/${sanitizedTaskId}`, {
       method: 'DELETE'
     });
     
@@ -369,6 +409,102 @@ export const recordTaskDuration = async (
     }
   } catch (error) {
     console.error('Failed to record task duration:', error);
+    throw error;
+  }
+};
+
+/**
+ * Helper function to sanitize task IDs for the Google Tasks API
+ * Google Tasks API is sensitive to task ID formatting
+ */
+export const sanitizeTaskId = (taskId: string | null): string | null => {
+  if (!taskId) return null;
+  
+  // Trim the ID and remove any spaces or special characters that might cause issues
+  const sanitized = taskId.trim()
+    .replace(/\s+/g, '') // Remove all whitespace
+    .replace(/[^a-zA-Z0-9-_]/g, ''); // Remove non-alphanumeric characters except dash and underscore
+  
+  return sanitized || null; // Return null if sanitizing resulted in an empty string
+};
+
+// Reorder a task within a task list
+export const reorderGoogleTask = async (
+  taskListId: string, 
+  taskId: string, 
+  previousTaskId: string | null,
+  applyReordering: boolean = false,
+  moveToTop: boolean = false
+): Promise<GoogleTask | null> => {
+  try {
+    // Sanitize the task IDs for the API request
+    const sanitizedTaskId = sanitizeTaskId(taskId);
+    const sanitizedPreviousTaskId = sanitizeTaskId(previousTaskId);
+    
+    if (!sanitizedTaskId) {
+      console.error('Invalid task ID after sanitization');
+      return null;
+    }
+    
+    // Prepare the request body
+    const requestBody: { previous?: string; moveToTop?: boolean } = {};
+    
+    // If moving to top (first position), use the special moveToTop parameter
+    if (moveToTop) {
+      requestBody.moveToTop = true;
+      console.log('Using special moveToTop parameter for top position');
+    } 
+    // Otherwise, if previousTaskId is provided, set it in the request body
+    else if (sanitizedPreviousTaskId) {
+      requestBody.previous = sanitizedPreviousTaskId;
+    }
+    
+    // Add the URL parameter for applying reordering
+    let endpoint = `/api/google/tasklists/${taskListId}/tasks/${sanitizedTaskId}/move`;
+    if (applyReordering) {
+      endpoint += '?apply_reordering=true';
+    }
+    
+    console.log(`Reordering task in list ${taskListId}:`, {
+      originalTaskId: taskId,
+      sanitizedTaskId,
+      originalPreviousTaskId: previousTaskId,
+      sanitizedPreviousTaskId,
+      moveToTop,
+      applyReordering,
+      requestBody
+    });
+    
+    const response = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(endpoint, {
+      method: 'POST',
+      body: requestBody
+    });
+    
+    // Check for both response formats
+    if (response.status === 'success') {
+      // If task is directly in the response
+      if (response.task) {
+        return response.task;
+      }
+      // If task is nested in data.task (original format)
+      if (response.data && response.data.task) {
+        return response.data.task;
+      }
+      console.warn('Task reordered successfully but unexpected response format:', response);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to reorder Google Task:', {
+      error,
+      taskDetails: {
+        taskListId,
+        taskId,
+        previousTaskId,
+        moveToTop,
+        applyReordering
+      }
+    });
     throw error;
   }
 }; 

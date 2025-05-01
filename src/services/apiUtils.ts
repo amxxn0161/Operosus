@@ -52,7 +52,49 @@ export async function apiRequest<T>(url: string, options: ApiOptions = {}): Prom
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
   
   // Construct full URL - ensure it starts with either http:// or https://
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? url : '/' + url}`;
+  const constructApiUrl = (baseUrl: string, path: string) => {
+    // Start with the base URL
+    let url = baseUrl;
+    
+    // Add a slash if needed
+    if (!path.startsWith('/')) {
+      url += '/';
+    }
+    
+    // Split the path into segments
+    const segments = path.split('/');
+    
+    // Properly encode each segment except for query parameters
+    const encodedSegments = segments.map(segment => {
+      // Check if the segment contains query parameters
+      if (segment.includes('?')) {
+        // Split at the ? and encode only the path part
+        const [pathPart, queryPart] = segment.split('?');
+        return `${encodeURIComponent(pathPart)}?${queryPart}`;
+      } else {
+        // Encode the whole segment
+        return encodeURIComponent(segment);
+      }
+    });
+    
+    // Join the segments back together with slashes
+    return url + encodedSegments.join('/');
+  };
+  
+  // Analyze URL to check if it's a task-related endpoint that needs special handling
+  const isTaskEndpoint = url.includes('/tasks/') && 
+                         (url.includes('/move') || 
+                          url.includes('/star') || 
+                          url.includes('/duration'));
+  
+  // For task endpoints, use the special encoding to prevent ID issues
+  const fullUrl = url.startsWith('http') 
+    ? url 
+    : isTaskEndpoint 
+      ? constructApiUrl(API_BASE_URL, url)
+      : `${API_BASE_URL}${url.startsWith('/') ? url : '/' + url}`;
+  
+  console.log(`Final URL for request: ${fullUrl}`);
   
   try {
     // Base request options - simplified to avoid CORS issues

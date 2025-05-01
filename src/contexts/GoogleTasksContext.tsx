@@ -17,7 +17,8 @@ import {
   setTaskListVisibility as setTaskListVisibilityAction,
   TaskListFilterOption,
   EnhancedGoogleTask,
-  EnhancedGoogleTaskList
+  EnhancedGoogleTaskList,
+  reorderTaskAction
 } from '../store/slices/tasksSlice';
 
 // Re-export the types so they can be imported from this file
@@ -43,6 +44,7 @@ interface GoogleTasksContextType {
   recordDuration: (taskListId: string, taskId: string, actualMinutes: number) => Promise<EnhancedGoogleTask | null>;
   filterTaskList: (taskListId: string, filterOption: TaskListFilterOption) => void;
   toggleTaskListVisibility: (taskListId: string) => void;
+  reorderTask: (taskListId: string, taskId: string, previousTaskId: string | null, newIndex: number, applyReordering?: boolean) => Promise<EnhancedGoogleTask | null>;
 }
 
 const GoogleTasksContext = createContext<GoogleTasksContextType | undefined>(undefined);
@@ -284,6 +286,38 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
     }
   };
 
+  // Reorder a task
+  const reorderTask = async (
+    taskListId: string, 
+    taskId: string, 
+    previousTaskId: string | null,
+    newIndex: number,
+    applyReordering: boolean = false
+  ): Promise<EnhancedGoogleTask | null> => {
+    try {
+      // Check if this is a move to the top position
+      const moveToTop = newIndex === 0;
+      
+      const resultAction = await dispatch(
+        reorderTaskAction({ 
+          taskListId, 
+          taskId, 
+          previousTaskId, 
+          newIndex,
+          applyReordering 
+        })
+      );
+      
+      if (reorderTaskAction.fulfilled.match(resultAction)) {
+        return resultAction.payload.task;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error reordering Google Task:', err);
+      return null;
+    }
+  };
+
   // Provide the context value
   const contextValue: GoogleTasksContextType = {
     taskLists,
@@ -303,7 +337,8 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
     toggleTaskComplete,
     recordDuration,
     filterTaskList,
-    toggleTaskListVisibility
+    toggleTaskListVisibility,
+    reorderTask
   };
 
   return (

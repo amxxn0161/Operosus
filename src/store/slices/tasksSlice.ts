@@ -13,7 +13,8 @@ import {
   recordTaskDuration,
   GoogleTask,
   GoogleTaskList,
-  fetchStarredTasks
+  fetchStarredTasks,
+  reorderGoogleTask
 } from '../../services/googleTasksService';
 
 // Define the enhanced types for the Redux store
@@ -631,6 +632,148 @@ export const recordTaskDurationAction = createAsyncThunk(
   }
 );
 
+// Reorder task thunk
+export const reorderTaskAction = createAsyncThunk(
+  'tasks/reorderTask',
+  async ({ 
+    taskListId, 
+    taskId, 
+    previousTaskId,
+    applyReordering,
+    newIndex
+  }: { 
+    taskListId: string; 
+    taskId: string; 
+    previousTaskId: string | null;
+    applyReordering?: boolean;
+    newIndex: number; // The new position of the task in the list
+  }, { getState, rejectWithValue }) => {
+    try {
+      // Get the current task lists from state
+      const state = getState() as { tasks: TasksState };
+      const taskList = state.tasks.taskLists.find(list => list.id === taskListId);
+      
+      if (!taskList) {
+        console.error(`Task list not found: ${taskListId}`);
+        return rejectWithValue('Task list not found');
+      }
+      
+      // Find the task being moved
+      const taskIndex = taskList.tasks.findIndex(task => task.id === taskId);
+      if (taskIndex === -1) {
+        console.error(`Task not found: ${taskId} in list ${taskListId}`);
+        return rejectWithValue('Task not found');
+      }
+      
+      const task = taskList.tasks[taskIndex];
+      
+      // Validate previous task ID if provided
+      if (previousTaskId) {
+        const previousTaskExists = taskList.tasks.some(t => t.id === previousTaskId);
+        if (!previousTaskExists) {
+          console.error(`Previous task not found: ${previousTaskId} in list ${taskListId}`);
+          return rejectWithValue('Previous task reference not found');
+        }
+      }
+      
+      // Check if moving to the top (first position)
+      const isMovingToTop = newIndex === 0;
+      
+      // Log the reordering operation
+      console.log(`Reordering task in Redux`, {
+        taskList: taskListId,
+        taskId,
+        taskTitle: task.title,
+        previousTaskId,
+        newIndex,
+        isMovingToTop,
+        applyReordering
+      });
+      
+      // Make the API call to reorder
+      try {
+        const reorderedTask = await reorderGoogleTask(
+          taskListId, 
+          taskId, 
+          previousTaskId,
+          applyReordering || false,
+          isMovingToTop // Pass the moveToTop flag
+        );
+        
+        if (!reorderedTask) {
+          console.error('API returned null for reordered task');
+          return rejectWithValue('Failed to reorder task - API returned null');
+        }
+        
+        // Return data needed for state update
+        return {
+          taskListId,
+          taskId,
+          task: {
+            ...reorderedTask,
+            starred: task.starred || false
+          } as EnhancedGoogleTask,
+          previousIndex: taskIndex,
+          newIndex
+        };
+      } catch (apiError: any) {
+        // More detailed error handling
+        console.error('API error during task reordering:', apiError);
+        
+        // Try to extract a more specific error message
+        const errorMessage = apiError.data?.message || apiError.message || 'Failed to reorder task';
+        
+        // Handle specific API error cases
+        if (apiError.status === 400 && errorMessage.includes('Invalid task id')) {
+          console.error('Invalid task ID error. Task IDs:', {
+            taskId,
+            previousTaskId,
+            taskListId
+          });
+          
+          // If the error is due to an invalid previous task ID, try again with moveToTop 
+          // This will place the task at the beginning of the list rather than failing
+          if (previousTaskId || !isMovingToTop) {
+            console.log('Attempting fallback: Retrying reordering with moveToTop=true');
+            try {
+              const retryTask = await reorderGoogleTask(
+                taskListId,
+                taskId,
+                null, // No previous task ID needed when using moveToTop
+                applyReordering || false,
+                true  // Use moveToTop parameter as fallback
+              );
+              
+              if (retryTask) {
+                console.log('Fallback reordering with moveToTop successful');
+                return {
+                  taskListId,
+                  taskId,
+                  task: {
+                    ...retryTask,
+                    starred: task.starred || false
+                  } as EnhancedGoogleTask,
+                  previousIndex: taskIndex,
+                  newIndex: 0 // This will now be at the top
+                };
+              }
+            } catch (retryError) {
+              console.error('Fallback reordering failed:', retryError);
+            }
+          }
+          
+          return rejectWithValue('Invalid task ID. The task may have been deleted or modified.');
+        }
+        
+        return rejectWithValue(errorMessage);
+      }
+    } catch (error: any) {
+      console.error('Error reordering Google Task:', error);
+      return rejectWithValue(error.message || 'Failed to reorder task');
+    }
+  }
+);
+
 // Create the slice
 const tasksSlice = createSlice({
   name: 'tasks',
@@ -965,6 +1108,53 @@ const tasksSlice = createSlice({
         }
       })
       .addCase(recordTaskDurationAction.rejected, (state, action) => {
+        state.error = action.payload as string;
+      })
+      
+      // Handle reorderTask thunk
+      .addCase(reorderTaskAction.pending, (state) => {
+        // Optimistic update handled manually
+      })
+      .addCase(reorderTaskAction.fulfilled, (state, action) => {
+        const { taskListId, taskId, task, previousIndex, newIndex } = action.payload;
+        
+        // Find the task list
+        const listIndex = state.taskLists.findIndex(list => list.id === taskListId);
+        if (listIndex === -1) return;
+        
+        // Get the incomplete tasks (ones shown in the UI typically)
+        const incompleteTasks = state.taskLists[listIndex].tasks.filter(t => t.status !== 'completed');
+        
+        // If the task is no longer in the list (edge case), just update all tasks
+        if (!incompleteTasks.find(t => t.id === taskId)) {
+          // Find the task and update it
+          const taskIndex = state.taskLists[listIndex].tasks.findIndex(t => t.id === taskId);
+          if (taskIndex !== -1) {
+            state.taskLists[listIndex].tasks[taskIndex] = task;
+          }
+          return;
+        }
+        
+        // Create a new array with the task moved to the new position
+        // Remove the task from its current position
+        const reorderedTasks = incompleteTasks.filter(t => t.id !== taskId);
+        
+        // Insert it at the new position
+        reorderedTasks.splice(newIndex, 0, task);
+        
+        // Update the completed tasks (which stay at the end)
+        const completedTasks = state.taskLists[listIndex].tasks.filter(t => t.status === 'completed');
+        
+        // Update the task list with the new order
+        state.taskLists[listIndex].tasks = [...reorderedTasks, ...completedTasks];
+        
+        // Update in starred tasks if present
+        const starredIndex = state.starredTasks.findIndex(t => t.id === taskId);
+        if (starredIndex !== -1) {
+          state.starredTasks[starredIndex] = task;
+        }
+      })
+      .addCase(reorderTaskAction.rejected, (state, action) => {
         state.error = action.payload as string;
       });
   },

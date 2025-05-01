@@ -74,6 +74,7 @@ import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogl
 import { format, isValid, parseISO, addDays } from 'date-fns';
 import { ENDPOINTS } from '../services/apiConfig';
 import { checkAuthState } from '../services/authService';
+import { sanitizeTaskId } from '../services/googleTasksService';
 import TaskDetailsModal from '../components/TaskDetailsModal';
 // Add these imports if they don't already exist at the top
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
@@ -135,9 +136,10 @@ const GoogleTasks: React.FC = () => {
     clearCompleted,
     toggleTaskStar,
     toggleTaskComplete,
+    recordDuration,
     filterTaskList,
     toggleTaskListVisibility,
-    recordDuration
+    reorderTask
   } = useGoogleTasks();
 
   // State for task operations
@@ -574,54 +576,8 @@ const GoogleTasks: React.FC = () => {
   };
 
   // Move a task within a task list (reorder)
-  const reorderTask = async (taskListId: string, taskId: string, previousTaskId: string | null) => {
-    try {
-      // Get auth token
-      const { token } = checkAuthState();
-      if (!token) {
-        console.error('No authentication token available');
-        return null;
-      }
-
-      // Prepare the request body
-      const requestBody: { previous?: string } = {};
-      
-      // If previousTaskId is provided, set it in the request body
-      // This means "position this task after the task with previousTaskId"
-      // If previousTaskId is null, the task will be positioned at the top
-      if (previousTaskId) {
-        requestBody.previous = previousTaskId;
-      }
-      
-      // Construct the full URL using the API base URL and endpoints from config
-      const endpoint = `${ENDPOINTS.GOOGLE_TASKS}/${taskListId}/tasks/${taskId}/move`;
-      const fullUrl = `https://app2.operosus.com${endpoint}`;
-      
-      // Make the API call to move the task
-      const response = await fetch(fullUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Origin': window.location.origin
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        return data.task;
-      } else {
-        console.error('Failed to reorder task:', data.message);
-        return null;
-      }
-    } catch (err) {
-      console.error('Error reordering task:', err);
-      return null;
-    }
-  };
+  // This function is now provided by the useGoogleTasks context
+  // Delete the existing implementation of reorderTask
 
   // Handle drag and drop of tasks
   const handleDragEnd = async (result: DropResult) => {
@@ -647,21 +603,39 @@ const GoogleTasks: React.FC = () => {
     // Find the task being moved
     const sourceList = taskLists.find(list => list.id === sourceTaskListId);
     if (!sourceList || sourceList.tasks.length <= source.index) {
+      console.error("Source task list or task not found", { 
+        sourceTaskListId, 
+        sourceIndex: source.index,
+        availableLists: taskLists.map(l => l.id)
+      });
       return;
     }
     
     const taskId = sourceList.tasks[source.index].id;
+    const sanitizedTaskId = sanitizeTaskId(taskId);
+    
+    if (!sanitizedTaskId) {
+      console.error(`Invalid task ID after sanitization: ${taskId}`);
+      showSnackbar('Error: Invalid task ID', 'error');
+      return;
+    }
+    
+    console.log('Task being moved (sanitized):', {
+      originalTaskId: taskId,
+      sanitizedTaskId
+    });
     
     // If moving between different lists
     if (sourceTaskListId !== destinationTaskListId) {
       try {
-        const result = await moveTask(sourceTaskListId, destinationTaskListId, taskId);
+        const result = await moveTask(sourceTaskListId, destinationTaskListId, sanitizedTaskId);
         if (result) {
           showSnackbar('Task moved successfully', 'success');
         } else {
           showSnackbar('Failed to move task', 'error');
         }
       } catch (err) {
+        console.error("Error moving task between lists:", err);
         showSnackbar('Error moving task', 'error');
       }
     } 
@@ -670,47 +644,136 @@ const GoogleTasks: React.FC = () => {
       try {
         // Get the destination list (same as source list in this case)
         const destList = taskLists.find(list => list.id === destinationTaskListId);
-        if (!destList) return;
+        if (!destList) {
+          console.error("Destination task list not found", { destinationTaskListId });
+          return;
+        }
         
         // Filter to get only incomplete tasks as those are the ones being reordered in UI
         const incompleteTasks = destList.tasks.filter(task => task.status !== 'completed');
         
-        // Get the task being moved
-        const taskId = sourceList.tasks[source.index].id;
+        // Log the task being moved
+        console.log("Task being moved:", {
+          taskId,
+          taskTitle: incompleteTasks.find(t => t.id === taskId)?.title || "Unknown task"
+        });
         
         // Determine the previous task ID based on the destination index
         let previousTaskId: string | null = null;
         
-        // If destination is not the top position (index 0)
-        if (destination.index > 0) {
-          // When moving a task down, we need to determine which task will be before it
-          // Get all the task IDs in order (excluding the one being moved)
-          const taskIdsInOrder = incompleteTasks.filter(t => t.id !== taskId).map(t => t.id);
+        // Special handling for moving to the top position (index 0)
+        const isMovingToTop = destination.index === 0;
+        
+        if (isMovingToTop) {
+          // When moving to the top, we use the special moveToTop parameter
+          // previousTaskId will remain null
+          console.log(`Moving task ${sanitizedTaskId} to the top position using moveToTop parameter`);
+        } else {
+          // For other positions, calculate the previous task ID
+          // Create a new array that represents the final order after the move
+          const tasksCopy = [...incompleteTasks];
           
-          // The previous task is the one that will be at destination.index - 1
-          // But we have to be careful with the indices since we removed the task being moved
-          const previousIndex = destination.index - 1;
-          if (previousIndex >= 0 && previousIndex < taskIdsInOrder.length) {
-            previousTaskId = taskIdsInOrder[previousIndex];
+          // Find the task in the current order
+          const taskIndex = tasksCopy.findIndex(t => t.id === taskId);
+          
+          if (taskIndex !== -1) {
+            // Remove the task from its current position
+            const [movedTask] = tasksCopy.splice(taskIndex, 1);
+            
+            // Insert it at the destination position
+            tasksCopy.splice(destination.index, 0, movedTask);
+            
+            // The previous task is the one before the new position
+            const prevTask = tasksCopy[destination.index - 1];
+            if (prevTask) {
+              previousTaskId = sanitizeTaskId(prevTask.id);
+            }
+          } else {
+            // Fallback to original calculation if task not found
+            const taskIdsInOrder = incompleteTasks.filter(t => t.id !== taskId).map(t => t.id);
+            const previousIndex = destination.index - 1;
+            if (previousIndex >= 0 && previousIndex < taskIdsInOrder.length) {
+              previousTaskId = sanitizeTaskId(taskIdsInOrder[previousIndex]);
+            }
           }
           
           // Debug log to help diagnose
-          console.log(`Moving task ${taskId} to position ${destination.index}, previous task: ${previousTaskId}`);
-        } else {
-          // If moving to the top, previousTaskId remains null
-          console.log(`Moving task ${taskId} to the top position`);
+          console.log(`Moving task ${sanitizedTaskId} to position ${destination.index}, previous task: ${previousTaskId}`);
         }
         
-        // Make the API call to reorder
-        const result = await reorderTask(destinationTaskListId, taskId, previousTaskId);
+        // Validate task ID and previous task ID
+        const taskExists = destList.tasks.some(t => t.id === taskId);
+        const previousTaskExists = previousTaskId ? destList.tasks.some(t => t.id === previousTaskId) : true;
         
-        if (result) {
-          showSnackbar('Task reordered successfully', 'success');
+        if (!taskExists) {
+          console.error(`Task with ID ${taskId} not found in list ${destinationTaskListId}`);
+          showSnackbar('Error: Task not found', 'error');
+          return;
+        }
+        
+        if (!previousTaskExists) {
+          console.error(`Previous task with ID ${previousTaskId} not found in list ${destinationTaskListId}`);
+          showSnackbar('Error: Previous task reference not found', 'error');
+          return;
+        }
+        
+        // Make the API call to reorder using the Redux-backed function
+        try {
+          // For top position moves, use the special moveToTop parameter
+          if (isMovingToTop) {
+            console.log('Using moveToTop parameter for task moved to first position');
+          }
           
-          // Refresh the task lists to reflect the new order
-          await refreshTaskLists();
-        } else {
-          showSnackbar('Failed to reorder task', 'error');
+          const result = await reorderTask(
+            destinationTaskListId, 
+            sanitizedTaskId, 
+            previousTaskId, 
+            destination.index,
+            true // Apply reordering on the server
+          );
+          
+          if (result) {
+            showSnackbar('Task reordered successfully', 'success');
+          } else {
+            // First fallback: Try with moveToTop if we weren't already using it
+            console.log('Initial reordering failed, trying fallback with moveToTop parameter');
+            const fallbackResult = await reorderTask(
+              destinationTaskListId,
+              sanitizedTaskId,
+              null, // No previous task needed with moveToTop
+              0,    // First position
+              true  // Apply reordering
+            );
+            
+            if (fallbackResult) {
+              showSnackbar('Task reordered (repositioned to top)', 'success');
+            } else {
+              showSnackbar('Failed to reorder task', 'error');
+            }
+          }
+        } catch (err) {
+          console.error('Error reordering task:', err);
+          
+          // Try fallback when error occurs - always use moveToTop as ultimate fallback
+          try {
+            console.log('Attempting fallback after error with moveToTop parameter');
+            const fallbackResult = await reorderTask(
+              destinationTaskListId,
+              sanitizedTaskId,
+              null, // No previous task needed with moveToTop
+              0,    // First position
+              true  // Apply reordering
+            );
+            
+            if (fallbackResult) {
+              showSnackbar('Task reordered (repositioned to top)', 'success');
+            } else {
+              showSnackbar('Error reordering task', 'error');
+            }
+          } catch (fallbackErr) {
+            console.error('Fallback also failed:', fallbackErr);
+            showSnackbar('Error reordering task', 'error');
+          }
         }
       } catch (err) {
         console.error('Error reordering task:', err);
@@ -2040,6 +2103,83 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Add a function to handle "My order" button click with apply_reordering=true
+  const handleApplyMyOrder = async (taskListId: string) => {
+    try {
+      // Call the tasks endpoint with apply_reordering=true
+      setIsRefreshing(true);
+      
+      // Find the task list
+      const taskList = taskLists.find(list => list.id === taskListId);
+      if (!taskList) {
+        console.error(`Task list not found for "My order" button: ${taskListId}`);
+        showSnackbar('Error: Task list not found', 'error');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Get the incomplete tasks (ones being reordered)
+      const incompleteTasks = taskList.tasks.filter(task => task.status !== 'completed');
+      
+      if (incompleteTasks.length === 0) {
+        console.log(`No incomplete tasks to reorder in list ${taskListId}`);
+        showSnackbar('No tasks to reorder', 'success');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Get the first task in the list
+      const firstTask = incompleteTasks[0];
+      
+      if (!firstTask || !firstTask.id) {
+        console.error('First task is invalid:', firstTask);
+        showSnackbar('Error: Invalid task data', 'error');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Normalize the task ID by trimming it
+      const normalizedTaskId = firstTask.id.trim();
+      
+      console.log(`Applying "My order" for task list ${taskListId} using first task:`, {
+        originalTaskId: firstTask.id,
+        normalizedTaskId,
+        taskTitle: firstTask.title
+      });
+      
+      try {
+        // Reorder the first task to make a request that applies current ordering to the server
+        // When applying "My order", we're effectively moving the first task to the top position
+        // So using moveToTop parameter is appropriate
+        console.log('Applying "My order" with moveToTop parameter');
+        
+        const result = await reorderTask(
+          taskListId,
+          normalizedTaskId, // Use normalized ID
+          null, // Position at the top (unchanged)
+          0,    // Index 0 (unchanged)
+          true  // Apply reordering to the server
+        );
+        
+        if (result) {
+          showSnackbar('Task order saved successfully', 'success');
+        } else {
+          console.error('Apply order request failed, no result returned');
+          showSnackbar('Failed to save task order', 'error');
+        }
+      } catch (orderError) {
+        console.error('Error in apply order request:', orderError);
+        showSnackbar('Error saving task order', 'error');
+      }
+      
+      setIsRefreshing(false);
+    } catch (err) {
+      console.error('Error applying task order:', err);
+      showSnackbar('Error saving task order', 'error');
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -2936,7 +3076,15 @@ const GoogleTasks: React.FC = () => {
           }
         }}
       >
-        <MenuItem onClick={() => handleFilterOption('myOrder')}>
+        <MenuItem 
+          onClick={() => {
+            // Apply the current order to the server when explicitly selected
+            if (currentTaskListId) {
+              handleApplyMyOrder(currentTaskListId);
+              handleFilterOption('myOrder');
+            }
+          }}
+        >
           <ListItemIcon>
             <SortIcon fontSize="small" />
           </ListItemIcon>
