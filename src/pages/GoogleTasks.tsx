@@ -253,8 +253,8 @@ const GoogleTasks: React.FC = () => {
     try {
       // First invalidate the cache to force a network request
       dispatch(invalidateCache());
-      // Then refresh task lists
-      await refreshTaskLists();
+      // Then refresh task lists with forceRefresh to bypass server cache
+      await refreshTaskLists({ forceRefresh: true });
       showSnackbar('Tasks refreshed successfully', 'success');
     } catch (err) {
       showSnackbar('Failed to refresh tasks', 'error');

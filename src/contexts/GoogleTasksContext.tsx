@@ -29,7 +29,7 @@ interface GoogleTasksContextType {
   loading: boolean;
   error: string | null;
   starredTasks: EnhancedGoogleTask[];
-  refreshTaskLists: () => Promise<void>;
+  refreshTaskLists: (options?: { forceRefresh?: boolean }) => Promise<void>;
   createTask: (taskListId: string, task: { title: string; notes?: string; due?: string; timezone?: string; parent?: string; estimated_minutes?: number }) => Promise<EnhancedGoogleTask | null>;
   updateTask: (taskListId: string, taskId: string, updates: Partial<EnhancedGoogleTask & { timezone?: string }>) => Promise<EnhancedGoogleTask | null>;
   deleteTask: (taskListId: string, taskId: string) => Promise<boolean>;
@@ -70,16 +70,16 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   const error = useAppSelector((state) => state.tasks.error);
 
   // Refresh task lists
-  const refreshTaskLists = useCallback(async () => {
+  const refreshTaskLists = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (!isAuthenticated) return;
-    await dispatch(fetchTaskLists({}));
+    await dispatch(fetchTaskLists({ forceRefresh: options?.forceRefresh }));
   }, [dispatch, isAuthenticated]);
 
   // Fetch tasks when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       console.log('User authenticated, fetching Google Task lists...');
-      refreshTaskLists();
+      refreshTaskLists({ forceRefresh: false });
     }
   }, [isAuthenticated, refreshTaskLists]);
 

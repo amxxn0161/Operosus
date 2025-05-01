@@ -112,7 +112,8 @@ export const fetchTaskLists = createAsyncThunk(
   async (
     params: { 
       viewMode?: 'day' | 'week' | 'month' | 'all'; 
-      selectedDate?: Date 
+      selectedDate?: Date;
+      forceRefresh?: boolean;
     } = {}, 
     { getState, rejectWithValue }
   ) => {
@@ -124,9 +125,34 @@ export const fetchTaskLists = createAsyncThunk(
       // Default values if not provided
       const viewMode = params.viewMode || state.tasks.viewMode || 'week';
       const selectedDate = params.selectedDate || new Date();
+      const forceRefresh = params.forceRefresh || false;
       
       // Calculate the new date range
       const [newStartDate, newEndDate] = getDateRangeForViewMode(viewMode, selectedDate);
+      
+      // If forceRefresh is true, skip all cache checks and fetch directly
+      if (forceRefresh) {
+        console.log('Force refreshing Google Task lists (bypassing cache)');
+        const fetchedLists = await fetchGoogleTaskLists({ forceRefresh: true });
+        
+        // Enhance the task lists with local properties
+        const enhancedLists: EnhancedGoogleTaskList[] = fetchedLists.map(list => ({
+          ...list,
+          isVisible: true,
+          tasks: list.tasks.map(task => ({
+            ...task,
+            starred: task.is_starred || false
+          }))
+        }));
+        
+        // Return data with new cache dates
+        return {
+          taskLists: enhancedLists,
+          cachedStartDate: newStartDate.toISOString(),
+          cachedEndDate: newEndDate.toISOString(),
+          viewMode
+        };
+      }
       
       // Check if cache is still valid
       const cacheTimeValid = state.tasks.lastFetched && 
@@ -164,7 +190,7 @@ export const fetchTaskLists = createAsyncThunk(
       }
       
       console.log('Fetching Google Task lists from API (cache expired or not available)');
-      const fetchedLists = await fetchGoogleTaskLists();
+      const fetchedLists = await fetchGoogleTaskLists({ forceRefresh: false });
       
       // Enhance the task lists with local properties
       const enhancedLists: EnhancedGoogleTaskList[] = fetchedLists.map(list => ({

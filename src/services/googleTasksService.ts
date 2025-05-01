@@ -25,11 +25,19 @@ export interface GoogleTaskList {
 }
 
 // Fetch all task lists and their tasks
-export const fetchGoogleTaskLists = async (options?: { signal?: AbortSignal }): Promise<GoogleTaskList[]> => {
+export const fetchGoogleTaskLists = async (options?: { 
+  signal?: AbortSignal;
+  forceRefresh?: boolean;
+}): Promise<GoogleTaskList[]> => {
   try {
     console.log('Fetching Google Task lists from API...');
+    // Add bypass_cache parameter when forceRefresh is true
+    const endpoint = options?.forceRefresh 
+      ? '/api/google/tasks?showCompleted=true&showHidden=true&bypass_cache=true' 
+      : '/api/google/tasks?showCompleted=true&showHidden=true';
+    
     const response = await apiRequest<{ status: string; data: { taskLists: GoogleTaskList[] } }>(
-      '/api/google/tasks?showCompleted=true&showHidden=true', 
+      endpoint, 
       { 
         method: 'GET',
         signal: options?.signal 
@@ -37,7 +45,7 @@ export const fetchGoogleTaskLists = async (options?: { signal?: AbortSignal }): 
     );
     
     if (response.status === 'success' && response.data && response.data.taskLists) {
-      console.log(`Fetched ${response.data.taskLists.length} task lists`);
+      console.log(`Fetched ${response.data.taskLists.length} task lists${options?.forceRefresh ? ' (with cache bypass)' : ''}`);
       return response.data.taskLists;
     }
     
