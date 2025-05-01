@@ -577,11 +577,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Function to navigate to today
   const goToToday = () => {
-    setSelectedDate(new Date());
+    console.log('Navigating to today');
+    const today = new Date();
+    setSelectedDate(today);
   };
 
   // Function to navigate to previous period
   const goToPrevious = () => {
+    console.log('Navigating to previous period');
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() - 1);
@@ -595,6 +598,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Function to navigate to next period
   const goToNext = () => {
+    console.log('Navigating to next period');
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() + 1);
@@ -608,7 +612,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Function to handle view mode change
   const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | 'all' | null) => {
-    if (newMode !== null) {
+    if (newMode !== null && newMode !== viewMode) {
+      console.log(`Changing view mode from ${viewMode} to ${newMode}`);
       setViewMode(newMode);
     }
   };
@@ -2162,8 +2167,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     }
                   }}
                   onClick={() => {
-                    setSelectedDate(day.date);
+                    console.log('Clicked on day:', day.date.toDateString());
+                    // First update view mode, then set the date
                     setViewMode('day');
+                    setTimeout(() => {
+                      setSelectedDate(day.date);
+                    }, 10);
                   }}
                 >
                   {/* Date display at top right */}
@@ -2307,14 +2316,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Add effect to refresh data when view mode changes
   useEffect(() => {
     console.log(`View mode changed to: ${viewMode}`);
-    refreshCalendarData();
+    setTimeout(() => {
+      console.log('Refreshing data after view mode change');
+      refreshCalendarData();
+    }, 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
   
   // Add effect to refresh data when selected date changes
   useEffect(() => {
     console.log(`Selected date changed to: ${selectedDate.toDateString()}`);
-    refreshCalendarData();
+    setTimeout(() => {
+      console.log('Refreshing data after date change');
+      refreshCalendarData();
+    }, 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
@@ -2916,8 +2931,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     cursor: 'pointer'
                   }}
                   onClick={() => {
-                    setSelectedDate(day.date);
+                    console.log('Clicked on day:', day.date.toDateString());
+                    // First update view mode, then set the date
                     setViewMode('day');
+                    setTimeout(() => {
+                      setSelectedDate(day.date);
+                    }, 10);
                   }}
                 >
                   <Typography 

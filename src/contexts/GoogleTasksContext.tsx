@@ -14,7 +14,7 @@ import {
   toggleTaskStar as toggleTaskStarAction,
   recordTaskDurationAction,
   filterTaskList as filterTaskListAction,
-  toggleTaskListVisibility as toggleTaskListVisibilityAction,
+  setTaskListVisibility as setTaskListVisibilityAction,
   TaskListFilterOption,
   EnhancedGoogleTask,
   EnhancedGoogleTaskList
@@ -72,7 +72,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   // Refresh task lists
   const refreshTaskLists = useCallback(async () => {
     if (!isAuthenticated) return;
-    await dispatch(fetchTaskLists());
+    await dispatch(fetchTaskLists({}));
   }, [dispatch, isAuthenticated]);
 
   // Fetch tasks when authenticated
@@ -274,7 +274,14 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
 
   // Toggle a task list's visibility
   const toggleTaskListVisibility = (taskListId: string): void => {
-    dispatch(toggleTaskListVisibilityAction(taskListId));
+    const list = taskLists.find(list => list.id === taskListId);
+    if (list) {
+      // Toggle current visibility state
+      dispatch(setTaskListVisibilityAction({ 
+        taskListId, 
+        isVisible: !(list.isVisible ?? true) 
+      }));
+    }
   };
 
   // Provide the context value

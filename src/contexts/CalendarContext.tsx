@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { 
   getCalendarEvents, 
   CalendarEvent, 
@@ -15,6 +15,17 @@ import { fetchGoogleTaskLists, GoogleTask, GoogleTaskList } from '../services/go
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchTaskLists } from '../store/slices/tasksSlice';
 import { store } from '../store';
+import { 
+  fetchCalendarEvents, 
+  addCalendarEvent,
+  updateEvent,
+  deleteEvent,
+  addEventAttendees,
+  removeEventAttendees,
+  setSelectedDate as setReduxSelectedDate,
+  setViewMode as setReduxViewMode,
+  invalidateCache
+} from '../store/slices/calendarSlice';
 
 // Convert Google Tasks to Calendar Events
 const convertTasksToEvents = (taskLists: GoogleTaskList[]): CalendarEvent[] => {
@@ -89,14 +100,34 @@ const CalendarContext = createContext<CalendarContextType | undefined>(undefined
 
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [taskEvents, setTaskEvents] = useState<CalendarEvent[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'all'>('week');
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const dispatch = useAppDispatch();
+  
+  // Get state from Redux store
+  const calendarEvents = useAppSelector((state) => state.calendar.events);
+  const calendarLoading = useAppSelector((state) => state.calendar.loading);
+  const calendarError = useAppSelector((state) => state.calendar.error);
+  const reduxViewMode = useAppSelector((state) => state.calendar.viewMode);
+  const reduxSelectedDate = useAppSelector((state) => state.calendar.selectedDate);
+
+  // Local state
+  const [taskEvents, setTaskEvents] = useState<CalendarEvent[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date(reduxSelectedDate));
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'all'>(reduxViewMode);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Combine Redux events with task events
+  const events = [...calendarEvents, ...taskEvents];
+  const isLoading = calendarLoading;
+
+  // Sync local state with Redux when Redux state changes
+  useEffect(() => {
+    setSelectedDate(new Date(reduxSelectedDate));
+  }, [reduxSelectedDate]);
+
+  useEffect(() => {
+    setViewMode(reduxViewMode);
+  }, [reduxViewMode]);
 
   // Check connection status on mount
   useEffect(() => {
@@ -105,18 +136,62 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [isAuthenticated]);
 
+  // Create a ref to track when we're updating to prevent circular updates
+  const isUpdatingRef = useRef(false);
+  
   // When the view mode or selected date changes, fetch events
   useEffect(() => {
     if (isAuthenticated) {
       console.log(`View mode or date changed. View: ${viewMode}, Date: ${selectedDate.toDateString()}`);
-      fetchEventsForViewMode();
+      
+      // Prevent circular updates
+      if (isUpdatingRef.current) {
+        console.log('Preventing circular update in CalendarContext useEffect');
+        return;
+      }
+      
+      // Set updating flag
+      isUpdatingRef.current = true;
+      
+      // Use a timeout to ensure UI remains responsive
+      const timeoutId = setTimeout(async () => {
+        await fetchEventsForViewMode();
+        
+        // Update Redux state
+        dispatch(setReduxSelectedDate(selectedDate));
+        dispatch(setReduxViewMode(viewMode));
+        
+        // Clear updating flag after a short delay
+        setTimeout(() => {
+          isUpdatingRef.current = false;
+        }, 100);
+      }, 50);
+      
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }
-  }, [isAuthenticated, selectedDate, viewMode]);
+  }, [isAuthenticated, selectedDate, viewMode, dispatch]);
 
   // Helper function to get tasks from Redux
   const getTasksFromRedux = async () => {
-    // Dispatch the action to fetch tasks
-    await dispatch(fetchTaskLists());
+    // Check if we've called this function recently
+    if (getTasksFromRedux.lastCallTime && (Date.now() - getTasksFromRedux.lastCallTime < 300)) {
+      console.log('Debouncing task fetch - too many requests');
+      // Get the current state instead of making another call
+      const state = store.getState();
+      return state.tasks.taskLists;
+    }
+    
+    // Update last call time
+    getTasksFromRedux.lastCallTime = Date.now();
+    
+    console.log('Dispatching fetchTaskLists with current view mode and date');
+    // Dispatch the action to fetch tasks with the current view mode and selected date
+    await dispatch(fetchTaskLists({ 
+      viewMode, 
+      selectedDate 
+    }));
     
     // Get the Redux store state
     const state = store.getState();
@@ -124,6 +199,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Return the task lists from the store
     return state.tasks.taskLists;
   };
+  
+  // Add property to track last call time
+  getTasksFromRedux.lastCallTime = 0;
 
   // Fetch Google Tasks and convert them to events
   const fetchGoogleTaskEvents = async (retryCount = 0, maxRetries = 3): Promise<CalendarEvent[]> => {
@@ -218,7 +296,6 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Connect to Google Calendar
   const connectCalendar = async (): Promise<boolean> => {
-    setIsLoading(true);
     setError(null);
     
     try {
@@ -231,321 +308,210 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('Error connecting to Google Calendar:', error);
       setError('Failed to connect to Google Calendar');
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Fetch events based on current view mode and selected date
   const fetchEventsForViewMode = async () => {
-    setIsLoading(true);
-    
-    // Don't clear the error immediately to avoid UI flickering if the error persists
-    // We'll only clear it after successful fetch
-    let hasError = false;
-    let calendarFetchFailed = false;
     let tasksFetchFailed = false;
-    
-    let fetchedCalendarEvents: CalendarEvent[] = [];
-    let fetchedTaskEvents: CalendarEvent[] = [];
     
     try {
       console.log(`Fetching events for ${viewMode} view with selected date ${selectedDate.toISOString()}`);
       
-      // Use Promise.allSettled to fetch both event types in parallel and handle failures independently
-      const [calendarResult, tasksResult] = await Promise.allSettled([
-        // Calendar events
-        (async () => {
-          try {
-            // Create an AbortController with a timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-            
-            // Add signal to getCalendarEvents
-            const events = await getCalendarEvents(viewMode, selectedDate, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            console.log(`Successfully fetched ${events.length} calendar events`);
-            
-            // Cache calendar events
+      // Check if we're currently fetching
+      if (fetchEventsForViewMode.isFetching) {
+        console.log('Already fetching events, skipping this request');
+        return true;
+      }
+      
+      // Set fetching flag
+      fetchEventsForViewMode.isFetching = true;
+      
+      try {
+        // Use Promise.allSettled to fetch both event types in parallel and handle failures independently
+        const [calendarResult, tasksResult] = await Promise.allSettled([
+          // Calendar events - now using Redux
+          (async () => {
             try {
-              localStorage.setItem('cachedCalendarEvents', JSON.stringify(events));
-              localStorage.setItem('cachedCalendarEventsTimestamp', Date.now().toString());
-              localStorage.setItem('cachedCalendarViewMode', viewMode);
-              localStorage.setItem('cachedCalendarDate', selectedDate.toISOString());
-            } catch (cacheError) {
-              console.warn('Could not cache calendar events:', cacheError);
+              await dispatch(fetchCalendarEvents({ viewMode, selectedDate }));
+              return true;
+            } catch (error) {
+              console.error('Error dispatching fetchCalendarEvents:', error);
+              return false;
             }
-            
-            return events;
-          } catch (error) {
-            console.error('Error fetching calendar events:', error);
-            calendarFetchFailed = true;
-            throw error;
-          }
-        })(),
-        
-        // Task events
-        (async () => {
-          try {
-            const tasks = await fetchGoogleTaskEvents();
-            console.log(`Successfully fetched ${tasks.length} task events`);
-            return tasks;
-          } catch (error) {
-            console.error('Error fetching task events:', error);
-            tasksFetchFailed = true;
-            throw error;
-          }
-        })()
-      ]);
-      
-      // Process calendar events result
-      if (calendarResult.status === 'fulfilled') {
-        fetchedCalendarEvents = calendarResult.value;
-      } else {
-        console.error('Calendar events fetch rejected:', calendarResult.reason);
-        calendarFetchFailed = true;
-        
-        // Try to load from cache
-        try {
-          const cachedCalendarJson = localStorage.getItem('cachedCalendarEvents');
-          const cachedTimestamp = localStorage.getItem('cachedCalendarEventsTimestamp');
-          const cachedViewMode = localStorage.getItem('cachedCalendarViewMode');
+          })(),
           
-          if (cachedCalendarJson && cachedTimestamp && cachedViewMode === viewMode) {
-            const timestamp = parseInt(cachedTimestamp, 10);
-            const currentTime = Date.now();
-            const hoursSinceCached = (currentTime - timestamp) / (1000 * 60 * 60);
-            
-            // Only use cache if it's less than 12 hours old
-            if (hoursSinceCached < 12) {
-              const cachedEvents = JSON.parse(cachedCalendarJson) as CalendarEvent[];
-              console.log(`Using ${cachedEvents.length} cached calendar events from localStorage`);
-              fetchedCalendarEvents = cachedEvents;
-              calendarFetchFailed = false;
+          // Task events
+          (async () => {
+            try {
+              const tasks = await fetchGoogleTaskEvents();
+              console.log(`Successfully fetched ${tasks.length} task events`);
+              return tasks;
+            } catch (error) {
+              console.error('Error fetching task events:', error);
+              tasksFetchFailed = true;
+              throw error;
             }
-          }
-        } catch (cacheError) {
-          console.error('Error loading cached calendar events:', cacheError);
+          })()
+        ]);
+        
+        // Process task events result
+        if (tasksResult.status === 'fulfilled') {
+          setTaskEvents(tasksResult.value);
+        } else {
+          tasksFetchFailed = true;
         }
-      }
-      
-      // Process task events result
-      if (tasksResult.status === 'fulfilled') {
-        fetchedTaskEvents = tasksResult.value;
-      } else {
-        console.error('Task events fetch rejected:', tasksResult.reason);
-        tasksFetchFailed = true;
-      }
-      
-      // Set error state based on individual failures
-      if (calendarFetchFailed && tasksFetchFailed) {
-        hasError = true;
-        setError('Failed to fetch events and tasks');
-      } else if (calendarFetchFailed) {
-        hasError = true;
-        setError('Failed to fetch calendar events');
-      } else if (tasksFetchFailed) {
-        hasError = true;
-          setError('Failed to fetch task events');
-      } else {
-        // Clear error only if both fetches succeeded
-        setError(null);
-      }
-      
-      // Combine regular events with task events
-      const allEvents = [...fetchedCalendarEvents, ...fetchedTaskEvents];
-      
-      // Check if we got any events back
-      if (allEvents.length === 0) {
-        console.log('No events returned from API, but this might be expected based on date range');
-      } else {
-        console.log(`Total events (including tasks): ${allEvents.length}`);
-      }
-      
-      // Update state with the fetched events
-      if (allEvents.length > 0 || (!calendarFetchFailed && !tasksFetchFailed)) {
-      setEvents(allEvents);
-      } else {
-        // If both fetches failed and no events were returned, keep existing events
-        console.log('Keeping existing events to prevent UI disruption');
+        
+        // Set error based on failures
+        if (calendarError || tasksFetchFailed) {
+          setError(calendarError || 'Failed to fetch some events');
+        } else {
+          setError(null);
+        }
+        
+        return true;
+      } finally {
+        // Clear fetching flag
+        fetchEventsForViewMode.isFetching = false;
       }
     } catch (error) {
       console.error('Error in fetchEventsForViewMode:', error);
-      // Don't clear existing events on error to prevent UI disruption
-      hasError = true;
-      setError('Failed to fetch events and tasks');
-    } finally {
-      setIsLoading(false);
+      setError('Failed to fetch events');
+      // Clear fetching flag
+      fetchEventsForViewMode.isFetching = false;
+      return false;
     }
-    
-    return !hasError;
   };
+  
+  // Add flag to track if we're currently fetching
+  fetchEventsForViewMode.isFetching = false;
 
   // Public method to fetch events (used in components)
   const fetchEvents = async () => {
     await fetchEventsForViewMode();
   };
 
-  // Add a new event
+  // Add a new event - now using Redux
   const addEvent = async (event: Omit<CalendarEvent, 'id'>, addGoogleMeet: boolean = false): Promise<CalendarEvent> => {
-    setIsLoading(true);
     setError(null);
     
     try {
-      // Log the event data being sent, including attendees if present
-      console.log('Creating event with event data:', JSON.stringify(event, null, 2));
-      console.log('Adding Google Meet:', addGoogleMeet);
+      const resultAction = await dispatch(addCalendarEvent({ event, addGoogleMeet }));
       
-      if (event.attendees) {
-        console.log(`Event has ${event.attendees.length} attendees:`, 
-          event.attendees.map(a => a.email).join(', '));
+      if (addCalendarEvent.fulfilled.match(resultAction)) {
+        return resultAction.payload;
       } else {
-        console.log('Event has no attendees array defined');
+        throw new Error('Failed to create calendar event');
       }
-      
-      const newEvent = await createCalendarEvent('primary', event, addGoogleMeet);
-      
-      // Log the returned event
-      console.log('Event created successfully, returned data:', JSON.stringify(newEvent, null, 2));
-      
-      // Update events state with the new event
-      setEvents(prevEvents => [...prevEvents, newEvent]);
-      return newEvent;
     } catch (error) {
       console.error('Error creating calendar event:', error);
       setError('Failed to create calendar event');
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Update an existing event
-  const updateEvent = async (
+  // Update an existing event - now using Redux
+  const updateEventHandler = async (
     eventId: string,
     eventUpdate: Partial<Omit<CalendarEvent, 'id'>> & { responseScope?: 'single' | 'all' }
   ): Promise<CalendarEvent> => {
-    setIsLoading(true);
     setError(null);
     
     try {
       // Extract the recurring event update scope if it exists
       const { responseScope, ...updateData } = eventUpdate;
       
-      // Log the event data being sent
-      console.log(`Updating event with ID: ${eventId}`, JSON.stringify(updateData, null, 2));
-      if (responseScope) {
-        console.log(`Recurring event update scope: ${responseScope}`);
-      }
+      const resultAction = await dispatch(updateEvent({ 
+        eventId, 
+        eventUpdate: updateData, 
+        responseScope 
+      }));
       
-      const updatedEvent = await updateCalendarEvent(eventId, updateData, undefined, responseScope);
-      
-      if (!updatedEvent) {
+      if (updateEvent.fulfilled.match(resultAction)) {
+        return resultAction.payload;
+      } else {
         throw new Error('Failed to update calendar event');
       }
-      
-      // Update the events state with the updated event
-      setEvents(prevEvents => {
-        // Find the index of the event to update
-        const index = prevEvents.findIndex(e => e.id === eventId);
-        if (index === -1) return prevEvents; // Event not found
-        
-        // Create a new array with the updated event
-        return [
-          ...prevEvents.slice(0, index),
-          updatedEvent,
-          ...prevEvents.slice(index + 1)
-        ];
-      });
-      
-      return updatedEvent;
     } catch (error) {
       console.error('Error updating calendar event:', error);
       setError('Failed to update calendar event');
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Add attendees to an event
+  // Add attendees to an event - now using Redux
   const addAttendees = async (
     eventId: string, 
     attendees: Array<{ email: string, optional?: boolean }>
   ): Promise<CalendarEvent | null> => {
-    setIsLoading(true);
     setError(null);
     
     try {
-      console.log(`Adding ${attendees.length} attendees to event ${eventId}`);
-      const updatedEvent = await addAttendeesToEvent(eventId, attendees);
+      const resultAction = await dispatch(addEventAttendees({ eventId, attendees }));
       
-      if (updatedEvent) {
-        // Update events state with the updated event
-        setEvents(prevEvents => 
-          prevEvents.map(event => event.id === eventId ? updatedEvent : event)
-        );
+      if (addEventAttendees.fulfilled.match(resultAction)) {
+        return resultAction.payload;
+      } else {
+        throw new Error('Failed to add attendees to event');
       }
-      
-      return updatedEvent;
     } catch (error) {
       console.error('Error adding attendees to event:', error);
       setError('Failed to add attendees to event');
       return null;
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Remove attendees from an event
+  // Remove attendees from an event - now using Redux
   const removeAttendees = async (
     eventId: string, 
     emails: string[]
   ): Promise<CalendarEvent | null> => {
-    setIsLoading(true);
     setError(null);
     
     try {
-      console.log(`Removing ${emails.length} attendees from event ${eventId}`);
-      const updatedEvent = await removeAttendeesFromEvent(eventId, emails);
+      const resultAction = await dispatch(removeEventAttendees({ eventId, emails }));
       
-      if (updatedEvent) {
-        // Update events state with the updated event
-        setEvents(prevEvents => 
-          prevEvents.map(event => event.id === eventId ? updatedEvent : event)
-        );
+      if (removeEventAttendees.fulfilled.match(resultAction)) {
+        return resultAction.payload;
+      } else {
+        throw new Error('Failed to remove attendees from event');
       }
-      
-      return updatedEvent;
     } catch (error) {
       console.error('Error removing attendees from event:', error);
       setError('Failed to remove attendees from event');
       return null;
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Remove an event
+  // Remove an event - now using Redux
   const removeEvent = async (eventId: string, responseScope?: 'single' | 'all'): Promise<boolean> => {
-    setIsLoading(true);
     setError(null);
     
     try {
-      const success = await deleteCalendarEvent(eventId, responseScope);
-      if (success) {
-        // Remove the event from state
-        setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
-      }
-      return success;
+      const resultAction = await dispatch(deleteEvent({ eventId, responseScope }));
+      return deleteEvent.fulfilled.match(resultAction);
     } catch (error) {
       console.error('Error deleting calendar event:', error);
       setError('Failed to delete calendar event');
       return false;
-    } finally {
-      setIsLoading(false);
     }
+  };
+
+  // Update selected date and viewMode - now also updating Redux
+  const setSelectedDateHandler = (date: Date) => {
+    console.log(`CalendarContext: Setting selected date to ${date.toDateString()}`);
+    // Update local state first
+    setSelectedDate(date);
+    // Then update Redux state
+    dispatch(setReduxSelectedDate(date));
+  };
+
+  const setViewModeHandler = (mode: 'day' | 'week' | 'month' | 'all') => {
+    console.log(`CalendarContext: Setting view mode to ${mode}`);
+    // Update local state first
+    setViewMode(mode);
+    // Then update Redux state
+    dispatch(setReduxViewMode(mode));
   };
 
   // Add a method to refresh calendar data
@@ -556,7 +522,19 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // but do clear any previous errors
     setError(null);
     
+    // Add debounce mechanism to prevent multiple rapid calls
+    if (refreshCalendarData.lastCallTime && Date.now() - refreshCalendarData.lastCallTime < 300) {
+      console.log('Debouncing refresh call - too many requests');
+      return;
+    }
+    
+    // Set last call time for debouncing
+    refreshCalendarData.lastCallTime = Date.now();
+    
     try {
+      // Invalidate the Redux cache first to ensure a fresh fetch
+      dispatch(invalidateCache());
+      
       // Re-fetch events based on current view mode
       await fetchEventsForViewMode();
       console.log('Calendar data refreshed successfully');
@@ -565,6 +543,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Don't set error state here, as fetchEventsForViewMode will have already handled it
     }
   };
+  
+  // Add lastCallTime property to the function
+  refreshCalendarData.lastCallTime = 0;
 
   const value: CalendarContextType = {
     events,
@@ -575,10 +556,10 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     error,
     connectCalendar,
     fetchEvents,
-    setSelectedDate,
-    setViewMode,
+    setSelectedDate: setSelectedDateHandler,
+    setViewMode: setViewModeHandler,
     addEvent,
-    updateEvent,
+    updateEvent: updateEventHandler,
     removeEvent,
     refreshCalendarData,
     addAttendeesToEvent: addAttendees,

@@ -37,6 +37,9 @@ interface TasksState {
   error: string | null;
   lastFetched: number | null;
   cacheDuration: number; // Duration in milliseconds before cache is considered stale
+  cachedStartDate: string | null; // Store the start date of the cached tasks
+  cachedEndDate: string | null; // Store the end date of the cached tasks
+  viewMode: 'day' | 'week' | 'month' | 'all'; // Track current view mode for cache validation
 }
 
 const initialState: TasksState = {
@@ -46,6 +49,9 @@ const initialState: TasksState = {
   error: null,
   lastFetched: null,
   cacheDuration: 5 * 60 * 1000, // Default cache duration: 5 minutes (can be adjusted)
+  cachedStartDate: null,
+  cachedEndDate: null,
+  viewMode: 'week'
 };
 
 // Helper function to extract starred tasks
@@ -53,22 +59,108 @@ const extractStarredTasks = (lists: EnhancedGoogleTaskList[]): EnhancedGoogleTas
   return lists.flatMap(list => list.tasks.filter(task => task.starred));
 };
 
+// Helper to calculate date range for a given view mode and date
+const getDateRangeForViewMode = (viewMode: 'day' | 'week' | 'month' | 'all', date: Date): [Date, Date] => {
+  const startDate = new Date(date);
+  const endDate = new Date(date);
+  
+  if (viewMode === 'day') {
+    // For day view, use the whole day
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+  } else if (viewMode === 'week') {
+    // For week view, go from Sunday to Saturday
+    const day = startDate.getDay();
+    startDate.setDate(startDate.getDate() - day); // Go to beginning of week (Sunday)
+    startDate.setHours(0, 0, 0, 0);
+    
+    endDate.setDate(startDate.getDate() + 6); // Go to end of week (Saturday)
+    endDate.setHours(23, 59, 59, 999);
+  } else if (viewMode === 'month') {
+    // For month view, use the whole month
+    startDate.setDate(1); // First day of month
+    startDate.setHours(0, 0, 0, 0);
+    
+    endDate.setMonth(endDate.getMonth() + 1); // Go to next month
+    endDate.setDate(0); // Last day of current month
+    endDate.setHours(23, 59, 59, 999);
+  } else {
+    // For 'all' view, use a large date range
+    startDate.setFullYear(startDate.getFullYear() - 1);
+    endDate.setFullYear(endDate.getFullYear() + 1);
+  }
+  
+  return [startDate, endDate];
+};
+
+// Helper to check if two date ranges overlap
+const dateRangesOverlap = (
+  range1Start: Date, 
+  range1End: Date, 
+  range2Start: Date, 
+  range2End: Date
+): boolean => {
+  return (
+    (range1Start <= range2End && range1End >= range2Start) || 
+    (range2Start <= range1End && range2End >= range1Start)
+  );
+};
+
 // Async thunk for fetching task lists
 export const fetchTaskLists = createAsyncThunk(
   'tasks/fetchTaskLists',
-  async (_, { getState, rejectWithValue }) => {
+  async (
+    params: { 
+      viewMode?: 'day' | 'week' | 'month' | 'all'; 
+      selectedDate?: Date 
+    } = {}, 
+    { getState, rejectWithValue }
+  ) => {
     try {
-      // Check if cache is still valid
+      // Get current state
       const state = getState() as { tasks: TasksState };
       const now = Date.now();
       
+      // Default values if not provided
+      const viewMode = params.viewMode || state.tasks.viewMode || 'week';
+      const selectedDate = params.selectedDate || new Date();
+      
+      // Calculate the new date range
+      const [newStartDate, newEndDate] = getDateRangeForViewMode(viewMode, selectedDate);
+      
+      // Check if cache is still valid
+      const cacheTimeValid = state.tasks.lastFetched && 
+                            now - state.tasks.lastFetched < state.tasks.cacheDuration;
+      
+      // Check if the view mode changed
+      const sameViewMode = viewMode === state.tasks.viewMode;
+      
+      // Check if the date range overlaps with the cached date range
+      let dateRangeOverlaps = false;
+      if (state.tasks.cachedStartDate && state.tasks.cachedEndDate) {
+        dateRangeOverlaps = dateRangesOverlap(
+          newStartDate, 
+          newEndDate,
+          new Date(state.tasks.cachedStartDate),
+          new Date(state.tasks.cachedEndDate)
+        );
+      }
+      
+      // Use cache if all conditions are met
       if (
         state.tasks.lastFetched && 
         state.tasks.taskLists.length > 0 && 
-        now - state.tasks.lastFetched < state.tasks.cacheDuration
+        cacheTimeValid &&
+        sameViewMode &&
+        dateRangeOverlaps
       ) {
         console.log('Using cached task lists - cache is still valid');
-        return state.tasks.taskLists;
+        return {
+          taskLists: state.tasks.taskLists,
+          cachedStartDate: state.tasks.cachedStartDate, 
+          cachedEndDate: state.tasks.cachedEndDate,
+          viewMode
+        };
       }
       
       console.log('Fetching Google Task lists from API (cache expired or not available)');
@@ -84,7 +176,13 @@ export const fetchTaskLists = createAsyncThunk(
         }))
       }));
       
-      return enhancedLists;
+      // Return data with new cache dates
+      return {
+        taskLists: enhancedLists,
+        cachedStartDate: newStartDate.toISOString(),
+        cachedEndDate: newEndDate.toISOString(),
+        viewMode
+      };
     } catch (error) {
       console.error('Error fetching Google Task lists:', error);
       return rejectWithValue('Failed to load Google Task lists');
@@ -486,10 +584,14 @@ const tasksSlice = createSlice({
     setCacheDuration: (state, action: PayloadAction<number>) => {
       state.cacheDuration = action.payload;
     },
-    toggleTaskListVisibility: (state, action: PayloadAction<string>) => {
-      const listIndex = state.taskLists.findIndex(list => list.id === action.payload);
+    setViewMode: (state, action: PayloadAction<'day' | 'week' | 'month' | 'all'>) => {
+      state.viewMode = action.payload;
+    },
+    setTaskListVisibility: (state, action: PayloadAction<{taskListId: string; isVisible: boolean}>) => {
+      const { taskListId, isVisible } = action.payload;
+      const listIndex = state.taskLists.findIndex(list => list.id === taskListId);
       if (listIndex !== -1) {
-        state.taskLists[listIndex].isVisible = !state.taskLists[listIndex].isVisible;
+        state.taskLists[listIndex].isVisible = isVisible;
       }
     },
     filterTaskList: (state, action: PayloadAction<{ taskListId: string, filterOption: TaskListFilterOption }>) => {
@@ -534,9 +636,10 @@ const tasksSlice = createSlice({
         }
       }
     },
-    // Force refetch by invalidating cache
     invalidateCache: (state) => {
       state.lastFetched = null;
+      state.cachedStartDate = null;
+      state.cachedEndDate = null;
     }
   },
   extraReducers: (builder) => {
@@ -547,10 +650,13 @@ const tasksSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchTaskLists.fulfilled, (state, action) => {
-        state.loading = false;
-        state.taskLists = action.payload;
-        state.starredTasks = extractStarredTasks(action.payload);
+        state.taskLists = action.payload.taskLists;
+        state.starredTasks = extractStarredTasks(action.payload.taskLists);
         state.lastFetched = Date.now();
+        state.cachedStartDate = action.payload.cachedStartDate;
+        state.cachedEndDate = action.payload.cachedEndDate;
+        state.viewMode = action.payload.viewMode;
+        state.loading = false;
       })
       .addCase(fetchTaskLists.rejected, (state, action) => {
         state.loading = false;
@@ -804,7 +910,8 @@ const tasksSlice = createSlice({
 export const { 
   resetError, 
   setCacheDuration, 
-  toggleTaskListVisibility, 
+  setViewMode, 
+  setTaskListVisibility,
   filterTaskList,
   invalidateCache
 } = tasksSlice.actions;
