@@ -534,8 +534,40 @@ export const recordTaskDurationAction = createAsyncThunk(
   }, { getState, rejectWithValue }) => {
     try {
       const updatedTask = await recordTaskDuration(taskListId, taskId, actualMinutes);
+      
+      // We don't need to fail when updatedTask is null
+      // The API might return a null task even on success
+      // Just log a warning but don't reject with value in this case
       if (!updatedTask) {
-        return rejectWithValue('Failed to record task duration');
+        console.warn('No task returned from recordTaskDuration API, but operation may still have succeeded');
+        
+        // Get current task from state to maintain client-side properties
+        const state = getState() as { tasks: TasksState };
+        const listIndex = state.tasks.taskLists.findIndex(list => list.id === taskListId);
+        
+        if (listIndex === -1) {
+          return rejectWithValue('Task list not found');
+        }
+        
+        const taskIndex = state.tasks.taskLists[listIndex].tasks.findIndex(
+          task => task.id === taskId
+        );
+        
+        if (taskIndex === -1) {
+          return rejectWithValue('Task not found');
+        }
+        
+        const currentTask = state.tasks.taskLists[listIndex].tasks[taskIndex];
+        
+        // Create a minimal task from the current state to avoid rejection
+        return {
+          taskListId,
+          taskId,
+          task: {
+            ...currentTask,
+            actual_minutes: actualMinutes
+          } as EnhancedGoogleTask
+        };
       }
       
       // Get current task from state to maintain client-side properties
@@ -899,6 +931,11 @@ const tasksSlice = createSlice({
         const starredIndex = state.starredTasks.findIndex(t => t.id === taskId);
         if (starredIndex !== -1) {
           state.starredTasks[starredIndex] = task;
+        }
+        
+        // Clear any duration-related errors
+        if (state.error && state.error.includes('Failed to record task duration')) {
+          state.error = '';
         }
       })
       .addCase(recordTaskDurationAction.rejected, (state, action) => {

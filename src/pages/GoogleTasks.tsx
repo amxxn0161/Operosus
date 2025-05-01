@@ -81,9 +81,12 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 // Add these imports at the top of the file
 // import AIAssistant from '../components/AIAssistant';
 // import { useAIAssistant } from '../contexts/AIAssistantContext';
+import { useAppDispatch } from '../store/hooks';
+import { invalidateCache } from '../store/slices/tasksSlice';
 
 // Import the proper AIAssistant component and context
 import { useAIAssistant } from '../contexts/AIAssistantContext';
+import TaskDurationWarning from '../components/TaskDurationWarning';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -114,6 +117,7 @@ const dialogContentStyles = {
 const GoogleTasks: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const dispatch = useAppDispatch();
   
   const {
     taskLists,
@@ -232,6 +236,9 @@ const GoogleTasks: React.FC = () => {
   const [actualHours, setActualHours] = useState<number>(0);
   const [actualMinutesOnly, setActualMinutesOnly] = useState<number>(0);
 
+  // Add state for duration warning
+  const [durationWarningOpen, setDurationWarningOpen] = useState<boolean>(false);
+
   // Initialize default task list ID when data loads
   useEffect(() => {
     if (taskLists.length > 0 && !newTaskListId) {
@@ -244,6 +251,9 @@ const GoogleTasks: React.FC = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
+      // First invalidate the cache to force a network request
+      dispatch(invalidateCache());
+      // Then refresh task lists
       await refreshTaskLists();
       showSnackbar('Tasks refreshed successfully', 'success');
     } catch (err) {
@@ -1957,13 +1967,22 @@ const GoogleTasks: React.FC = () => {
             actualMinutes
           );
           
-          // The API returns success in response even if durationResult is null
-          // based on the API response format seen in the network tab
-          showSnackbar('Task completed and duration recorded', 'success');
+          // Only show error if null is returned AND there's an actual API error
+          // The mere presence of null doesn't mean it failed - the API may return success with null
+          if (durationResult || !error) {
+            showSnackbar('Task completed and duration recorded', 'success');
+          } else {
+            console.error('Error recording duration:', error);
+            // Instead of showing error snackbar, show the warning component
+            showSnackbar('Task completed', 'success');
+            setDurationWarningOpen(true);
+          }
         } catch (durationErr) {
           // This will catch actual API failures during duration recording
           console.error('Error recording duration:', durationErr);
-          showSnackbar('Task completed but failed to record duration', 'error');
+          // Instead of showing error snackbar, show the warning component
+          showSnackbar('Task completed', 'success');
+          setDurationWarningOpen(true);
         }
       } else {
         showSnackbar('Failed to complete task', 'error');
@@ -2220,6 +2239,14 @@ const GoogleTasks: React.FC = () => {
       {/* Task Lists Section */}
       <DragDropContext onDragEnd={handleDragEnd}>
         <Grid container spacing={3}>
+          {/* Only show this error alert if task lists have loaded and there's still an error */}
+          {error && !loading && !error.includes('Failed to record task duration') && (
+            <Grid item xs={12}>
+              <Alert severity="error" sx={{ mb: 4 }}>
+                {error}
+              </Alert>
+            </Grid>
+          )}
           {!loading && taskLists.length > 0 ? (
             taskLists.filter(list => list.isVisible !== false).map((taskList) => (
               <Grid item xs={12} sm={6} md={4} key={taskList.id}>
@@ -4353,6 +4380,12 @@ const GoogleTasks: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Duration Warning */}
+      <TaskDurationWarning 
+        open={durationWarningOpen} 
+        onClose={() => setDurationWarningOpen(false)} 
+      />
     </Container>
   );
 };

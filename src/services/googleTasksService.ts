@@ -328,6 +328,7 @@ export const recordTaskDuration = async (
       status: string; 
       task?: GoogleTask;
       data?: { task: GoogleTask };
+      message?: string;
     }>(`/api/google/tasklists/${taskListId}/tasks/${taskId}/duration`, {
       method: 'POST',
       body: {
@@ -336,18 +337,28 @@ export const recordTaskDuration = async (
       }
     });
     
+    // Even if we don't have a task in the response, the operation might have succeeded
+    // The backend API might update the task without returning the full task object
     if (response.status === 'success') {
       // Handle both response formats
       if (response.task) {
+        console.log('Task duration recorded successfully with task data returned');
         return response.task;
       }
       if (response.data && response.data.task) {
+        console.log('Task duration recorded successfully with task data in data field');
         return response.data.task;
       }
-      console.warn('Duration recorded successfully but unexpected response format:', response);
+      
+      // The operation succeeded but no task data was returned
+      // This is not necessarily an error - log it but don't treat as failure
+      console.log('Duration recorded successfully but no task data was returned');
+      return null;
+    } else {
+      // This is a true error case where the API explicitly returned a failure status
+      console.error('API returned error status when recording duration:', response.message || 'Unknown error');
+      throw new Error(response.message || 'Failed to record task duration');
     }
-    
-    return null;
   } catch (error) {
     console.error('Failed to record task duration:', error);
     throw error;
