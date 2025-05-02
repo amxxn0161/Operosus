@@ -53,7 +53,7 @@ const TaskListPopup: React.FC<TaskListPopupProps> = ({
   // Navigate to Google Tasks page
   const handleOpenTasks = () => {
     onClose(); // Close the popup first
-    navigate('/google-tasks'); // Navigate to the Google Tasks page
+    navigate('/tasks'); // Navigate to the Tasks page
   };
 
   // Group tasks by task list

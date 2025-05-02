@@ -64,8 +64,8 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
     // Close the popup
     onClose();
     
-    // Navigate to Google Tasks page
-    navigate('/google-tasks', { 
+    // Navigate to Tasks page
+    navigate('/tasks', { 
       state: { 
         selectedListId: taskListId,
         selectedListName: listName,
