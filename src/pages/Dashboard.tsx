@@ -1480,18 +1480,21 @@ const Dashboard: React.FC<{}> = () => {
       {isLayoutLoading && (
         <Box sx={{ 
           position: 'fixed', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)',
+          top: '16px', 
+          right: '16px',
           zIndex: 9999,
           bgcolor: 'background.paper',
           borderRadius: 2,
-          p: 3,
-          boxShadow: 3
+          p: 1.5,
+          boxShadow: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          maxWidth: '250px'
         }}>
-          <CircularProgress size={40} />
-          <Typography variant="body1" sx={{ mt: 2 }}>
-            Updating dashboard layout...
+          <CircularProgress size={20} />
+          <Typography variant="body2">
+            Updating layout...
           </Typography>
         </Box>
       )}
