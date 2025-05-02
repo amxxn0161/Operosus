@@ -226,8 +226,10 @@ const GoogleTasks: React.FC = () => {
     time: string | null;
   }>>([]);
   const [isBreakingDown, setIsBreakingDown] = useState<boolean>(false);
-  const [aiAssistantVisible, setAiAssistantVisible] = useState<boolean>(false);
   
+  // Create a ref to track if we're extracting subtasks
+  const extractingSubtasksRef = useRef<boolean>(false);
+
   // Add AI assistant reference
   const aiAssistantRef = useRef<HTMLDivElement>(null);
 
@@ -1551,7 +1553,7 @@ const GoogleTasks: React.FC = () => {
   
   // Add a function to handle AI assistant opening
   const handleOpenAIAssistant = () => {
-    setAiAssistantVisible(true);
+    // Previously used to show the AI assistant, now not needed
   };
   
   // Add a function to create subtasks
@@ -1629,9 +1631,6 @@ const GoogleTasks: React.FC = () => {
     setBreakdownSubtasks(updatedSubtasks);
   };
 
-  // Create a ref to track if we're extracting subtasks
-  const extractingSubtasksRef = useRef<boolean>(false);
-
   // Get AI assistant context properly
   const { 
     sendMessage, 
@@ -1692,9 +1691,6 @@ const GoogleTasks: React.FC = () => {
       // Clear previous messages
       await clearMessages();
       
-      // Open the assistant
-      openAssistant();
-      
       // Set extracting mode
       extractingSubtasksRef.current = true;
       
@@ -1703,7 +1699,7 @@ const GoogleTasks: React.FC = () => {
         taskToBreakdown.task.notes ? `Additional context: ${taskToBreakdown.task.notes}` : ''
       } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You should determine the appropriate number of subtasks based on the complexity of the task - use as many or as few as needed to be most effective. Format each subtask as a bullet point.`;
       
-      // Send the message to the AI assistant
+      // Send the message to the AI assistant without opening the popup
       await sendMessage(prompt);
     } catch (error) {
       console.error('Error interacting with AI assistant:', error);
@@ -1714,8 +1710,7 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
-  // Update the effect that monitors AI messages to stop automatically setting the subtasks
-  // Replace the existing useEffect related to AI messages (around line 1510-1548)
+  // Update the effect that monitors AI messages to automatically set the subtasks
   useEffect(() => {
     // Only proceed if we're in "extracting subtasks" mode
     if (!extractingSubtasksRef.current || !taskToBreakdown) return;
@@ -1730,12 +1725,62 @@ const GoogleTasks: React.FC = () => {
       if (latestAssistantMessage.content && !isLoading) {
         const content = latestAssistantMessage.content;
         
-        // We no longer automatically set the breakdown subtasks here
-        // We will let the user click "Import Subtasks from Assistant" to do that
+        // Extract subtasks from the message
+        const extractedSubtasks: Array<{ title: string; due: string | null; time: string | null }> = [];
         
-        // Just show a notification that subtasks are ready to be imported
-        if (content.match(/[•\-\*]\s+([^\n]+)/g) || content.match(/\d+\.\s+([^\n]+)/g)) {
-          showSnackbar('AI has provided subtask suggestions. Click "Import Subtasks from Assistant" to use them.', 'success');
+        // Look for bullet points patterns
+        if (content.match(/[•\-\*]\s+([^\n]+)/g)) {
+          const bulletMatches = content.match(/[•\-\*]\s+([^\n]+)/g) || [];
+          bulletMatches.forEach((match: string) => {
+            const subtask = match.replace(/^[•\-\*]\s+/, '').trim();
+            if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
+          });
+        }
+        
+        // Look for numbered list patterns as well
+        if (content.match(/\d+\.\s+([^\n]+)/g)) {
+          const numberedMatches = content.match(/\d+\.\s+([^\n]+)/g) || [];
+          numberedMatches.forEach((match: string) => {
+            const subtask = match.replace(/^\d+\.\s+/, '').trim();
+            if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
+          });
+        }
+        
+        // Automatically set the subtasks if we found any
+        if (extractedSubtasks.length > 0) {
+          // IMPORTANT: Merge with existing subtasks instead of replacing them
+          setBreakdownSubtasks((prevSubtasks) => {
+            // Filter out empty subtasks from the existing list
+            const nonEmptyPrevSubtasks = prevSubtasks.filter(task => task.title.trim() !== '');
+            
+            // If there were no existing non-empty subtasks, just use the extracted ones
+            if (nonEmptyPrevSubtasks.length === 0) {
+              return extractedSubtasks;
+            }
+            
+            // Otherwise, merge the lists
+            // Find subtasks with the same title and keep their due dates if they exist
+            const mergedSubtasks = [...nonEmptyPrevSubtasks];
+            
+            extractedSubtasks.forEach(newSubtask => {
+              // Check if this task already exists
+              const existingIndex = mergedSubtasks.findIndex(
+                task => task.title.toLowerCase() === newSubtask.title.toLowerCase()
+              );
+              
+              if (existingIndex === -1) {
+                // Add as a new subtask if not found
+                mergedSubtasks.push(newSubtask);
+              }
+              // We don't update existing subtasks to preserve their due dates
+            });
+            
+            return mergedSubtasks;
+          });
+          
+          showSnackbar('AI has created breakdown tasks for you', 'success');
+        } else {
+          showSnackbar('No subtasks could be identified in AI response', 'error');
         }
         
         // Exit extraction mode
@@ -1744,80 +1789,170 @@ const GoogleTasks: React.FC = () => {
     }
   }, [messages, isLoading, taskToBreakdown, showSnackbar]);
 
-  // Update the handleImportFromAssistant function to merge subtasks rather than replace them
-  // Replace the function around line 1549-1599
-  const handleImportFromAssistant = () => {
-    // This will extract the suggested subtasks from the last assistant message
-    const assistantMessages = messages.filter(msg => msg.role === 'assistant');
-    if (assistantMessages.length === 0) {
-      showSnackbar('No AI assistant messages found', 'error');
-      return;
-    }
+  // Handle duration input changes
+  const handleHoursChange = (value: number) => {
+    // Convert to a regular number to remove any leading zeros
+    const hours = parseInt(value.toString(), 10);
+    setActualHours(hours);
+    setActualMinutes(hours * 60 + actualMinutesOnly);
+  };
+  
+  const handleMinutesChange = (value: number) => {
+    // Convert to a regular number to remove any leading zeros
+    const minutes = parseInt(value.toString(), 10);
+    setActualMinutesOnly(minutes);
+    setActualMinutes(actualHours * 60 + minutes);
+  };
+  
+  // Handle submitting the duration dialog
+  const handleDurationSubmit = async () => {
+    if (!taskForDuration || actualMinutes === null) return;
     
-    const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
-    if (!latestAssistantMessage.content) {
-      showSnackbar('No content in latest AI assistant message', 'error');
-      return;
-    }
-    
-    const content = latestAssistantMessage.content;
-    
-    // Extract subtasks from the message
-    const extractedSubtasks: Array<{ title: string; due: string | null; time: string | null }> = [];
-    
-    // Look for bullet points patterns
-    if (content.match(/[•\-\*]\s+([^\n]+)/g)) {
-      const bulletMatches = content.match(/[•\-\*]\s+([^\n]+)/g) || [];
-      bulletMatches.forEach((match: string) => {
-        const subtask = match.replace(/^[•\-\*]\s+/, '').trim();
-        if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
-      });
-    }
-    
-    // Look for numbered list patterns as well
-    if (content.match(/\d+\.\s+([^\n]+)/g)) {
-      const numberedMatches = content.match(/\d+\.\s+([^\n]+)/g) || [];
-      numberedMatches.forEach((match: string) => {
-        const subtask = match.replace(/^\d+\.\s+/, '').trim();
-        if (subtask) extractedSubtasks.push({ title: subtask, due: null, time: null });
-      });
-    }
-    
-    // Update the subtasks list if we found any
-    if (extractedSubtasks.length > 0) {
-      // IMPORTANT: Merge with existing subtasks instead of replacing them
-      setBreakdownSubtasks((prevSubtasks: Array<{ title: string; due: string | null; time: string | null }>) => {
-        // Filter out empty subtasks from the existing list
-        const nonEmptyPrevSubtasks = prevSubtasks.filter(task => task.title.trim() !== '');
-        
-        // If there were no existing non-empty subtasks, just use the extracted ones
-        if (nonEmptyPrevSubtasks.length === 0) {
-          return extractedSubtasks;
-        }
-        
-        // Otherwise, merge the lists
-        // Find subtasks with the same title and keep their due dates if they exist
-        const mergedSubtasks = [...nonEmptyPrevSubtasks];
-        
-        extractedSubtasks.forEach(newSubtask => {
-          // Check if this task already exists
-          const existingIndex = mergedSubtasks.findIndex(
-            task => task.title.toLowerCase() === newSubtask.title.toLowerCase()
+    try {
+      // First mark the task as complete
+      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
+      
+      if (result) {
+        try {
+          // Then record the duration
+          const durationResult = await recordDuration(
+            taskForDuration.taskListId, 
+            taskForDuration.taskId, 
+            actualMinutes
           );
           
-          if (existingIndex === -1) {
-            // Add as a new subtask if not found
-            mergedSubtasks.push(newSubtask);
+          // Only show error if null is returned AND there's an actual API error
+          // The mere presence of null doesn't mean it failed - the API may return success with null
+          if (durationResult || !error) {
+            showSnackbar('Task completed and duration recorded', 'success');
+          } else {
+            console.error('Error recording duration:', error);
+            // Instead of showing error snackbar, show the warning component
+            showSnackbar('Task completed', 'success');
+            setDurationWarningOpen(true);
           }
-          // We don't update existing subtasks to preserve their due dates
-        });
-        
-        return mergedSubtasks;
+        } catch (durationErr) {
+          // This will catch actual API failures during duration recording
+          console.error('Error recording duration:', durationErr);
+          // Instead of showing error snackbar, show the warning component
+          showSnackbar('Task completed', 'success');
+          setDurationWarningOpen(true);
+        }
+      } else {
+        showSnackbar('Failed to complete task', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling task completion:', err);
+      showSnackbar('Error updating task', 'error');
+    } finally {
+      // Close dialog and reset state
+      setDurationDialogOpen(false);
+      setTaskForDuration(null);
+      setActualMinutes(null);
+      setActualHours(0);
+      setActualMinutesOnly(0);
+    }
+  };
+  
+  // Skip recording duration
+  const handleSkipDuration = async () => {
+    if (!taskForDuration) return;
+    
+    try {
+      // Just mark the task as complete without recording duration
+      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
+      
+      if (result) {
+        showSnackbar('Task completed', 'success');
+      } else {
+        showSnackbar('Failed to complete task', 'error');
+      }
+    } catch (err) {
+      showSnackbar('Error updating task', 'error');
+    } finally {
+      // Close dialog and reset state
+      setDurationDialogOpen(false);
+      setTaskForDuration(null);
+      setActualMinutes(null);
+      setActualHours(0);
+      setActualMinutesOnly(0);
+    }
+  };
+
+  // Add a function to handle "My order" button click with apply_reordering=true
+  const handleApplyMyOrder = async (taskListId: string) => {
+    try {
+      // Call the tasks endpoint with apply_reordering=true
+      setIsRefreshing(true);
+      
+      // Find the task list
+      const taskList = taskLists.find(list => list.id === taskListId);
+      if (!taskList) {
+        console.error(`Task list not found for "My order" button: ${taskListId}`);
+        showSnackbar('Error: Task list not found', 'error');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Get the incomplete tasks (ones being reordered)
+      const incompleteTasks = taskList.tasks.filter(task => task.status !== 'completed');
+      
+      if (incompleteTasks.length === 0) {
+        console.log(`No incomplete tasks to reorder in list ${taskListId}`);
+        showSnackbar('No tasks to reorder', 'success');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Get the first task in the list
+      const firstTask = incompleteTasks[0];
+      
+      if (!firstTask || !firstTask.id) {
+        console.error('First task is invalid:', firstTask);
+        showSnackbar('Error: Invalid task data', 'error');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Normalize the task ID by trimming it
+      const normalizedTaskId = firstTask.id.trim();
+      
+      console.log(`Applying "My order" for task list ${taskListId} using first task:`, {
+        originalTaskId: firstTask.id,
+        normalizedTaskId,
+        taskTitle: firstTask.title
       });
       
-      showSnackbar('Imported subtasks from assistant', 'success');
-    } else {
-      showSnackbar('No subtasks found in assistant message', 'error');
+      try {
+        // Reorder the first task to make a request that applies current ordering to the server
+        // When applying "My order", we're effectively moving the first task to the top position
+        // So using moveToTop parameter is appropriate
+        console.log('Applying "My order" with moveToTop parameter');
+        
+        const result = await reorderTask(
+          taskListId,
+          normalizedTaskId, // Use normalized ID
+          null, // Position at the top (unchanged)
+          0,    // Index 0 (unchanged)
+          true  // Apply reordering to the server
+        );
+        
+        if (result) {
+          showSnackbar('Task order saved successfully', 'success');
+        } else {
+          console.error('Apply order request failed, no result returned');
+          showSnackbar('Failed to save task order', 'error');
+        }
+      } catch (orderError) {
+        console.error('Error in apply order request:', orderError);
+        showSnackbar('Error saving task order', 'error');
+      }
+      
+      setIsRefreshing(false);
+    } catch (err) {
+      console.error('Error applying task order:', err);
+      showSnackbar('Error saving task order', 'error');
+      setIsRefreshing(false);
     }
   };
 
@@ -2010,173 +2145,6 @@ const GoogleTasks: React.FC = () => {
     const minutesValue = parseInt(value, 10);
     if (!isNaN(minutesValue)) {
       setEditTaskEstimatedMinutes(minutesValue);
-    }
-  };
-
-  // Handle submitting the duration dialog
-  const handleDurationSubmit = async () => {
-    if (!taskForDuration || actualMinutes === null) return;
-    
-    try {
-      // First mark the task as complete
-      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
-      
-      if (result) {
-        try {
-          // Then record the duration
-          const durationResult = await recordDuration(
-            taskForDuration.taskListId, 
-            taskForDuration.taskId, 
-            actualMinutes
-          );
-          
-          // Only show error if null is returned AND there's an actual API error
-          // The mere presence of null doesn't mean it failed - the API may return success with null
-          if (durationResult || !error) {
-            showSnackbar('Task completed and duration recorded', 'success');
-          } else {
-            console.error('Error recording duration:', error);
-            // Instead of showing error snackbar, show the warning component
-            showSnackbar('Task completed', 'success');
-            setDurationWarningOpen(true);
-          }
-        } catch (durationErr) {
-          // This will catch actual API failures during duration recording
-          console.error('Error recording duration:', durationErr);
-          // Instead of showing error snackbar, show the warning component
-          showSnackbar('Task completed', 'success');
-          setDurationWarningOpen(true);
-        }
-      } else {
-        showSnackbar('Failed to complete task', 'error');
-      }
-    } catch (err) {
-      console.error('Error toggling task completion:', err);
-      showSnackbar('Error updating task', 'error');
-    } finally {
-      // Close dialog and reset state
-      setDurationDialogOpen(false);
-      setTaskForDuration(null);
-      setActualMinutes(null);
-      setActualHours(0);
-      setActualMinutesOnly(0);
-    }
-  };
-  
-  // Handle duration input changes
-  const handleHoursChange = (value: number) => {
-    // Convert to a regular number to remove any leading zeros
-    const hours = parseInt(value.toString(), 10);
-    setActualHours(hours);
-    setActualMinutes(hours * 60 + actualMinutesOnly);
-  };
-  
-  const handleMinutesChange = (value: number) => {
-    // Convert to a regular number to remove any leading zeros
-    const minutes = parseInt(value.toString(), 10);
-    setActualMinutesOnly(minutes);
-    setActualMinutes(actualHours * 60 + minutes);
-  };
-  
-  // Skip recording duration
-  const handleSkipDuration = async () => {
-    if (!taskForDuration) return;
-    
-    try {
-      // Just mark the task as complete without recording duration
-      const result = await toggleTaskComplete(taskForDuration.taskListId, taskForDuration.taskId);
-      
-      if (result) {
-        showSnackbar('Task completed', 'success');
-      } else {
-        showSnackbar('Failed to complete task', 'error');
-      }
-    } catch (err) {
-      showSnackbar('Error updating task', 'error');
-    } finally {
-      // Close dialog and reset state
-      setDurationDialogOpen(false);
-      setTaskForDuration(null);
-      setActualMinutes(null);
-      setActualHours(0);
-      setActualMinutesOnly(0);
-    }
-  };
-
-  // Add a function to handle "My order" button click with apply_reordering=true
-  const handleApplyMyOrder = async (taskListId: string) => {
-    try {
-      // Call the tasks endpoint with apply_reordering=true
-      setIsRefreshing(true);
-      
-      // Find the task list
-      const taskList = taskLists.find(list => list.id === taskListId);
-      if (!taskList) {
-        console.error(`Task list not found for "My order" button: ${taskListId}`);
-        showSnackbar('Error: Task list not found', 'error');
-        setIsRefreshing(false);
-        return;
-      }
-      
-      // Get the incomplete tasks (ones being reordered)
-      const incompleteTasks = taskList.tasks.filter(task => task.status !== 'completed');
-      
-      if (incompleteTasks.length === 0) {
-        console.log(`No incomplete tasks to reorder in list ${taskListId}`);
-        showSnackbar('No tasks to reorder', 'success');
-        setIsRefreshing(false);
-        return;
-      }
-      
-      // Get the first task in the list
-      const firstTask = incompleteTasks[0];
-      
-      if (!firstTask || !firstTask.id) {
-        console.error('First task is invalid:', firstTask);
-        showSnackbar('Error: Invalid task data', 'error');
-        setIsRefreshing(false);
-        return;
-      }
-      
-      // Normalize the task ID by trimming it
-      const normalizedTaskId = firstTask.id.trim();
-      
-      console.log(`Applying "My order" for task list ${taskListId} using first task:`, {
-        originalTaskId: firstTask.id,
-        normalizedTaskId,
-        taskTitle: firstTask.title
-      });
-      
-      try {
-        // Reorder the first task to make a request that applies current ordering to the server
-        // When applying "My order", we're effectively moving the first task to the top position
-        // So using moveToTop parameter is appropriate
-        console.log('Applying "My order" with moveToTop parameter');
-        
-        const result = await reorderTask(
-          taskListId,
-          normalizedTaskId, // Use normalized ID
-          null, // Position at the top (unchanged)
-          0,    // Index 0 (unchanged)
-          true  // Apply reordering to the server
-        );
-        
-        if (result) {
-          showSnackbar('Task order saved successfully', 'success');
-        } else {
-          console.error('Apply order request failed, no result returned');
-          showSnackbar('Failed to save task order', 'error');
-        }
-      } catch (orderError) {
-        console.error('Error in apply order request:', orderError);
-        showSnackbar('Error saving task order', 'error');
-      }
-      
-      setIsRefreshing(false);
-    } catch (err) {
-      console.error('Error applying task order:', err);
-      showSnackbar('Error saving task order', 'error');
-      setIsRefreshing(false);
     }
   };
 
@@ -4017,68 +3985,20 @@ const GoogleTasks: React.FC = () => {
               
               <Box mb={3}>
                 <Button
-                  variant="outlined"
-                  startIcon={<SmartToyIcon />}
-                  onClick={handleOpenAIAssistant}
-                  sx={{ mb: 2 }}
+                  variant="contained"
+                  startIcon={isBreakingDown ? <CircularProgress size={20} color="inherit" /> : <SmartToyIcon />}
+                  onClick={handleAIResponse}
+                  disabled={isBreakingDown || isLoading}
+                  sx={{ 
+                    backgroundColor: '#1056F5',
+                    '&:hover': {
+                      backgroundColor: '#0D47D9',
+                    },
+                    mb: 2 
+                  }}
                 >
-                  Ask AI to help break down this task
+                  {isBreakingDown ? 'Generating subtasks...' : 'Ask AI to break down this task'}
                 </Button>
-                
-                {aiAssistantVisible && (
-                  <Box 
-                    ref={aiAssistantRef}
-                    sx={{ 
-                      border: '1px solid rgba(0, 0, 0, 0.12)', 
-                      borderRadius: 1, 
-                      p: 2, 
-                      mb: 2,
-                      bgcolor: 'rgba(240, 240, 240, 0.5)'
-                    }}
-                  >
-                    <Typography variant="subtitle2" mb={1}>
-                      AI Assistant
-                    </Typography>
-                    <Typography variant="body2" mb={2}>
-                      Our AI system can help break down "{taskToBreakdown?.task.title}" into manageable subtasks.
-                    </Typography>
-                    <Box sx={{ height: 'auto' }}>
-                      <Button 
-                        variant="contained"
-                        fullWidth
-                        onClick={handleAIResponse}
-                        disabled={isBreakingDown || isLoading}
-                        startIcon={<SmartToyIcon />}
-                        sx={{ 
-                          backgroundColor: '#1056F5',
-                          '&:hover': {
-                            backgroundColor: '#0D47D9',
-                          },
-                          mb: 2
-                        }}
-                      >
-                        Ask AI to help break down this task
-                      </Button>
-                      
-                      <Button 
-                        variant="outlined"
-                        fullWidth
-                        onClick={handleImportFromAssistant}
-                        disabled={messages.filter(msg => msg.role === 'assistant').length === 0}
-                        startIcon={<ImportExportIcon />}
-                        sx={{ mb: 2 }}
-                      >
-                        Import Subtasks from Assistant
-                      </Button>
-                      
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        1. Click "Ask AI" to open the Pulse Assistant
-                        2. Wait for the AI to respond with suggested subtasks
-                        3. Click "Import Subtasks" to use the AI's suggestions
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
               </Box>
               
               <Typography variant="subtitle1" mb={1}>
