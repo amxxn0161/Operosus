@@ -194,7 +194,7 @@ const Header: React.FC = () => {
           <ListItemText 
             primary="Home" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
+              fontWeight: 'normal',
               color: isActive('/dashboard') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -208,31 +208,15 @@ const Header: React.FC = () => {
             py: 1.8,
             mx: 1,
             borderRadius: '12px',
-            bgcolor: location.pathname.includes('/journal') || 
-                     location.pathname.includes('/entry') ||
-                     location.pathname.includes('/all-entries') ||
-                     location.pathname.includes('/insights') ? 
-                     'rgba(16, 86, 245, 0.08)' : 'transparent'
+            bgcolor: (isActive('/journal') || isActive('/all-entries')) ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <BookIcon sx={{ 
-            mr: 2, 
-            color: location.pathname.includes('/journal') || 
-                  location.pathname.includes('/entry') ||
-                  location.pathname.includes('/all-entries') ||
-                  location.pathname.includes('/insights') ? 
-                  'primary.main' : 'text.secondary',
-            fontSize: { xs: 20, sm: 22 } 
-          }} />
+          <BookIcon sx={{ mr: 2, color: (isActive('/journal') || isActive('/all-entries')) ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="Daily Journal" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
-              color: location.pathname.includes('/journal') || 
-                    location.pathname.includes('/entry') ||
-                    location.pathname.includes('/all-entries') ||
-                    location.pathname.includes('/insights') ? 
-                    'primary.main' : 'text.primary',
+              fontWeight: 'normal',
+              color: (isActive('/journal') || isActive('/all-entries')) ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
@@ -246,19 +230,19 @@ const Header: React.FC = () => {
               onClick={() => handleNavigation('/journal')}
               selected={isActive('/journal')}
               sx={{ 
-                py: 1.5, 
                 pl: 7,
+                py: 1.6,
                 mx: 1,
                 borderRadius: '12px',
                 bgcolor: isActive('/journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
               }}
             >
               <ListItemText 
-                primary="Today's Entry" 
+                primary="Daily Entry" 
                 primaryTypographyProps={{
-                  fontWeight: isActive('/journal') ? 'bold' : 'normal',
+                  fontWeight: 'normal',
                   color: isActive('/journal') ? 'primary.main' : 'text.primary',
-                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  fontSize: { xs: '0.85rem', sm: '0.9rem' }
                 }}
               />
             </ListItemButton>
@@ -267,19 +251,19 @@ const Header: React.FC = () => {
               onClick={() => handleNavigation('/all-entries')}
               selected={isActive('/all-entries')}
               sx={{ 
-                py: 1.5, 
                 pl: 7,
+                py: 1.6,
                 mx: 1,
                 borderRadius: '12px',
                 bgcolor: isActive('/all-entries') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
               }}
             >
               <ListItemText 
-                primary="All Entries" 
+                primary="View All Entries" 
                 primaryTypographyProps={{
-                  fontWeight: isActive('/all-entries') ? 'bold' : 'normal',
+                  fontWeight: 'normal',
                   color: isActive('/all-entries') ? 'primary.main' : 'text.primary',
-                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  fontSize: { xs: '0.85rem', sm: '0.9rem' }
                 }}
               />
             </ListItemButton>
@@ -288,26 +272,19 @@ const Header: React.FC = () => {
               onClick={() => handleNavigation('/insights')}
               selected={isActive('/insights')}
               sx={{ 
-                py: 1.5, 
-                pl: 7,
+                py: 1.8,
                 mx: 1,
                 borderRadius: '12px',
                 bgcolor: isActive('/insights') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
               }}
             >
-              <InsightsIcon 
-                sx={{ 
-                  mr: 1, 
-                  color: isActive('/insights') ? 'primary.main' : 'text.secondary',
-                  fontSize: { xs: 16, sm: 18 } 
-                }} 
-              />
+              <InsightsIcon sx={{ mr: 2, color: isActive('/insights') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
               <ListItemText 
-                primary="Insights" 
+                primary="Journal Insights" 
                 primaryTypographyProps={{
-                  fontWeight: isActive('/insights') ? 'bold' : 'normal',
+                  fontWeight: 'normal',
                   color: isActive('/insights') ? 'primary.main' : 'text.primary',
-                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  fontSize: { xs: '0.95rem', sm: '1rem' }
                 }}
               />
             </ListItemButton>
@@ -315,42 +292,42 @@ const Header: React.FC = () => {
         </Collapse>
         
         <ListItemButton 
-          onClick={() => handleNavigation('/tasks')}
-          selected={isActive('/tasks')}
+          onClick={() => handleNavigation('/google-tasks')}
+          selected={isActive('/google-tasks')}
           sx={{ 
             py: 1.8,
             mx: 1,
             borderRadius: '12px',
-            bgcolor: isActive('/tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+            bgcolor: isActive('/google-tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <AssignmentIcon sx={{ mr: 2, color: isActive('/tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <AssignmentIcon sx={{ mr: 2, color: isActive('/google-tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="Google Tasks" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
-              color: isActive('/tasks') ? 'primary.main' : 'text.primary',
+              fontWeight: 'normal',
+              color: isActive('/google-tasks') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
         </ListItemButton>
         
         <ListItemButton 
-          onClick={() => handleNavigation('/ai-assistant')}
-          selected={isActive('/ai-assistant')}
+          onClick={() => handleNavigation('/assistant')}
+          selected={isActive('/assistant')}
           sx={{ 
             py: 1.8,
             mx: 1,
             borderRadius: '12px',
-            bgcolor: isActive('/ai-assistant') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+            bgcolor: isActive('/assistant') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <SmartToyIcon sx={{ mr: 2, color: isActive('/ai-assistant') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <SmartToyIcon sx={{ mr: 2, color: isActive('/assistant') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="AI Assistant" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
-              color: isActive('/ai-assistant') ? 'primary.main' : 'text.primary',
+              fontWeight: 'normal',
+              color: isActive('/assistant') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
@@ -372,7 +349,7 @@ const Header: React.FC = () => {
             <ListItemText 
               primary="Admin Journal" 
               primaryTypographyProps={{
-                fontWeight: 'bold',
+                fontWeight: 'normal',
                 color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
                 fontSize: { xs: '0.95rem', sm: '1rem' }
               }}
