@@ -4,6 +4,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  DialogContentText,
   TextField,
   Button,
   Typography,
@@ -24,7 +25,9 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  InputAdornment
+  InputAdornment,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -39,8 +42,12 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import AddIcon from '@mui/icons-material/Add';
 import ReplayIcon from '@mui/icons-material/Replay';
 import StopIcon from '@mui/icons-material/Stop';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   fetchAssistantThreads, 
   getThreadMessages,
@@ -155,6 +162,7 @@ export const AIAssistantButton: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isSmallMobile = useMediaQuery('(max-width:380px)');
+  const isVerySmallMobile = useMediaQuery('(max-width:320px)');
   
   return (
     <Tooltip title="Ask AI Assistant" placement="left">
@@ -165,19 +173,19 @@ export const AIAssistantButton: React.FC = () => {
         sx={{
           position: 'fixed',
           bottom: isMobile 
-            ? (isSmallMobile ? 12 : 16) 
+            ? (isVerySmallMobile ? 8 : (isSmallMobile ? 12 : 16))
             : 24,
           right: isMobile 
-            ? (isSmallMobile ? 12 : 16) 
+            ? (isVerySmallMobile ? 8 : (isSmallMobile ? 12 : 16))
             : 24,
           boxShadow: theme.shadows[4],
           background: 'linear-gradient(45deg, #1056F5 30%, #4B7FF7 90%)',
           zIndex: 1200,
           width: isMobile 
-            ? (isSmallMobile ? 36 : 40) 
+            ? (isVerySmallMobile ? 32 : (isSmallMobile ? 36 : 40)) 
             : 48,
           height: isMobile 
-            ? (isSmallMobile ? 36 : 40) 
+            ? (isVerySmallMobile ? 32 : (isSmallMobile ? 36 : 40)) 
             : 48,
           minHeight: 'auto'
         }}
@@ -185,7 +193,7 @@ export const AIAssistantButton: React.FC = () => {
         <SmartToyIcon 
           fontSize={isMobile ? "small" : "medium"} 
           sx={{
-            fontSize: isSmallMobile ? '1.1rem' : undefined
+            fontSize: isVerySmallMobile ? '1rem' : (isSmallMobile ? '1.1rem' : undefined)
           }}
         />
       </Fab>
@@ -205,8 +213,11 @@ const AIAssistant: React.FC = () => {
     loadThreadMessages,
     setThreadId,
     threadId,
-    cancelRequest
+    cancelRequest,
+    deleteThread
   } = useAIAssistant();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [inputValue, setInputValue] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -215,10 +226,16 @@ const AIAssistant: React.FC = () => {
   const nodeRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const theme = useTheme();
+  
+  // Improved breakpoints for better mobile responsiveness
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isSmallMobile = useMediaQuery('(max-width:380px)');
   const isVerySmallMobile = useMediaQuery('(max-width:320px)');
   const isShortScreen = useMediaQuery('(max-height:670px)');
+  const isVeryShortScreen = useMediaQuery('(max-height:568px)'); // For iPhone SE and similar
+  
+  // Check if we're on the AI Assistant page
+  const isOnAssistantPage = location.pathname === '/ai-assistant';
   
   // Thread state management
   const [showThreads, setShowThreads] = useState(false);
@@ -238,6 +255,13 @@ const AIAssistant: React.FC = () => {
   
   // State to track the last prompt for retry functionality
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  
+  // Add state for thread deletion
+  const [threadToDelete, setThreadToDelete] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   
   // Calculate center position for mobile
   const mobilePosition = useMemo(() => {
@@ -508,7 +532,72 @@ const AIAssistant: React.FC = () => {
     }
   };
   
-  // Update the thread list rendering for both mobile and desktop with rename functionality
+  // Handle direct deletion click from the thread list item
+  // This shows the confirmation dialog before actually deleting the thread
+  const handleDeleteClick = (threadId: string) => {
+    if (!threadId) {
+      console.error('No thread ID provided for deletion');
+      return;
+    }
+    
+    try {
+      console.log(`Initiating delete for thread: ${threadId}`);
+      // Store the thread ID to delete
+      setThreadToDelete(threadId);
+      // Open the confirmation dialog
+      setDeleteDialogOpen(true);
+    } catch (error) {
+      console.error('Error preparing thread deletion:', error);
+    }
+  };
+  
+  // Handle confirmation of thread deletion when user confirms in the dialog
+  // This actually calls the API to delete the thread
+  const handleConfirmDelete = async () => {
+    if (!threadToDelete) {
+      console.error('Cannot confirm deletion: No thread ID specified');
+      setDeleteDialogOpen(false);
+      return;
+    }
+    
+    console.log(`Starting deletion of thread: ${threadToDelete}`);
+    setIsDeleting(true);
+    
+    try {
+      // Call the deleteThread function from the AIAssistantContext
+      const success = await deleteThread(threadToDelete);
+      
+      if (success) {
+        console.log(`Successfully deleted thread: ${threadToDelete}`);
+        
+        // Reload the threads list to reflect the change
+        await loadThreadsList();
+        
+        // If the deleted thread was the current one, reset the conversation
+        if (threadToDelete === threadId) {
+          console.log('Deleted the current active thread, clearing conversation');
+          setInputValue('');
+          clearMessages();
+        }
+      } else {
+        console.error(`Failed to delete thread: ${threadToDelete}`);
+      }
+    } catch (error) {
+      console.error(`Error during thread deletion for ${threadToDelete}:`, error);
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setThreadToDelete(null);
+    }
+  };
+  
+  // Handle cancel delete
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+    setThreadToDelete(null);
+  };
+  
+  // Update the thread list rendering to include delete option
   const renderThreadList = () => (
     <List sx={{ p: 0 }}>
       {threads.map((thread, index) => (
@@ -589,16 +678,41 @@ const AIAssistant: React.FC = () => {
                     sx: { color: 'text.secondary' }
                   }}
                 />
-                <IconButton 
-                  size="small" 
-                  onClick={(e) => handleStartRename(thread, e)}
-                  sx={{ 
-                    opacity: 0.6,
-                    '&:hover': { opacity: 1 }
-                  }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
+                <Box sx={{ display: 'flex' }}>
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => handleStartRename(thread, e)}
+                    sx={{ 
+                      opacity: 0.6,
+                      '&:hover': { opacity: 1 },
+                      p: 0.75
+                    }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(thread.thread_id);
+                    }}
+                    aria-label="delete thread"
+                    title="Delete conversation"
+                    sx={{ 
+                      opacity: 0.75,
+                      '&:hover': { 
+                        opacity: 1,
+                        color: 'error.main',
+                        bgcolor: 'rgba(211, 47, 47, 0.04)'
+                      },
+                      p: 0.75,
+                      ml: 0.5,
+                      color: 'text.secondary'
+                    }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Box>
               </>
             )}
           </ListItem>
@@ -706,7 +820,25 @@ const AIAssistant: React.FC = () => {
     cancelRequest();
   };
   
-  // Remove the separate thread view rendering and keep just the regular assistant view
+  // Function to navigate to dedicated AI Assistant page
+  const navigateToAssistantPage = () => {
+    closeAssistant();
+    navigate('/ai-assistant');
+  };
+  
+  const PaperComponent = (props: any) => {
+    return (
+      <Draggable
+        handle="#draggable-dialog-title"
+        cancel={'[class*="MuiDialogContent-root"]'}
+        bounds="parent"
+        onStop={handleDragStop}
+      >
+        <Paper {...props} />
+      </Draggable>
+    );
+  };
+
   return (
     <>
       {/* Hidden reference div positioned where we want the popover to anchor */}
@@ -734,7 +866,7 @@ const AIAssistant: React.FC = () => {
               bottom: 0,
               width: '100%',
               height: '100%',
-              zIndex: 9999,
+              zIndex: 1300, // Adjusted to ensure it's below the Dialog
               backgroundColor: 'rgba(0, 0, 0, 0.5)',
               display: 'flex',
               alignItems: 'center',
@@ -745,14 +877,16 @@ const AIAssistant: React.FC = () => {
               ref={nodeRef}
               elevation={6}
               sx={{
-                width: isVerySmallMobile ? '90%' : (isSmallMobile ? '85%' : '80%'),
-                height: isShortScreen ? '70%' : '75%',
-                maxHeight: '80vh',
+                width: isVerySmallMobile ? '94%' : (isSmallMobile ? '92%' : '90%'),
+                height: isVeryShortScreen ? '85%' : (isShortScreen ? '80%' : '75%'),
+                maxWidth: '550px',
+                maxHeight: '85vh',
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: 2,
                 overflow: 'hidden',
                 boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                m: 'auto',
               }}
             >
               {/* Header */}
@@ -761,63 +895,90 @@ const AIAssistant: React.FC = () => {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  p: isSmallMobile ? 0.75 : 1,
+                  p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
                   backgroundColor: theme.palette.primary.main,
                   color: 'white',
                   borderTopLeftRadius: 2,
                   borderTopRightRadius: 2,
+                  minHeight: isVerySmallMobile ? 40 : (isSmallMobile ? 48 : 56),
                 }}
               >
                 <Box display="flex" alignItems="center">
                   <Avatar
                     sx={{
                       bgcolor: 'white',
-                      mr: 1.5,
-                      width: isSmallMobile ? 24 : 28,
-                      height: isSmallMobile ? 24 : 28,
+                      mr: isVerySmallMobile ? 0.75 : 1.5,
+                      width: isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 28),
+                      height: isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 28),
                     }}
                   >
                     <SmartToyIcon 
                       fontSize="small" 
                       sx={{ 
                         color: theme.palette.primary.main,
-                        fontSize: isSmallMobile ? '0.8rem' : undefined
+                        fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.8rem' : undefined)
                       }} 
                     />
                   </Avatar>
                   <Typography 
-                    variant={isSmallMobile ? "body2" : "body1"} 
+                    variant={isVerySmallMobile ? "caption" : (isSmallMobile ? "body2" : "body1")} 
                     fontWeight="medium"
                   >
                     Pulse Assistant
                   </Typography>
                 </Box>
-                <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   {/* Refresh button */}
                   <IconButton 
-                    size="small" 
+                    size={isVerySmallMobile ? "small" : "small"} 
                     color="inherit" 
                     onClick={refreshConversation}
                     disabled={isRefreshing || isLoading}
                     title="Refresh conversation"
-                    sx={{ opacity: !threadId ? 0.7 : 1, mr: isSmallMobile ? 0.5 : 1 }}
+                    sx={{ 
+                      opacity: !threadId ? 0.7 : 1, 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
                   >
                     {isRefreshing ? (
-                      <CircularProgress size={isSmallMobile ? 16 : 20} color="inherit" thickness={5} />
+                      <CircularProgress size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)} color="inherit" thickness={5} />
                     ) : (
-                      <RefreshIcon fontSize="small" />
+                      <RefreshIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                        fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                      }} />
                     )}
                   </IconButton>
                   {/* History button with popover menu */}
                   <IconButton 
                     ref={historyButtonRef}
-                    size="small" 
+                    size={isVerySmallMobile ? "small" : "small"}
                     color="inherit" 
                     onClick={handleThreadsOpen}
                     title="View conversation history"
-                    sx={{ mr: isSmallMobile ? 0.5 : 1 }}
+                    sx={{ 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
                   >
-                    <HistoryIcon fontSize="small" />
+                    <HistoryIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                    }} />
+                  </IconButton>
+                  {/* Expand to full page button */}
+                  <IconButton
+                    size={isVerySmallMobile ? "small" : "small"}
+                    color="inherit"
+                    onClick={navigateToAssistantPage}
+                    title="Open in full page"
+                    sx={{ 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
+                  >
+                    <OpenInFullIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                    }} />
                   </IconButton>
                   {/* Threads menu popover */}
                   <Popper
@@ -825,7 +986,7 @@ const AIAssistant: React.FC = () => {
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 9999 }}
+                    style={{ zIndex: 1400 }} // Ensure this appears above the chat
                   >
                     {({ TransitionProps }) => (
                       <Grow
@@ -835,8 +996,8 @@ const AIAssistant: React.FC = () => {
                         <Paper
                           elevation={6}
                           sx={{
-                            width: isSmallMobile ? 240 : 280,
-                            maxHeight: 400,
+                            width: isVerySmallMobile ? 200 : (isSmallMobile ? 240 : 280),
+                            maxHeight: isShortScreen ? 300 : 400,
                             overflowY: 'auto',
                             mt: 1,
                             borderRadius: 1,
@@ -903,7 +1064,7 @@ const AIAssistant: React.FC = () => {
                   flexGrow: 1,
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  p: isSmallMobile ? 0.75 : 1,
+                  p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
                   backgroundColor: '#f5f7fa',
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#d4d4d4 #f5f7fa',
@@ -929,10 +1090,10 @@ const AIAssistant: React.FC = () => {
                   alignItems="center"
                   justifyContent="center"
                   height="100%"
-                  p={isSmallMobile ? 0.5 : 0.75}
+                  p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
                   textAlign="center"
                   sx={{
-                    maxWidth: '85%',
+                    maxWidth: isVerySmallMobile ? '95%' : (isSmallMobile ? '85%' : '75%'),
                     margin: '0 auto'
                   }}
                 >
@@ -972,7 +1133,7 @@ const AIAssistant: React.FC = () => {
                       sx={{
                         display: 'flex',
                         justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        mb: isSmallMobile ? 1 : 1.25,
+                        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
                       }}
                     >
                       {msg.role === 'assistant' && (
@@ -981,12 +1142,12 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.primary.main,
                             mr: 1,
                             alignSelf: 'flex-start',
-                            width: isSmallMobile ? 20 : 24,
-                            height: isSmallMobile ? 20 : 24,
+                            width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                            height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                           }}
                         >
                           <SmartToyIcon sx={{ 
-                            fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
                           }} />
                         </Avatar>
                       )}
@@ -994,8 +1155,8 @@ const AIAssistant: React.FC = () => {
                       <Paper
                         elevation={0}
                         sx={{
-                          p: isSmallMobile ? 0.75 : 1,
-                          maxWidth: isSmallMobile ? '80%' : '82%',
+                          p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                          maxWidth: isVerySmallMobile ? '85%' : (isSmallMobile ? '80%' : '82%'),
                           borderRadius: 2,
                           backgroundColor: msg.role === 'user'
                             ? theme.palette.primary.main
@@ -1011,7 +1172,7 @@ const AIAssistant: React.FC = () => {
                           ? <Typography 
                               variant="body2" 
                               sx={{ 
-                                fontSize: isSmallMobile ? '0.75rem' : '0.8rem',
+                                fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
                                 wordBreak: 'break-word' 
                               }}
                             >
@@ -1019,7 +1180,7 @@ const AIAssistant: React.FC = () => {
                             </Typography>
                           : <Box sx={{ 
                               '& .MuiTypography-root': { 
-                                fontSize: isSmallMobile ? '0.75rem' : '0.8rem',
+                                fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
                                 wordBreak: 'break-word'
                               } 
                             }}>
@@ -1043,8 +1204,8 @@ const AIAssistant: React.FC = () => {
                                       onClick={handleRetry}
                                       startIcon={<ReplayIcon fontSize="small" />}
                                       sx={{ 
-                                        fontSize: isSmallMobile ? '0.7rem' : '0.75rem',
-                                        py: isSmallMobile ? 0.5 : 0.75
+                                        fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
+                                        py: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)
                                       }}
                                     >
                                       Retry
@@ -1078,7 +1239,7 @@ const AIAssistant: React.FC = () => {
                       sx={{
                         display: 'flex',
                         justifyContent: 'flex-start',
-                        mb: isSmallMobile ? 1 : 1.25,
+                        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
                       }}
                     >
                       <Avatar
@@ -1086,32 +1247,34 @@ const AIAssistant: React.FC = () => {
                           bgcolor: theme.palette.primary.main,
                           mr: 1,
                           alignSelf: 'flex-start',
-                          width: isSmallMobile ? 20 : 24,
-                          height: isSmallMobile ? 20 : 24,
+                          width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                          height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                         }}
                       >
                         <SmartToyIcon sx={{ 
-                          fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                          fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
                         }} />
                       </Avatar>
 
                       <Paper
                         elevation={0}
                         sx={{
-                          p: isSmallMobile ? 1 : 1.5,
+                          p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
                           borderRadius: 2,
                           backgroundColor: 'white',
                           display: 'flex',
                           alignItems: 'center',
-                          minWidth: isSmallMobile ? '60px' : '80px',
+                          minWidth: isVerySmallMobile ? '50px' : (isSmallMobile ? '60px' : '80px'),
                         }}
                       >
                         <CircularProgress 
-                          size={isSmallMobile ? 16 : 20}
+                          size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)}
                           thickness={5} 
                           sx={{ mr: 1 }}
                         />
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: isSmallMobile ? '0.7rem' : '0.8rem' }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ 
+                          fontSize: isVerySmallMobile ? '0.65rem' : (isSmallMobile ? '0.7rem' : '0.8rem')
+                        }}>
                           Processing...
                         </Typography>
                       </Paper>
@@ -1127,11 +1290,11 @@ const AIAssistant: React.FC = () => {
                 component="form"
                 onSubmit={handleSendMessage}
                 sx={{
-                  p: isSmallMobile ? 0.75 : 1, 
+                  p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5), 
                   borderTop: '1px solid #e0e0e0',
                   backgroundColor: 'white',
-                  pt: isSmallMobile ? 0.4 : 0.6,
-                  pb: isSmallMobile ? 0.4 : 0.6
+                  pt: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                  pb: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1)
                 }}
               >
                 <TextField
@@ -1142,7 +1305,7 @@ const AIAssistant: React.FC = () => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleInputKeyDown}
                   multiline
-                  maxRows={2}
+                  maxRows={isVerySmallMobile ? 1 : (isSmallMobile ? 2 : 3)}
                   disabled={isLoading}
                   size="small"
                   inputRef={inputRef}
@@ -1151,7 +1314,11 @@ const AIAssistant: React.FC = () => {
                       borderRadius: '20px',
                       backgroundColor: theme.palette.background.paper,
                       pr: 1,
-                      fontSize: isSmallMobile ? '0.8rem' : '0.85rem',
+                      fontSize: isVerySmallMobile ? '0.75rem' : (isSmallMobile ? '0.8rem' : '0.85rem'),
+                      ...(isVerySmallMobile && {
+                        py: 0.3,
+                        px: 0.75
+                      }),
                       ...(isSmallMobile && {
                         py: 0.5,
                         px: 1
@@ -1267,30 +1434,55 @@ const AIAssistant: React.FC = () => {
                 <Box className="cancel-drag">
                   {/* Refresh button */}
                   <IconButton 
-                    size="small" 
+                    size={isVerySmallMobile ? "small" : "small"} 
                     color="inherit" 
                     onClick={refreshConversation}
                     disabled={isRefreshing || isLoading}
                     title="Refresh conversation"
-                    sx={{ opacity: !threadId ? 0.7 : 1, mr: isSmallMobile ? 0.5 : 1 }}
+                    sx={{ 
+                      opacity: !threadId ? 0.7 : 1, 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
                   >
                     {isRefreshing ? (
-                      <CircularProgress size={isSmallMobile ? 16 : 20} color="inherit" thickness={5} />
+                      <CircularProgress size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)} color="inherit" thickness={5} />
                     ) : (
-                      <RefreshIcon fontSize="small" />
+                      <RefreshIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                        fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                      }} />
                     )}
                   </IconButton>
-                  {/* History button with dropdown */}
+                  {/* History button with popover menu */}
                   <IconButton 
                     ref={historyButtonRef}
-                    size="small" 
+                    size={isVerySmallMobile ? "small" : "small"}
                     color="inherit" 
                     onClick={handleThreadsOpen}
                     title="View conversation history"
-                    className="cancel-drag"
-                    sx={{ mr: 0.5 }}
+                    sx={{ 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
                   >
-                    <HistoryIcon fontSize="small" />
+                    <HistoryIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                    }} />
+                  </IconButton>
+                  {/* Expand to full page button */}
+                  <IconButton
+                    size={isVerySmallMobile ? "small" : "small"}
+                    color="inherit"
+                    onClick={navigateToAssistantPage}
+                    title="Open in full page"
+                    sx={{ 
+                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
+                      p: isVerySmallMobile ? 0.5 : undefined
+                    }}
+                  >
+                    <OpenInFullIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
+                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
+                    }} />
                   </IconButton>
                   {/* Threads menu popover */}
                   <Popper
@@ -1298,8 +1490,7 @@ const AIAssistant: React.FC = () => {
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 9999 }}
-                    className="cancel-drag"
+                    style={{ zIndex: 1400 }} // Ensure this appears above the chat
                   >
                     {({ TransitionProps }) => (
                       <Grow
@@ -1309,8 +1500,8 @@ const AIAssistant: React.FC = () => {
                         <Paper
                           elevation={6}
                           sx={{
-                            width: 280,
-                            maxHeight: 400,
+                            width: isVerySmallMobile ? 200 : (isSmallMobile ? 240 : 280),
+                            maxHeight: isShortScreen ? 300 : 400,
                             overflowY: 'auto',
                             mt: 1,
                             borderRadius: 1,
@@ -1515,7 +1706,7 @@ const AIAssistant: React.FC = () => {
                         sx={{
                           display: 'flex',
                           justifyContent: 'flex-start',
-                          mb: isSmallMobile ? 1 : 1.25,
+                          mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
                         }}
                       >
                         <Avatar
@@ -1523,32 +1714,34 @@ const AIAssistant: React.FC = () => {
                             bgcolor: theme.palette.primary.main,
                             mr: 1,
                             alignSelf: 'flex-start',
-                            width: isSmallMobile ? 20 : 24,
-                            height: isSmallMobile ? 20 : 24,
+                            width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                            height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                           }}
                         >
                           <SmartToyIcon sx={{ 
-                            fontSize: isSmallMobile ? '0.65rem' : '0.75rem'
+                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
                           }} />
                         </Avatar>
 
                         <Paper
                           elevation={0}
                           sx={{
-                            p: isSmallMobile ? 1 : 1.5,
+                            p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
                             borderRadius: 2,
                             backgroundColor: 'white',
                             display: 'flex',
                             alignItems: 'center',
-                            minWidth: isSmallMobile ? '60px' : '80px',
+                            minWidth: isVerySmallMobile ? '50px' : (isSmallMobile ? '60px' : '80px'),
                           }}
                         >
                           <CircularProgress 
-                            size={isSmallMobile ? 16 : 20}
+                            size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)}
                             thickness={5} 
                             sx={{ mr: 1 }}
                           />
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: isSmallMobile ? '0.7rem' : '0.8rem' }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ 
+                            fontSize: isVerySmallMobile ? '0.65rem' : (isSmallMobile ? '0.7rem' : '0.8rem')
+                          }}>
                             Processing...
                           </Typography>
                         </Paper>
@@ -1634,12 +1827,55 @@ const AIAssistant: React.FC = () => {
         )
       )}
 
-      {/* Floating button to open assistant */}
-      {!isOpen && (
+      {/* Floating button to open assistant - don't show on the dedicated page */}
+      {!isOpen && !isOnAssistantPage && (
         <Box>
           <AIAssistantButton />
         </Box>
       )}
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleCancelDelete}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+        sx={{ 
+          zIndex: 1500, // Higher than any other component
+          '& .MuiDialog-paper': {
+            width: isMobile ? 'calc(100% - 32px)' : 'auto',
+            maxWidth: '450px',
+            mx: 'auto',
+          }
+        }}
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Conversation
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete this conversation? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleCancelDelete} 
+            color="primary"
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            color="error" 
+            autoFocus
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={16} /> : <DeleteOutlineIcon />}
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

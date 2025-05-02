@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, createTheme, responsiveFontSizes } from '@mui/material';
 import '@fontsource/poppins/300.css';
 import '@fontsource/poppins/400.css';
@@ -25,6 +25,7 @@ import GoogleTasks from './pages/GoogleTasks';
 import Layout from './components/Layout';
 import MockDataToggle from './components/MockDataToggle';
 import AIAssistant from './components/AIAssistant';
+import AIAssistantPage from './pages/AIAssistantPage';
 
 // Create a custom theme with mobile-first approach
 let theme = createTheme({
@@ -215,71 +216,80 @@ let theme = createTheme({
 // Apply responsive font sizes to the theme
 theme = responsiveFontSizes(theme);
 
-// Create a ProtectedRoute component
+// Use a protected route component to handle auth checks
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // In a real app, we would check authentication status here
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+  const token = localStorage.getItem('authToken');
   
-  if (!isAuthenticated) {
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
   
   return <>{children}</>;
 };
 
+// Create a wrapper component for conditional rendering based on route
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  // Hide sample data controls on specific pages
+  const shouldHideSampleControls = 
+    location.pathname === '/ai-assistant' || 
+    location.pathname.includes('/calendar') ||
+    location.pathname === '/dashboard' ||
+    location.pathname === '/tasks' ||
+    location.pathname.includes('/tasks');
+  
+  return (
+    <AuthProvider>
+      <JournalProvider>
+        <CalendarProvider>
+          <GoogleTasksProvider>
+            <AIAssistantProvider>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="journal" element={<Journal />} />
+                  <Route path="all-entries" element={<AllEntries />} />
+                  <Route path="entry/:entryId" element={<EntryDetail />} />
+                  <Route path="worksheet/:worksheetId" element={<Worksheet />} />
+                  <Route path="worksheet" element={<Worksheet />} />
+                  <Route path="insights" element={<JournalInsights />} />
+                  <Route path="diagnostic" element={<DiagnosticPage />} />
+                  <Route path="tasks" element={<GoogleTasks />} />
+                  <Route path="ai-assistant" element={<AIAssistantPage />} />
+                  
+                  {/* Admin routes */}
+                  <Route path="admin-journal" element={<AdminJournal />} />
+                </Route>
+                
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+              
+              {/* AI Assistant is always available */}
+              <AIAssistant />
+              {/* Add the toggle for mock data in development only when not on specific pages */}
+              {process.env.NODE_ENV === 'development' && !shouldHideSampleControls && <MockDataToggle />}
+            </AIAssistantProvider>
+          </GoogleTasksProvider>
+        </CalendarProvider>
+      </JournalProvider>
+    </AuthProvider>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <JournalProvider>
-          <CalendarProvider>
-            <AIAssistantProvider>
-              <GoogleTasksProvider>
-                <Router>
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/" element={<Layout />}>
-                      <Route index element={<Navigate replace to="/dashboard" />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/journal" element={<Journal />} />
-                      <Route path="/journal-insights" element={<JournalInsights />} />
-                      <Route path="/entry/:entryId" element={
-                        <ProtectedRoute>
-                          <EntryDetail />
-                        </ProtectedRoute>
-                      } />
-                      <Route path="/worksheet" element={
-                        <ProtectedRoute>
-                          <Worksheet />
-                        </ProtectedRoute>
-                      } />
-                      <Route path="/all-entries" element={
-                        <ProtectedRoute>
-                          <AllEntries />
-                        </ProtectedRoute>
-                      } />
-                      <Route path="/google-tasks" element={
-                        <ProtectedRoute>
-                          <GoogleTasks />
-                        </ProtectedRoute>
-                      } />
-                      <Route path="/diagnostic" element={<DiagnosticPage />} />
-                      <Route path="/admin-journal" element={
-                        <ProtectedRoute>
-                          <AdminJournal />
-                        </ProtectedRoute>
-                      } />
-                    </Route>
-                  </Routes>
-                  {/* AI Assistant is available globally */}
-                  <AIAssistant />
-                </Router>
-              </GoogleTasksProvider>
-            </AIAssistantProvider>
-          </CalendarProvider>
-        </JournalProvider>
-      </AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
     </ThemeProvider>
   );
 };

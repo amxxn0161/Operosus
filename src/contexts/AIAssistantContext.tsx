@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
-import { Message, sendAssistantMessage, getThreadMessages, getThreadMessagesWithRetry } from '../services/assistantService';
+import { Message, sendAssistantMessage, getThreadMessages, getThreadMessagesWithRetry, deleteThread as apiDeleteThread } from '../services/assistantService';
 
 interface ScreenContext {
   currentPath: string;
@@ -21,6 +21,7 @@ interface AIAssistantContextType {
   setThreadId: (threadId: string | undefined) => void;
   updateScreenContext: (context: Partial<ScreenContext>) => void;
   cancelRequest: () => void;
+  deleteThread: (threadId: string) => Promise<boolean>;
 }
 
 const AIAssistantContext = createContext<AIAssistantContextType | undefined>(undefined);
@@ -616,6 +617,26 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
     setThreadId(undefined);
   };
 
+  // Function to delete a thread
+  const handleDeleteThread = async (threadIdToDelete: string): Promise<boolean> => {
+    try {
+      console.log(`Attempting to delete thread ${threadIdToDelete}`);
+      
+      // If the thread to delete is the current thread, reset state
+      if (threadIdToDelete === threadId) {
+        clearMessages();
+      }
+      
+      // Call the API to delete the thread
+      const success = await apiDeleteThread(threadIdToDelete);
+      
+      return success;
+    } catch (error) {
+      console.error(`Error deleting thread ${threadIdToDelete}:`, error);
+      return false;
+    }
+  };
+
   return (
     <AIAssistantContext.Provider
       value={{
@@ -630,7 +651,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         loadThreadMessages,
         setThreadId,
         updateScreenContext,
-        cancelRequest
+        cancelRequest,
+        deleteThread: handleDeleteThread
       }}
     >
       {children}

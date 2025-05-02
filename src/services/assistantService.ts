@@ -353,4 +353,41 @@ export const getThreadMessagesWithRetry = async (
   }
   
   return null;
+};
+
+/**
+ * Delete a conversation thread
+ * @param threadId The ID of the thread to delete
+ * @returns True if the thread was deleted successfully, false otherwise
+ */
+export const deleteThread = async (threadId: string): Promise<boolean> => {
+  try {
+    console.log(`Attempting to delete thread ${threadId}`);
+    
+    const response = await apiRequest<{status: string; message: string}>(`/api/assistant/thread/${threadId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response && response.status === 'success') {
+      console.log(`Thread ${threadId} deleted successfully`);
+      return true;
+    } else {
+      console.warn(`Failed to delete thread ${threadId}:`, response);
+      return false;
+    }
+  } catch (error) {
+    console.error(`Error deleting thread ${threadId}:`, error);
+    
+    // Log more detailed error information
+    if (error && typeof error === 'object' && 'response' in error) {
+      const axiosError = error as any;
+      console.error('API response error details:', {
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data
+      });
+    }
+    
+    return false;
+  }
 }; 

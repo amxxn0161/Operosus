@@ -30,6 +30,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import InsightsIcon from '@mui/icons-material/Insights';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 
@@ -200,81 +201,156 @@ const Header: React.FC = () => {
           />
         </ListItemButton>
         
-        {/* Daily Journal with collapsible submenu */}
-        <Box>
-          <ListItemButton 
-            onClick={() => handleNavigation('/journal')}
-            selected={isActive('/journal')}
-            sx={{ 
-              py: 1.8,
-              mx: 1,
-              borderRadius: '12px',
-              bgcolor: isActive('/journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-            }}
-          >
-            <BookIcon sx={{ mr: 2, color: isActive('/journal') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
-            <ListItemText 
-              primary="Daily Journal" 
-              primaryTypographyProps={{
-                fontWeight: 'bold',
-                color: isActive('/journal') ? 'primary.main' : 'text.primary',
-                fontSize: { xs: '0.95rem', sm: '1rem' }
-              }}
-            />
-            <IconButton 
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent the parent ListItemButton click from firing
-                handleJournalSubmenuToggle();
-              }}
-              size="small"
-              sx={{ p: 0.5 }}
-            >
-              {journalSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
-            </IconButton>
-          </ListItemButton>
-          
-          <Collapse in={journalSubmenuOpen} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
-              <ListItemButton 
-                onClick={() => handleNavigation('/journal-insights')} 
-                selected={isActive('/journal-insights')}
-                sx={{ 
-                  py: 1.5, 
-                  pl: 6,
-                  mx: 1,
-                  borderRadius: '12px',
-                  bgcolor: isActive('/journal-insights') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-                }}
-              >
-                <InsightsIcon sx={{ mr: 2, color: isActive('/journal-insights') ? 'primary.main' : 'text.secondary', fontSize: { xs: 18, sm: 20 } }} />
-                <ListItemText 
-                  primary="Journal Insights" 
-                  primaryTypographyProps={{
-                    color: isActive('/journal-insights') ? 'primary.main' : 'text.primary',
-                    fontSize: { xs: '0.9rem', sm: '0.95rem' }
-                  }}
-                />
-              </ListItemButton>
-            </List>
-          </Collapse>
-        </Box>
-        
+        {/* Journal menu item with submenu */}
         <ListItemButton 
-          onClick={() => handleNavigation('/google-tasks')}
-          selected={isActive('/google-tasks')}
+          onClick={handleJournalSubmenuToggle}
           sx={{ 
             py: 1.8,
             mx: 1,
             borderRadius: '12px',
-            bgcolor: isActive('/google-tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+            bgcolor: location.pathname.includes('/journal') || 
+                     location.pathname.includes('/entry') ||
+                     location.pathname.includes('/all-entries') ||
+                     location.pathname.includes('/insights') ? 
+                     'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <AssignmentIcon sx={{ mr: 2, color: isActive('/google-tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <BookIcon sx={{ 
+            mr: 2, 
+            color: location.pathname.includes('/journal') || 
+                  location.pathname.includes('/entry') ||
+                  location.pathname.includes('/all-entries') ||
+                  location.pathname.includes('/insights') ? 
+                  'primary.main' : 'text.secondary',
+            fontSize: { xs: 20, sm: 22 } 
+          }} />
+          <ListItemText 
+            primary="Daily Journal" 
+            primaryTypographyProps={{
+              fontWeight: 'bold',
+              color: location.pathname.includes('/journal') || 
+                    location.pathname.includes('/entry') ||
+                    location.pathname.includes('/all-entries') ||
+                    location.pathname.includes('/insights') ? 
+                    'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
+            }}
+          />
+          {journalSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
+        </ListItemButton>
+        
+        {/* Journal submenu */}
+        <Collapse in={journalSubmenuOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItemButton 
+              onClick={() => handleNavigation('/journal')}
+              selected={isActive('/journal')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <ListItemText 
+                primary="Today's Entry" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/journal') ? 'bold' : 'normal',
+                  color: isActive('/journal') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+            
+            <ListItemButton 
+              onClick={() => handleNavigation('/all-entries')}
+              selected={isActive('/all-entries')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/all-entries') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <ListItemText 
+                primary="All Entries" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/all-entries') ? 'bold' : 'normal',
+                  color: isActive('/all-entries') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+            
+            <ListItemButton 
+              onClick={() => handleNavigation('/insights')}
+              selected={isActive('/insights')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/insights') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <InsightsIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: isActive('/insights') ? 'primary.main' : 'text.secondary',
+                  fontSize: { xs: 16, sm: 18 } 
+                }} 
+              />
+              <ListItemText 
+                primary="Insights" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/insights') ? 'bold' : 'normal',
+                  color: isActive('/insights') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+          </List>
+        </Collapse>
+        
+        <ListItemButton 
+          onClick={() => handleNavigation('/tasks')}
+          selected={isActive('/tasks')}
+          sx={{ 
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
+            bgcolor: isActive('/tasks') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+          }}
+        >
+          <AssignmentIcon sx={{ mr: 2, color: isActive('/tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
             primary="Google Tasks" 
             primaryTypographyProps={{
               fontWeight: 'bold',
-              color: isActive('/google-tasks') ? 'primary.main' : 'text.primary',
+              color: isActive('/tasks') ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
+            }}
+          />
+        </ListItemButton>
+        
+        <ListItemButton 
+          onClick={() => handleNavigation('/ai-assistant')}
+          selected={isActive('/ai-assistant')}
+          sx={{ 
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
+            bgcolor: isActive('/ai-assistant') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+          }}
+        >
+          <SmartToyIcon sx={{ mr: 2, color: isActive('/ai-assistant') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <ListItemText 
+            primary="AI Assistant" 
+            primaryTypographyProps={{
+              fontWeight: 'bold',
+              color: isActive('/ai-assistant') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
@@ -308,32 +384,33 @@ const Header: React.FC = () => {
       <Divider sx={{ my: 2 }} />
 
       {isAuthenticated && (
-        <Box sx={{ p: 2 }}>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            mb: 2
-          }}>
+        <Box sx={{ position: 'absolute', bottom: 0, width: '100%', borderTop: '1px solid #e8e8e8', p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
             <Avatar 
               sx={{ 
-                width: { xs: 35, sm: 38 }, 
-                height: { xs: 35, sm: 38 }, 
-                bgcolor: 'primary.main',
-                fontFamily: 'Poppins',
-                mr: 2
+                width: 36, 
+                height: 36, 
+                mr: 1.5, 
+                bgcolor: 'primary.main' 
               }}
             >
               {getUserInitials()}
             </Avatar>
-            <Typography variant="body1" sx={{ fontWeight: 'medium', fontSize: { xs: '0.95rem', sm: '1rem' } }}>
-              {user && user.name ? user.name : localStorage.getItem('userName') || 'User'}
-            </Typography>
+            <Box>
+              <Typography variant="subtitle2" noWrap sx={{ maxWidth: 180 }}>
+                {user?.name || localStorage.getItem('userName') || 'User'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 180, fontSize: '0.75rem' }}>
+                {user?.email || localStorage.getItem('userEmail') || 'user@example.com'}
+              </Typography>
+            </Box>
           </Box>
           <Button 
-            fullWidth 
             variant="outlined" 
+            color="primary" 
+            fullWidth 
             onClick={handleLogout}
-            sx={{ textTransform: 'none', py: { xs: 1, sm: 1.2 } }}
+            size="small"
           >
             Sign out
           </Button>
