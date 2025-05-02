@@ -191,7 +191,7 @@ const AIAssistantPage: React.FC = () => {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [showThreadsList, setShowThreadsList] = useState(!isMobile); // Default open on desktop
-  const [sidebarWidth, setSidebarWidth] = useState(isMobile ? '100%' : (isTablet ? 350 : 420));
+  const [sidebarWidth, setSidebarWidth] = useState(isMobile ? '100%' : (isTablet ? 350 : 450));
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef<number | null>(null);
   const initialWidth = useRef<number | null>(null);
