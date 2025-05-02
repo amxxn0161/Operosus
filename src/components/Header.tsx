@@ -194,7 +194,7 @@ const Header: React.FC = () => {
           <ListItemText 
             primary="Home" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
+              fontWeight: isActive('/dashboard') ? 'bold' : 'normal',
               color: isActive('/dashboard') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -227,7 +227,11 @@ const Header: React.FC = () => {
           <ListItemText 
             primary="Daily Journal" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
+              fontWeight: location.pathname.includes('/journal') || 
+                    location.pathname.includes('/entry') ||
+                    location.pathname.includes('/all-entries') ||
+                    location.pathname.includes('/insights') ? 
+                    'bold' : 'normal',
               color: location.pathname.includes('/journal') || 
                     location.pathname.includes('/entry') ||
                     location.pathname.includes('/all-entries') ||
@@ -328,7 +332,7 @@ const Header: React.FC = () => {
           <ListItemText 
             primary="Google Tasks" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
+              fontWeight: isActive('/tasks') ? 'bold' : 'normal',
               color: isActive('/tasks') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -349,7 +353,7 @@ const Header: React.FC = () => {
           <ListItemText 
             primary="AI Assistant" 
             primaryTypographyProps={{
-              fontWeight: 'bold',
+              fontWeight: isActive('/ai-assistant') ? 'bold' : 'normal',
               color: isActive('/ai-assistant') ? 'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -372,7 +376,7 @@ const Header: React.FC = () => {
             <ListItemText 
               primary="Admin Journal" 
               primaryTypographyProps={{
-                fontWeight: 'bold',
+                fontWeight: isActive('/admin-journal') ? 'bold' : 'normal',
                 color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
                 fontSize: { xs: '0.95rem', sm: '1rem' }
               }}
