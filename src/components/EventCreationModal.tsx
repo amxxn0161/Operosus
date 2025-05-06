@@ -20,11 +20,16 @@ import {
   Chip,
   Paper,
   useMediaQuery,
-  useTheme
+  useTheme,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { format } from 'date-fns';
 import { CalendarEvent } from '../services/calendarService';
 import { useCalendar } from '../contexts/CalendarContext';
@@ -34,6 +39,15 @@ interface Attendee {
   email: string;
   optional?: boolean;
   responseStatus?: 'needsAction' | 'declined' | 'tentative' | 'accepted';
+}
+
+// Add interface for task type
+interface Task {
+  id: string;
+  title: string;
+  completed: boolean;
+  notes?: string;
+  task_list_id?: string | null;
 }
 
 interface EventCreationModalProps {
@@ -49,7 +63,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   selectedDate,
   selectedTime
 }) => {
-  const { addEvent } = useCalendar();
+  const { addEvent, createFocusTimeWithTasks, createEventWithTasks } = useCalendar();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -99,6 +113,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [newAttendeeOptional, setNewAttendeeOptional] = useState(false);
   const [attendeeError, setAttendeeError] = useState<string | null>(null);
   
+  // Tasks state for focus time events
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [taskError, setTaskError] = useState<string | null>(null);
+  
   // Form validation
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,6 +154,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       if (end < start) {
         newErrors.endDate = 'End date/time must be after start date/time';
       }
+    }
+    
+    // Check if at least one task is added for focus time events
+    if (eventType === 'focusTime' && tasks.length === 0) {
+      newErrors.tasks = 'At least one task is required for focus time events';
     }
     
     setErrors(newErrors);
@@ -178,6 +202,34 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setAttendees(attendees.filter(attendee => attendee.email !== email));
   };
 
+  // Function to add a task
+  const addTask = () => {
+    // Reset error
+    setTaskError(null);
+    
+    if (!newTaskTitle.trim()) {
+      setTaskError('Task title cannot be empty');
+      return;
+    }
+    
+    // Add new task
+    const newTask: Task = {
+      id: Date.now().toString(), // Simple unique ID
+      title: newTaskTitle.trim(),
+      completed: false
+    };
+    
+    setTasks([...tasks, newTask]);
+    
+    // Reset input field
+    setNewTaskTitle('');
+  };
+  
+  // Function to remove a task
+  const removeTask = (id: string) => {
+    setTasks(tasks.filter(task => task.id !== id));
+  };
+
   const handleSubmit = async () => {
     // Clear any previous API errors
     setApiError(null);
@@ -215,6 +267,16 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       // Add attendees if there are any - ensure it's always an array
       newEvent.attendees = attendees.length > 0 ? [...attendees] : [];
       
+      // Check if there are tasks to add regardless of event type
+      const hasTasks = tasks.length > 0;
+      
+      // Format tasks for API
+      const formattedTasks = hasTasks ? tasks.map(task => ({
+        title: task.title,
+        notes: "", // Optional notes field
+        task_list_id: null // Use default task list
+      })) : [];
+      
       // Handle special event types
       if (eventType === 'outOfOffice') {
         // Force Out of Office events to be all-day
@@ -233,7 +295,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           newEvent.outOfOfficeProperties.declineMessage = description;
         }
         
-        // Remove transparency property - it's set automatically by the backend
+        // Out of Office events don't support tasks
+        await addEvent(newEvent, false);
       } else if (eventType === 'focusTime') {
         // Set the eventType field to focusTime
         newEvent.eventType = 'focusTime';
@@ -251,21 +314,42 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           newEvent.focusTimeProperties.autoDeclineMode = "declineOnlyNewConflictingInvitations";
         }
         
-        // Add decline message if description exists
+        // Add declineMessage if description exists, otherwise use default
         if (description) {
           newEvent.focusTimeProperties.declineMessage = description;
-        } else if (autoDeclineMeetings) {
-          // Add a default decline message if auto-decline is enabled but no description
+        } else {
           newEvent.focusTimeProperties.declineMessage = "Declined because I am in focus time.";
         }
         
-        // Ensure we're using dateTime format for Focus Time events
-        const startDateTime = new Date(`${startDate}T${isAllDay ? '00:00:00' : startTime}`);
-        const endDateTime = new Date(`${endDate}T${isAllDay ? '23:59:59' : endTime}`);
-        
-        // Override the start and end format
-        newEvent.start = startDateTime.toISOString();
-        newEvent.end = endDateTime.toISOString();
+        // If this is a focus time event with tasks, use the dedicated endpoint
+        if (hasTasks) {
+          // Create payload for the focus-time-with-tasks endpoint - matching the Laravel controller requirements
+          const focusTimeWithTasksPayload = {
+            summary: title,
+            description: description || "",
+            location: location || "",
+            colorId: "", // Default empty string
+            attendees: [],
+            start: {
+              dateTime: startDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            end: {
+              dateTime: endDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            focusTimeProperties: newEvent.focusTimeProperties, // Include focus time settings
+            tasks: formattedTasks  // This is the required tasks array
+          };
+          
+          console.log('Creating focus time event with tasks:', JSON.stringify(focusTimeWithTasksPayload, null, 2));
+          
+          // Use the dedicated method for focus time with tasks
+          await createFocusTimeWithTasks(focusTimeWithTasksPayload);
+        } else {
+          // For focus time events without tasks, we'll use the regular event endpoint
+          await addEvent(newEvent, false);
+        }
       } else if (eventType === 'workingLocation') {
         // Set the eventType field to workingLocation
         newEvent.eventType = 'workingLocation';
@@ -279,39 +363,48 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (location) {
           newEvent.workingLocationProperties.customLocation = location;
         }
+        
+        // Working Location events don't support tasks
+        await addEvent(newEvent, false);
       } else {
         // For regular events, just set the colorId
-        newEvent.colorId = eventType;
-      }
-      
-      console.log('Creating new event with properties:', JSON.stringify(newEvent, null, 2));
-      
-      // Add event using context function (which handles API call)
-      try {
-        // Pass the addGoogleMeet parameter to tell the backend to create a Google Meet link
-        await addEvent(newEvent, addGoogleMeet);
-        // Close modal and reset form
-        handleClose();
-      } catch (apiError: any) {
-        console.error('API Error creating event:', apiError);
-        // Get more detailed error message
-        let errorMessage = 'Failed to create event. Please try again.';
-        
-        if (apiError.message) {
-          errorMessage = apiError.message;
+        if (eventType !== 'default') {
+          newEvent.colorId = eventType;
         }
         
-        // Special handling for 500 errors
-        if (apiError.status === 500 || errorMessage.includes('500')) {
-          if (eventType === 'outOfOffice') {
-            errorMessage = 'Server error creating Out of Office event. The Google Calendar API may be unavailable or the event format is incorrect.';
-          } else {
-            errorMessage = 'Server error creating event. The calendar API may be temporarily unavailable.';
-          }
+        // If there are tasks, use the dedicated events-with-tasks endpoint
+        if (hasTasks) {
+          // Create payload for the events-with-tasks endpoint
+          const eventWithTasksPayload = {
+            summary: title,
+            description: description || "",
+            location: location || "",
+            colorId: newEvent.colorId || "",
+            attendees: newEvent.attendees,
+            start: {
+              dateTime: startDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            end: {
+              dateTime: endDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            tasks: formattedTasks // Include tasks array
+          };
+          
+          console.log('Creating regular event with tasks:', JSON.stringify(eventWithTasksPayload, null, 2));
+          
+          // Use the dedicated method for events with tasks
+          await createEventWithTasks(eventWithTasksPayload);
+        } else {
+          // For regular events without tasks, use standard endpoint
+          // Setup Google Meet if requested
+          await addEvent(newEvent, addGoogleMeet);
         }
-        
-        setApiError(errorMessage);
       }
+      
+      // Close modal and reset form
+      handleClose();
     } catch (error) {
       console.error('Error creating event:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to create event. Please try again.');
@@ -326,48 +419,80 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setDescription('');
     setLocation('');
     setEventType('default');
+    
+    // Reset time values to defaults based on selected date
+    const initialStart = getInitialStartTime();
+    const initialEnd = getInitialEndTime(initialStart);
+    setStartDate(format(initialStart, 'yyyy-MM-dd'));
+    setStartTime(format(initialStart, 'HH:mm'));
+    setEndDate(format(initialEnd, 'yyyy-MM-dd'));
+    setEndTime(format(initialEnd, 'HH:mm'));
+    
+    // Reset other form options
     setIsAllDay(false);
     setDoNotDisturb(true);
     setAutoDeclineMeetings(true);
     setAddGoogleMeet(false);
-    setErrors({});
-    setApiError(null);
+    
+    // Reset attendees
     setAttendees([]);
     setNewAttendeeEmail('');
     setNewAttendeeOptional(false);
     setAttendeeError(null);
     
-    // Call onClose prop
+    // Reset tasks
+    setTasks([]);
+    setNewTaskTitle('');
+    setTaskError(null);
+    
+    // Reset form validation and API state
+    setErrors({});
+    setIsSubmitting(false);
+    setApiError(null);
+    
+    // Close the modal
     onClose();
   };
 
   // Handle automatic all-day selection for Out of Office
   const handleEventTypeChange = (newType: string) => {
+    // Set new type
     setEventType(newType);
     
-    // When selecting Out of Office
+    // Adjust form based on event type
     if (newType === 'outOfOffice') {
-      // Automatically check the All Day box
+      // Out of Office events are always all-day in Google Calendar
       setIsAllDay(true);
       
-      // Auto-fill the title with "Out of Office"
-      setTitle('Out of Office');
+      // Reset attendees for OOO events
+      setAttendees([]);
+    } else if (newType === 'workingLocation') {
+      // Working Location events are always all-day
+      setIsAllDay(true);
       
-      // If no description is set, provide a default decline message
-      if (!description) {
-        setDescription('I am out of office');
-      }
-    }
-    // When selecting Focus Time
-    else if (newType === 'focusTime') {
-      // Auto-fill the title if empty
-      if (!title) {
-        setTitle('Focus Time');
-      }
-      
-      // Set default values for Focus Time options
+      // Reset attendees for Working Location events
+      setAttendees([]);
+    } else if (newType === 'focusTime') {
+      // Focus time events usually have Do Not Disturb and Auto-decline enabled
       setDoNotDisturb(true);
       setAutoDeclineMeetings(true);
+      
+      // Reset attendees for Focus Time events
+      setAttendees([]);
+      
+      // Reset tasks for non-focus time events
+      if (tasks.length > 0) {
+        setTasks([]);
+      }
+    } else {
+      // Reset Focus Time specific options
+      setDoNotDisturb(false);
+      setAutoDeclineMeetings(false);
+      
+      // Reset tasks for non-focus time events
+      if (tasks.length > 0) {
+        setTasks([]);
+      }
     }
   };
   
@@ -809,6 +934,77 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           )}
           
           {renderEventTypeDescription()}
+          
+          {/* Add Tasks section for all event types */}
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Tasks
+            </Typography>
+            
+            {errors.tasks && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {errors.tasks}
+              </Alert>
+            )}
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {eventType === 'focusTime' 
+                ? 'Add at least one task that you plan to work on during this focus time.'
+                : 'Optionally add tasks to this event.'}
+            </Typography>
+            
+            {/* Task list */}
+            {tasks.length > 0 && (
+              <Paper variant="outlined" sx={{ mb: 2, maxHeight: '150px', overflow: 'auto' }}>
+                <List dense>
+                  {tasks.map((task) => (
+                    <ListItem
+                      key={task.id}
+                      secondaryAction={
+                        <IconButton edge="end" aria-label="delete" onClick={() => removeTask(task.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemIcon>
+                        <TaskAltIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={task.title}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+            )}
+            
+            {/* Add task form */}
+            <Box sx={{ display: 'flex', mb: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Task title"
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                error={!!taskError}
+                helperText={taskError}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addTask();
+                  }
+                }}
+                sx={{ mr: 1 }}
+              />
+              <Button 
+                variant="outlined" 
+                onClick={addTask}
+                startIcon={<TaskAltIcon />}
+              >
+                Add
+              </Button>
+            </Box>
+          </Box>
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
             <Typography component="span" color="error" sx={{ fontWeight: 'bold' }}>*</Typography> Required fields

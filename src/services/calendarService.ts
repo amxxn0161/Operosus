@@ -438,7 +438,8 @@ const getColorIdFromEventType = (eventType: string | undefined): string | undefi
 export const createCalendarEvent = async (
   calendarId: string, 
   event: Omit<CalendarEvent, 'id'>,
-  addGoogleMeet: boolean = false
+  addGoogleMeet: boolean = false,
+  customEndpoint?: string
 ): Promise<CalendarEvent> => {
   try {
     console.log('Creating calendar event with full details:', JSON.stringify(event, null, 2));
@@ -508,7 +509,11 @@ export const createCalendarEvent = async (
 
     console.log(`Final request body for API (${new Date().toISOString()}):`, JSON.stringify(requestBody, null, 2));
 
-    const response = await apiRequest<any>(`/api/calendar/events`, {
+    // Use the custom endpoint if provided, otherwise use the default events endpoint
+    const endpoint = customEndpoint || '/api/calendar/events';
+    console.log(`Using endpoint: ${endpoint}`);
+
+    const response = await apiRequest<any>(endpoint, {
       method: 'POST',
       body: requestBody,
     });
@@ -1053,5 +1058,49 @@ export const getTasksForEvent = async (
       status: 'error',
       linkedTasks: []
     };
+  }
+};
+
+// Create a focus time event with tasks
+export const createFocusTimeWithTasks = async (
+  focusTimeEventData: any
+): Promise<CalendarEvent> => {
+  try {
+    console.log('Creating focus time event with tasks:', JSON.stringify(focusTimeEventData, null, 2));
+    
+    const response = await apiRequest<any>('/api/calendar/focus-time-with-tasks', {
+      method: 'POST',
+      body: focusTimeEventData,
+    });
+
+    console.log('API response for focus time with tasks creation:', JSON.stringify(response, null, 2));
+
+    // Map the API response back to our CalendarEvent format
+    return mapApiEventToCalendarEvent(response);
+  } catch (error) {
+    console.error('Error creating focus time event with tasks:', error);
+    throw error;
+  }
+};
+
+// Create a regular calendar event with tasks
+export const createEventWithTasks = async (
+  eventData: any
+): Promise<CalendarEvent> => {
+  try {
+    console.log('Creating regular event with tasks:', JSON.stringify(eventData, null, 2));
+    
+    const response = await apiRequest<any>('/api/calendar/events-with-tasks', {
+      method: 'POST',
+      body: eventData,
+    });
+
+    console.log('API response for regular event with tasks creation:', JSON.stringify(response, null, 2));
+
+    // Map the API response back to our CalendarEvent format
+    return mapApiEventToCalendarEvent(response);
+  } catch (error) {
+    console.error('Error creating regular event with tasks:', error);
+    throw error;
   }
 }; 
