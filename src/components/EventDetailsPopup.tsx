@@ -82,7 +82,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   onDelete
 }) => {
   const { fetchEvents } = useCalendar();
-  const { taskLists, updateTask } = useGoogleTasks();
+  const { taskLists, updateTask, createTask, refreshTaskLists } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -117,6 +117,8 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [taskDialogOpen, setTaskDialogOpen] = useState<boolean>(false);
   const [selectedTasks, setSelectedTasks] = useState<{[key: string]: boolean}>({});
   const [taskDialogTab, setTaskDialogTab] = useState<string>('');
+  const [newTaskTitle, setNewTaskTitle] = useState<string>('');
+  const [creatingTask, setCreatingTask] = useState<boolean>(false);
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -435,6 +437,9 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       // Refresh the linked tasks
       await fetchLinkedTasks(event.id);
       
+      // Refresh task lists to ensure newly created tasks appear
+      await refreshTaskLists({ forceRefresh: true });
+      
       setTaskDialogOpen(false);
       setSnackbarMessage('Tasks linked to event successfully');
       setSnackbarSeverity('success');
@@ -481,6 +486,49 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       setSnackbarMessage('Failed to update task status');
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
+    }
+  };
+
+  // Handle creating a new task
+  const handleCreateTask = async () => {
+    if (!taskDialogTab || !newTaskTitle.trim()) {
+      setSnackbarMessage('Please enter a task title');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    try {
+      setCreatingTask(true);
+      
+      // Create the task in the selected task list
+      const newTask = await createTask(taskDialogTab, {
+        title: newTaskTitle.trim()
+      });
+      
+      if (newTask) {
+        // Automatically select the newly created task
+        const taskKey = `${taskDialogTab}:${newTask.id}`;
+        setSelectedTasks(prev => ({
+          ...prev,
+          [taskKey]: true
+        }));
+        
+        // Reset the input field
+        setNewTaskTitle('');
+        
+        // Show success message
+        setSnackbarMessage('Task created successfully');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error creating task:', error);
+      setSnackbarMessage('Failed to create task');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    } finally {
+      setCreatingTask(false);
     }
   };
 
@@ -1818,40 +1866,110 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           {/* Tasks Selection */}
           <Box sx={{ width: '70%', pl: 2, overflow: 'auto' }}>
             {taskDialogTab ? (
-              <List dense>
-                {taskLists
-                  .find(list => list.id === taskDialogTab)
-                  ?.tasks
-                  .filter(task => task.status !== 'completed')
-                  .map((task) => {
-                    const taskKey = `${taskDialogTab}:${task.id}`;
-                    return (
-                      <ListItem key={taskKey} dense>
-                        <ListItemIcon>
-                          <Checkbox
-                            edge="start"
-                            checked={!!selectedTasks[taskKey]}
-                            onChange={() => handleTaskToggle(taskDialogTab, task.id)}
+              <>
+                {/* Create new task form */}
+                <Box sx={{ 
+                  mb: 2, 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  width: '100%',
+                  py: 1
+                }}>
+                  <Box
+                    component="input"
+                    placeholder="New task"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    disabled={creatingTask ? true : false}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newTaskTitle.trim()) {
+                        e.preventDefault();
+                        handleCreateTask();
+                      }
+                    }}
+                    sx={{
+                      flex: 1,
+                      mr: 1,
+                      height: '48px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      px: 2,
+                      fontSize: '16px',
+                      fontFamily: 'Poppins, sans-serif',
+                      '&:focus': {
+                        outline: '1px solid #1a73e8',
+                        borderColor: '#1a73e8'
+                      },
+                      '&::placeholder': {
+                        color: '#5f6368',
+                        fontFamily: 'Poppins, sans-serif',
+                        opacity: 1
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={handleCreateTask}
+                    disabled={!newTaskTitle.trim() || creatingTask}
+                    sx={{
+                      height: '48px',
+                      minWidth: '100px',
+                      borderRadius: '4px',
+                      bgcolor: newTaskTitle.trim() ? '#1a73e8' : '#e8e8e8',
+                      color: newTaskTitle.trim() ? '#ffffff' : '#5f6368',
+                      boxShadow: 'none',
+                      fontSize: '16px',
+                      fontFamily: 'Poppins, sans-serif',
+                      textTransform: 'none',
+                      '&:hover': {
+                        bgcolor: newTaskTitle.trim() ? '#1557b0' : '#dadce0',
+                        boxShadow: 'none'
+                      },
+                      '&.Mui-disabled': {
+                        bgcolor: '#f1f3f4',
+                        color: '#bdc1c6'
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </Box>
+
+                {/* Task list */}
+                <List dense>
+                  {taskLists
+                    .find(list => list.id === taskDialogTab)
+                    ?.tasks
+                    .filter(task => task.status !== 'completed')
+                    .map((task) => {
+                      const taskKey = `${taskDialogTab}:${task.id}`;
+                      return (
+                        <ListItem key={taskKey} dense>
+                          <ListItemIcon>
+                            <Checkbox
+                              edge="start"
+                              checked={!!selectedTasks[taskKey]}
+                              onChange={() => handleTaskToggle(taskDialogTab, task.id)}
+                              sx={{
+                                color: '#5f6368',
+                                '&.Mui-checked': {
+                                  color: '#1A73E8'
+                                }
+                              }}
+                            />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={task.title} 
                             sx={{
-                              color: '#5f6368',
-                              '&.Mui-checked': {
-                                color: '#1A73E8'
+                              '& .MuiListItemText-primary': {
+                                fontSize: '0.9rem'
                               }
                             }}
                           />
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={task.title} 
-                          sx={{
-                            '& .MuiListItemText-primary': {
-                              fontSize: '0.9rem'
-                            }
-                          }}
-                        />
-                      </ListItem>
-                    );
-                  })}
-              </List>
+                        </ListItem>
+                      );
+                    })}
+                </List>
+              </>
             ) : (
               <Typography sx={{ p: 2, color: 'text.secondary' }}>
                 Select a task list to view tasks
