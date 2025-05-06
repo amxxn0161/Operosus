@@ -28,7 +28,9 @@ import {
   Menu,
   MenuItem,
   Snackbar,
-  Alert
+  Alert,
+  Tab,
+  Tabs
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -45,6 +47,45 @@ import CheckIcon from '@mui/icons-material/Check';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import TodayIcon from '@mui/icons-material/Today';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import ViewWeekIcon from '@mui/icons-material/ViewWeek';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+// Additional icons for categories and prompts
+import WbSunnyIcon from '@mui/icons-material/WbSunny';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import ReplayIcon from '@mui/icons-material/Replay';
+import UpdateIcon from '@mui/icons-material/Update';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import DateRangeIcon from '@mui/icons-material/DateRange';
+import SchoolIcon from '@mui/icons-material/School';
+import SettingsIcon from '@mui/icons-material/Settings';
+import StarIcon from '@mui/icons-material/Star';
+import EmailIcon from '@mui/icons-material/Email';
+import BatteryAlertIcon from '@mui/icons-material/BatteryAlert';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
+import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
+import FlagIcon from '@mui/icons-material/Flag';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import PeopleIcon from '@mui/icons-material/People';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
+import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import SummarizeIcon from '@mui/icons-material/Summarize';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import ErrorIcon from '@mui/icons-material/Error';
+import CompareIcon from '@mui/icons-material/Compare';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import LowPriorityIcon from '@mui/icons-material/LowPriority';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -165,6 +206,273 @@ const formatMessageContent = (content: string): JSX.Element => {
         }
       })}
     </>
+  );
+};
+
+// Define interface for prompt items
+interface ExamplePrompt {
+  text: string;
+  icon: React.ReactNode;
+}
+
+// Define interface for categorized prompts
+interface PromptCategory {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  prompts: ExamplePrompt[];
+}
+
+// Example prompts for the AI assistant with associated icons
+const EXAMPLE_PROMPTS: ExamplePrompt[] = [
+  { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
+  { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
+  { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
+  { text: "Analyze my meeting schedule efficiency", icon: <EventAvailableIcon fontSize="small" /> },
+  { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
+  { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
+];
+
+// All categorized prompts
+const PROMPT_CATEGORIES: PromptCategory[] = [
+  {
+    id: 'featured',
+    name: 'Featured',
+    icon: <StarIcon fontSize="small" />,
+    prompts: [
+      { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
+      { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
+      { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
+      { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
+      { text: "Plan my week ahead", icon: <DateRangeIcon fontSize="small" /> },
+      { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'setup',
+    name: 'Initial Setup',
+    icon: <SettingsIcon fontSize="small" />,
+    prompts: [
+      { text: "I feel most energized around morning", icon: <WbSunnyIcon fontSize="small" /> },
+      { text: "The tasks requiring my deepest focus are usually coding", icon: <TrackChangesIcon fontSize="small" /> },
+      { text: "I generally stay focused for about 45 minutes before needing a short break", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "I like to make my daily plan in the morning", icon: <TodayIcon fontSize="small" /> },
+      { text: "I currently use Google Calendar for managing my tasks/calendar", icon: <DateRangeIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'daily',
+    name: 'Daily Planning',
+    icon: <TodayIcon fontSize="small" />,
+    prompts: [
+      { text: "I have multiple small tasks today—help me prioritize by urgency and duration", icon: <AssignmentTurnedInIcon fontSize="small" /> },
+      { text: "Today I have important presentations; help me allocate prep- and recovery-time", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "Yesterday's meetings distracted me. Can you suggest today's meetings that might work as emails?", icon: <EmailIcon fontSize="small" /> },
+      { text: "My energy today feels low; adjust today's tasks accordingly", icon: <BatteryAlertIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'task',
+    name: 'Task Prioritization',
+    icon: <AssignmentTurnedInIcon fontSize="small" />,
+    prompts: [
+      { text: "Highlight tasks due by end of day today", icon: <AssignmentLateIcon fontSize="small" /> },
+      { text: "Suggest urgent overdue tasks needing immediate rescheduling", icon: <PriorityHighIcon fontSize="small" /> },
+      { text: "Flag any commitments over 2 hours this week without prep-time", icon: <FlagIcon fontSize="small" /> },
+      { text: "Show me important tasks I've repeatedly postponed", icon: <ReplayIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'reflection',
+    name: 'Reflection',
+    icon: <ReplayIcon fontSize="small" />,
+    prompts: [
+      { text: "I struggled yesterday because of noisy environment; help me address this today", icon: <VolumeOffIcon fontSize="small" /> },
+      { text: "Yesterday's productivity was high due to fewer meetings. Suggest replicating today", icon: <TrendingUpIcon fontSize="small" /> },
+      { text: "My recent meeting wasn't productive. Advise how to improve similar meetings", icon: <PeopleIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'checkin',
+    name: 'Check-In',
+    icon: <UpdateIcon fontSize="small" />,
+    prompts: [
+      { text: "My meeting just ran overtime; rearrange the schedule accordingly", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "Remind me of today's priority tasks and adjust my remaining time blocks", icon: <NotificationsActiveIcon fontSize="small" /> },
+      { text: "My main priority today has changed; reprioritize today's tasks accordingly", icon: <SwapVertIcon fontSize="small" /> },
+      { text: "Give me strategies to reduce interruptions for my upcoming deep-work session", icon: <DoNotDisturbIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    icon: <DashboardIcon fontSize="small" />,
+    prompts: [
+      { text: "Summarize my productivity this month", icon: <SummarizeIcon fontSize="small" /> },
+      { text: "Show productivity patterns—when am I typically most productive?", icon: <ShowChartIcon fontSize="small" /> },
+      { text: "Highlight common distractions impacting my productivity", icon: <ErrorIcon fontSize="small" /> },
+      { text: "Compare task completions on planned vs unplanned-days", icon: <CompareIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'weekly',
+    name: 'Weekly Planning',
+    icon: <DateRangeIcon fontSize="small" />,
+    prompts: [
+      { text: "Assess where I lost productivity last week; suggest improvements", icon: <TrendingDownIcon fontSize="small" /> },
+      { text: "Which days should I reserve for deep-focus based on next week's deadlines?", icon: <LowPriorityIcon fontSize="small" /> },
+      { text: "Identify recurring challenges from last week and propose strategies", icon: <RepeatIcon fontSize="small" /> },
+      { text: "Distribute deep work, admin, and meetings optimally for next week's schedule", icon: <ViewWeekIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'learning',
+    name: 'Learning',
+    icon: <SchoolIcon fontSize="small" />,
+    prompts: [
+      { text: "Yesterday's schedule worked great—remember this preference", icon: <BookmarkIcon fontSize="small" /> },
+      { text: "I handle administrative tasks best on Fridays; suggest this going forward", icon: <EventNoteIcon fontSize="small" /> },
+      { text: "Suggest scheduling adjustments based on patterns from last week", icon: <AutorenewIcon fontSize="small" /> },
+      { text: "Reflect on this month's planning effectiveness and suggest one impactful adjustment", icon: <LightbulbIcon fontSize="small" /> }
+    ]
+  }
+];
+
+// Create a component for categorized prompts
+interface CategorizedPromptsProps {
+  categories: PromptCategory[];
+  onPromptClick: (promptText: string) => void;
+  isMobile: boolean;
+  isSmallMobile: boolean;
+  isVerySmallMobile: boolean;
+}
+
+const CategorizedPrompts: React.FC<CategorizedPromptsProps> = ({
+  categories,
+  onPromptClick,
+  isMobile,
+  isSmallMobile,
+  isVerySmallMobile
+}) => {
+  const theme = useTheme();
+  const [selectedCategory, setSelectedCategory] = React.useState(0);
+
+  const handleCategoryChange = (event: React.SyntheticEvent, newValue: number) => {
+    setSelectedCategory(newValue);
+  };
+
+  return (
+    <Box sx={{ width: '100%' }}>
+      <Box sx={{ 
+        borderBottom: 1, 
+        borderColor: 'divider',
+        mb: 2
+      }}>
+        <Tabs 
+          value={selectedCategory} 
+          onChange={handleCategoryChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          aria-label="prompt categories"
+          sx={{
+            minHeight: isVerySmallMobile ? 36 : (isSmallMobile ? 40 : 48),
+            '& .MuiTab-root': {
+              minHeight: isVerySmallMobile ? 36 : (isSmallMobile ? 40 : 48),
+              py: 0.5,
+              fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+            }
+          }}
+        >
+          {categories.map((category, index) => (
+            <Tab 
+              key={category.id} 
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ mr: 0.5 }}>{category.icon}</Box>
+                  <span>{category.name}</span>
+                </Box>
+              }
+              sx={{ 
+                textTransform: 'none',
+                fontWeight: 500,
+                minWidth: isVerySmallMobile ? 80 : (isSmallMobile ? 90 : 100),
+              }}
+            />
+          ))}
+        </Tabs>
+      </Box>
+
+      {categories.map((category, index) => (
+        <Box
+          key={category.id}
+          role="tabpanel"
+          hidden={selectedCategory !== index}
+          id={`prompt-tabpanel-${category.id}`}
+          aria-labelledby={`prompt-tab-${category.id}`}
+          sx={{ 
+            width: '100%', 
+            display: selectedCategory === index ? 'flex' : 'none',
+            flexDirection: 'column', 
+            gap: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.25 }),
+            maxHeight: { xs: '320px', sm: '400px', md: '450px' },
+            overflowY: 'auto',
+            pr: 1,
+            mr: -1,
+            pb: 2
+          }}
+        >
+          {category.prompts.map((prompt, promptIndex) => (
+            <Paper
+              key={promptIndex}
+              elevation={0}
+              onClick={() => onPromptClick(prompt.text)}
+              sx={{
+                py: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.25 }),
+                px: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 1.5 }),
+                mt: promptIndex === 0 ? 1 : 0,
+                borderRadius: isVerySmallMobile ? 1.5 : 2,
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                border: '1px solid',
+                borderColor: 'rgba(26, 115, 232, 0.1)',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.25 }),
+                transition: 'all 0.2s',
+                '&:hover': {
+                  backgroundColor: 'rgba(26, 115, 232, 0.04)',
+                  borderColor: 'rgba(26, 115, 232, 0.3)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                }
+              }}
+            >
+              <Box sx={{ 
+                color: theme.palette.primary.main,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: isVerySmallMobile ? '0.9rem' : (isSmallMobile ? '1rem' : { xs: '1.1rem', md: '1rem' })
+              }}>
+                {prompt.icon}
+              </Box>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  fontSize: isVerySmallMobile ? '0.775rem' : (isSmallMobile ? '0.825rem' : { xs: '0.875rem', md: '0.875rem' }),
+                  color: theme.palette.text.primary,
+                  fontWeight: 400,
+                  lineHeight: 1.4
+                }}
+              >
+                {prompt.text}
+              </Typography>
+            </Paper>
+          ))}
+        </Box>
+      ))}
+    </Box>
   );
 };
 
@@ -457,8 +765,8 @@ const AIAssistantPage: React.FC = () => {
           onOpen={() => setShowThreadsList(true)}
           sx={{
             '& .MuiDrawer-paper': {
-              width: isVerySmallMobile ? '90%' : (isSmallMobile ? '85%' : '80%'),
-              maxWidth: { xs: 280, sm: 350 },
+              width: isVerySmallMobile ? '85%' : (isSmallMobile ? '80%' : '75%'),
+              maxWidth: { xs: 280, sm: 320 },
               boxSizing: 'border-box',
               borderTopRightRadius: { xs: 8, sm: 0 },
               borderBottomRightRadius: { xs: 8, sm: 0 },
@@ -467,7 +775,7 @@ const AIAssistantPage: React.FC = () => {
           }}
         >
           <Box sx={{ 
-            p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, sm: 2 }), 
+            p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, sm: 1.5 }), 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
@@ -477,7 +785,7 @@ const AIAssistantPage: React.FC = () => {
               variant="subtitle1" 
               fontWeight={600}
               sx={{ 
-                fontSize: isVerySmallMobile ? '0.875rem' : (isSmallMobile ? '0.9375rem' : '1rem')
+                fontSize: isVerySmallMobile ? '0.85rem' : (isSmallMobile ? '0.9rem' : '1rem')
               }}
             >
               Conversation History
@@ -565,7 +873,11 @@ const AIAssistantPage: React.FC = () => {
         <Box sx={{ 
           flexGrow: 1, 
           overflow: 'auto', 
-          p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, sm: 2, md: 3 }),
+          p: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          justifyContent: isMobile ? 'flex-start' : 'flex-start',
           bgcolor: theme.palette.grey[50]
         }}>
           {messages.length === 0 ? (
@@ -574,71 +886,131 @@ const AIAssistantPage: React.FC = () => {
               flexDirection: 'column', 
               alignItems: 'center', 
               justifyContent: 'center',
-              height: '100%',
-              p: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : { xs: 2, sm: 2.5, md: 3 }),
+              minHeight: { xs: '100%', md: 'auto' },
+              height: { xs: '100%', md: 'auto' },
+              width: '100%',
+              maxWidth: '100%',
+              pt: isVerySmallMobile ? 4 : (isSmallMobile ? 4.5 : { xs: 5, sm: 5.5, md: 6.5 }),
+              pb: isVerySmallMobile ? 0 : (isSmallMobile ? 0 : { xs: 0, sm: 2, md: 4 }),
+              px: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, sm: 4 }),
               textAlign: 'center'
             }}>
-              <SmartToyIcon sx={{ 
-                fontSize: isVerySmallMobile ? 40 : (isSmallMobile ? 45 : { xs: 50, md: 60 }), 
-                color: 'primary.main', 
-                mb: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 }) 
-              }} />
-              <Typography 
-                variant={isVerySmallMobile ? "body1" : (isSmallMobile ? "h6" : "h5")} 
-                sx={{ 
-                  mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.5, md: 2 }),
-                  fontSize: isVerySmallMobile ? '1rem' : (isSmallMobile ? '1.125rem' : { xs: '1.25rem', md: '1.5rem' }),
-                  fontWeight: 500
-                }}
-              >
-                Welcome to Pulse Assistant
-              </Typography>
-              <Typography 
-                variant="body2" 
-                color="textSecondary"
-                sx={{ 
-                  maxWidth: isVerySmallMobile ? '240px' : (isSmallMobile ? '260px' : { xs: '280px', md: '320px' }),
-                  fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
-                  lineHeight: 1.5
-                }}
-              >
-                Ask me anything about productivity or how to use this app!
-              </Typography>
+              <Box sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                maxWidth: '700px',
+                width: '100%',
+                height: { xs: 'auto', md: 'auto' },
+                maxHeight: '100%',
+                overflowY: 'auto'
+              }}>
+                <SmartToyIcon sx={{ 
+                  fontSize: isVerySmallMobile ? 38 : (isSmallMobile ? 44 : { xs: 48, md: 52 }),
+                  color: 'primary.main', 
+                  mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 })
+                }} />
+                <Typography 
+                  variant="h5" 
+                  sx={{ 
+                    mb: { xs: 1, md: 1.5 },
+                    fontSize: isVerySmallMobile ? '1.1rem' : (isSmallMobile ? '1.2rem' : { xs: '1.25rem', md: '1.5rem' }),
+                    fontWeight: 500
+                  }}
+                >
+                  Welcome to Pulse Assistant
+                </Typography>
+                <Typography 
+                  variant="body1" 
+                  color="textSecondary"
+                  sx={{ 
+                    fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                    lineHeight: 1.5,
+                    mb: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 }),
+                    maxWidth: { xs: '90%', sm: '80%', md: '70%' }
+                  }}
+                >
+                  Ask me about productivity or how to use this app!
+                </Typography>
+                
+                {/* Example prompts section - further adjustments */}
+                <Box sx={{ 
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  px: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : { xs: 1, sm: 1 })
+                }}>
+                  <Typography 
+                    variant="body1" 
+                    fontWeight="medium"
+                    sx={{ 
+                      fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                      mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : 2),
+                      mt: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : 2),
+                      color: 'text.primary'
+                    }}
+                  >
+                    Try asking:
+                  </Typography>
+                  
+                  <CategorizedPrompts 
+                    categories={PROMPT_CATEGORIES}
+                    onPromptClick={(promptText) => {
+                      setInput(promptText);
+                      // Submit after a small delay to allow UI update
+                      setTimeout(() => {
+                        sendMessage(promptText);
+                      }, 100);
+                    }}
+                    isMobile={isMobile}
+                    isSmallMobile={isSmallMobile}
+                    isVerySmallMobile={isVerySmallMobile}
+                  />
+                </Box>
+              </Box>
             </Box>
           ) : (
-            <Box sx={{ maxWidth: '900px', mx: 'auto', width: '100%' }}>
+            <Box sx={{ 
+              maxWidth: '900px', 
+              mx: 'auto', 
+              width: '100%',
+              pt: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 }),
+              px: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : { xs: 2.5, md: 3 })
+            }}>
               {messages.map((message, index) => (
                 <Box 
                   key={index}
                   sx={{ 
                     display: 'flex',
-                    mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : { xs: 2.5, md: 3 }),
+                    mb: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 2, md: 2.5 }),
+                    mt: index === 0 ? (isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 2, md: 2.5 })) : 0,
                     alignItems: 'flex-start'
                   }}
                 >
                   <Avatar 
                     sx={{ 
-                      mr: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, sm: 1.75, md: 2 }), 
-                      width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
-                      height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
+                      mr: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, sm: 1.5, md: 1.75 }), 
+                      width: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
+                      height: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
                       bgcolor: message.role === 'assistant' ? 'primary.main' : 'rgba(0, 0, 0, 0.08)'
                     }}
                   >
                     {message.role === 'assistant' ? 
-                      <SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 16 : (isSmallMobile ? 18 : { xs: 20, md: 24 }) }} /> : 
-                      <PersonIcon sx={{ fontSize: isVerySmallMobile ? 16 : (isSmallMobile ? 18 : { xs: 20, md: 24 }) }} />
+                      <SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : { xs: 18, md: 20 }) }} /> : 
+                      <PersonIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : { xs: 18, md: 20 }) }} />
                     }
                   </Avatar>
                   <Paper 
                     elevation={0}
                     sx={{ 
-                      p: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 }),
-                      borderRadius: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 }),
+                      p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.75 }),
+                      borderRadius: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.75 }),
                       bgcolor: message.role === 'assistant' ? 'rgba(16, 86, 245, 0.08)' : 'rgba(0, 0, 0, 0.03)',
-                      maxWidth: isVerySmallMobile ? 'calc(100% - 40px)' : (isSmallMobile ? 'calc(100% - 48px)' : { xs: 'calc(100% - 52px)', md: '85%' }),
+                      maxWidth: isVerySmallMobile ? 'calc(100% - 36px)' : (isSmallMobile ? 'calc(100% - 44px)' : { xs: 'calc(100% - 48px)', md: '85%' }),
                       wordBreak: 'break-word',
                       '& .MuiTypography-root': {
-                        fontSize: isVerySmallMobile ? '0.85rem' : (isSmallMobile ? '0.9rem' : '1rem')
+                        fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '0.95rem' })
                       }
                     }}
                   >
@@ -647,8 +1019,11 @@ const AIAssistantPage: React.FC = () => {
                 </Box>
               ))}
               {isLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', my: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 }) }}>
-                  <CircularProgress size={isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 30)} />
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25) }}>
+                  <CircularProgress 
+                    size={isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24)} 
+                    thickness={4} 
+                  />
                 </Box>
               )}
               <div ref={messagesEndRef} />
@@ -661,7 +1036,9 @@ const AIAssistantPage: React.FC = () => {
           component="form" 
           onSubmit={handleSendMessage}
           sx={{ 
-            p: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 }),
+            p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.75 }),
+            pt: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, md: 1.5 }),
+            pb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, md: 1.5 }),
             borderTop: '1px solid rgba(0, 0, 0, 0.12)',
             bgcolor: theme.palette.background.paper
           }}
@@ -678,14 +1055,14 @@ const AIAssistantPage: React.FC = () => {
               sx={{ 
                 mb: 0,
                 '& .MuiOutlinedInput-root': {
-                  borderRadius: '24px',
+                  borderRadius: isVerySmallMobile ? '16px' : (isSmallMobile ? '18px' : '24px'),
                   pr: 0.75,
-                  py: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : { xs: 0.75, md: 1 }),
-                  fontSize: isVerySmallMobile ? '0.8125rem' : (isSmallMobile ? '0.875rem' : { xs: '0.9375rem', md: '1rem' }),
+                  py: isVerySmallMobile ? 0.15 : (isSmallMobile ? 0.25 : { xs: 0.5, md: 0.75 }),
+                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : { xs: '0.875rem', md: '0.9375rem' }),
                   backgroundColor: theme.palette.background.paper
                 },
                 '& .MuiOutlinedInput-input': {
-                  pl: isVerySmallMobile ? 1.25 : (isSmallMobile ? 1.5 : { xs: 1.75, md: 2 })
+                  pl: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.5, md: 1.75 })
                 }
               }}
               InputProps={{
@@ -697,12 +1074,14 @@ const AIAssistantPage: React.FC = () => {
                       disabled={!input.trim() || isLoading}
                       size={isVerySmallMobile ? "small" : "medium"}
                       sx={{
-                        width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
-                        height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
+                        width: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
+                        height: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
                         mr: isVerySmallMobile ? -0.5 : (isSmallMobile ? -0.25 : 0)
                       }}
                     >
-                      <SendIcon fontSize={isVerySmallMobile ? "small" : "medium"} />
+                      <SendIcon fontSize={isVerySmallMobile ? "small" : "medium"} sx={{
+                        fontSize: isVerySmallMobile ? '0.9rem' : (isSmallMobile ? '1rem' : { xs: '1.1rem', md: '1.2rem' })
+                      }} />
                     </IconButton>
                   </InputAdornment>
                 )
@@ -874,16 +1253,16 @@ const ThreadsList: React.FC<ThreadsListProps> = ({
   
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box sx={{ p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, sm: 1.5 }) }}>
+      <Box sx={{ p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : { xs: 1, sm: 1.25 }) }}>
         <Button
           fullWidth
           variant="contained"
           color="primary"
           onClick={handleNewConversation}
-          startIcon={<SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20) }} />}
+          startIcon={<SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 18) }} />}
           sx={{
-            py: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
-            fontSize: isVerySmallMobile ? '0.75rem' : (isSmallMobile ? '0.8125rem' : '0.875rem'),
+            py: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.6 : { xs: 0.75, sm: 0.9 }),
+            fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
             borderRadius: '6px'
           }}
         >
@@ -897,8 +1276,8 @@ const ThreadsList: React.FC<ThreadsListProps> = ({
         py: 0
       }}>
         {isLoadingThreads ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : 3) }}>
-            <CircularProgress size={isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 30)} />
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : 2) }}>
+            <CircularProgress size={isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24)} />
           </Box>
         ) : threads.length > 0 ? (
           threads.map((thread) => (
@@ -909,8 +1288,8 @@ const ThreadsList: React.FC<ThreadsListProps> = ({
               selected={threadId === thread.thread_id}
               divider
               sx={{ 
-                py: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
-                px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 2),
+                py: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                px: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
                 bgcolor: threadId === thread.thread_id ? 'rgba(16, 86, 245, 0.08)' : 'transparent',
                 '&:hover': {
                   bgcolor: threadId === thread.thread_id 

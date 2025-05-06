@@ -27,7 +27,9 @@ import {
   Divider,
   InputAdornment,
   Menu,
-  MenuItem
+  MenuItem,
+  Tab,
+  Tabs
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -45,6 +47,44 @@ import StopIcon from '@mui/icons-material/Stop';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import TodayIcon from '@mui/icons-material/Today';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import ViewWeekIcon from '@mui/icons-material/ViewWeek';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+// Additional icons for categories and prompts
+import WbSunnyIcon from '@mui/icons-material/WbSunny';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import StarIcon from '@mui/icons-material/Star';
+import UpdateIcon from '@mui/icons-material/Update';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import DateRangeIcon from '@mui/icons-material/DateRange';
+import SchoolIcon from '@mui/icons-material/School';
+import SettingsIcon from '@mui/icons-material/Settings';
+import EmailIcon from '@mui/icons-material/Email';
+import BatteryAlertIcon from '@mui/icons-material/BatteryAlert';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
+import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
+import FlagIcon from '@mui/icons-material/Flag';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import PeopleIcon from '@mui/icons-material/People';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
+import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import SummarizeIcon from '@mui/icons-material/Summarize';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import ErrorIcon from '@mui/icons-material/Error';
+import CompareIcon from '@mui/icons-material/Compare';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import LowPriorityIcon from '@mui/icons-material/LowPriority';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import Draggable from 'react-draggable';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -56,6 +96,275 @@ import {
   updateThreadTitle
 } from '../services/assistantService';
 import { format } from 'date-fns';
+
+// Define interface for prompt items
+interface ExamplePrompt {
+  text: string;
+  icon: React.ReactNode;
+}
+
+// Define interface for categorized prompts
+interface PromptCategory {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  prompts: ExamplePrompt[];
+}
+
+// Example prompts for the AI assistant with associated icons
+const EXAMPLE_PROMPTS: ExamplePrompt[] = [
+  { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
+  { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
+  { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
+  { text: "Analyze my meeting schedule efficiency", icon: <EventAvailableIcon fontSize="small" /> },
+  { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
+  { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
+];
+
+// All categorized prompts
+const PROMPT_CATEGORIES: PromptCategory[] = [
+  {
+    id: 'featured',
+    name: 'Featured',
+    icon: <StarIcon fontSize="small" />,
+    prompts: [
+      { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
+      { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
+      { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
+      { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
+      { text: "Plan my week ahead", icon: <DateRangeIcon fontSize="small" /> },
+      { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'setup',
+    name: 'Initial Setup',
+    icon: <SettingsIcon fontSize="small" />,
+    prompts: [
+      { text: "I feel most energized around morning", icon: <WbSunnyIcon fontSize="small" /> },
+      { text: "The tasks requiring my deepest focus are usually coding", icon: <TrackChangesIcon fontSize="small" /> },
+      { text: "I generally stay focused for about 45 minutes before needing a short break", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "I like to make my daily plan in the morning", icon: <TodayIcon fontSize="small" /> },
+      { text: "I currently use Google Calendar for managing my tasks/calendar", icon: <DateRangeIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'daily',
+    name: 'Daily Planning',
+    icon: <TodayIcon fontSize="small" />,
+    prompts: [
+      { text: "I have multiple small tasks today—help me prioritize by urgency and duration", icon: <AssignmentTurnedInIcon fontSize="small" /> },
+      { text: "Today I have important presentations; help me allocate prep- and recovery-time", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "Yesterday's meetings distracted me. Can you suggest today's meetings that might work as emails?", icon: <EmailIcon fontSize="small" /> },
+      { text: "My energy today feels low; adjust today's tasks accordingly", icon: <BatteryAlertIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'task',
+    name: 'Task Prioritization',
+    icon: <AssignmentTurnedInIcon fontSize="small" />,
+    prompts: [
+      { text: "Highlight tasks due by end of day today", icon: <AssignmentLateIcon fontSize="small" /> },
+      { text: "Suggest urgent overdue tasks needing immediate rescheduling", icon: <PriorityHighIcon fontSize="small" /> },
+      { text: "Flag any commitments over 2 hours this week without prep-time", icon: <FlagIcon fontSize="small" /> },
+      { text: "Show me important tasks I've repeatedly postponed", icon: <ReplayIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'reflection',
+    name: 'Reflection',
+    icon: <ReplayIcon fontSize="small" />,
+    prompts: [
+      { text: "I struggled yesterday because of noisy environment; help me address this today", icon: <VolumeOffIcon fontSize="small" /> },
+      { text: "Yesterday's productivity was high due to fewer meetings. Suggest replicating today", icon: <TrendingUpIcon fontSize="small" /> },
+      { text: "My recent meeting wasn't productive. Advise how to improve similar meetings", icon: <PeopleIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'checkin',
+    name: 'Check-In',
+    icon: <UpdateIcon fontSize="small" />,
+    prompts: [
+      { text: "My meeting just ran overtime; rearrange the schedule accordingly", icon: <ScheduleIcon fontSize="small" /> },
+      { text: "Remind me of today's priority tasks and adjust my remaining time blocks", icon: <NotificationsActiveIcon fontSize="small" /> },
+      { text: "My main priority today has changed; reprioritize today's tasks accordingly", icon: <SwapVertIcon fontSize="small" /> },
+      { text: "Give me strategies to reduce interruptions for my upcoming deep-work session", icon: <DoNotDisturbIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    icon: <DashboardIcon fontSize="small" />,
+    prompts: [
+      { text: "Summarize my productivity this month", icon: <SummarizeIcon fontSize="small" /> },
+      { text: "Show productivity patterns—when am I typically most productive?", icon: <ShowChartIcon fontSize="small" /> },
+      { text: "Highlight common distractions impacting my productivity", icon: <ErrorIcon fontSize="small" /> },
+      { text: "Compare task completions on planned vs unplanned-days", icon: <CompareIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'weekly',
+    name: 'Weekly Planning',
+    icon: <DateRangeIcon fontSize="small" />,
+    prompts: [
+      { text: "Assess where I lost productivity last week; suggest improvements", icon: <TrendingDownIcon fontSize="small" /> },
+      { text: "Which days should I reserve for deep-focus based on next week's deadlines?", icon: <LowPriorityIcon fontSize="small" /> },
+      { text: "Identify recurring challenges from last week and propose strategies", icon: <RepeatIcon fontSize="small" /> },
+      { text: "Distribute deep work, admin, and meetings optimally for next week's schedule", icon: <ViewWeekIcon fontSize="small" /> }
+    ]
+  },
+  {
+    id: 'learning',
+    name: 'Learning',
+    icon: <SchoolIcon fontSize="small" />,
+    prompts: [
+      { text: "Yesterday's schedule worked great—remember this preference", icon: <BookmarkIcon fontSize="small" /> },
+      { text: "I handle administrative tasks best on Fridays; suggest this going forward", icon: <EventNoteIcon fontSize="small" /> },
+      { text: "Suggest scheduling adjustments based on patterns from last week", icon: <AutorenewIcon fontSize="small" /> },
+      { text: "Reflect on this month's planning effectiveness and suggest one impactful adjustment", icon: <LightbulbIcon fontSize="small" /> }
+    ]
+  }
+];
+
+// Create a component for categorized prompts in the popup assistant
+interface PopupCategorizedPromptsProps {
+  categories: PromptCategory[];
+  onPromptClick: (promptText: string) => void;
+  isSmallMobile?: boolean;
+  isVerySmallMobile?: boolean;
+}
+
+const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
+  categories,
+  onPromptClick,
+  isSmallMobile = false,
+  isVerySmallMobile = false
+}) => {
+  const theme = useTheme();
+  const [selectedCategory, setSelectedCategory] = React.useState(0);
+
+  const handleCategoryChange = (event: React.SyntheticEvent, newValue: number) => {
+    setSelectedCategory(newValue);
+  };
+
+  return (
+    <Box sx={{ width: '100%' }}>
+      <Box sx={{ 
+        borderBottom: 1, 
+        borderColor: 'divider',
+        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5)
+      }}>
+        <Tabs 
+          value={selectedCategory} 
+          onChange={handleCategoryChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          aria-label="prompt categories"
+          sx={{
+            minHeight: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
+            '& .MuiTab-root': {
+              minHeight: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
+              py: 0.5,
+              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.7rem'),
+            },
+            '& .MuiTabs-scrollButtons': {
+              width: isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 28),
+              '& svg': {
+                fontSize: isVerySmallMobile ? '1rem' : (isSmallMobile ? '1.1rem' : '1.2rem')
+              }
+            }
+          }}
+        >
+          {categories.map((category, index) => (
+            <Tab 
+              key={category.id} 
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ mr: 0.5 }}>{category.icon}</Box>
+                  <span>{category.name}</span>
+                </Box>
+              }
+              sx={{ 
+                textTransform: 'none',
+                fontWeight: 500,
+                minWidth: isVerySmallMobile ? 70 : (isSmallMobile ? 80 : 90),
+              }}
+            />
+          ))}
+        </Tabs>
+      </Box>
+
+      {categories.map((category, index) => (
+        <Box
+          key={category.id}
+          role="tabpanel"
+          hidden={selectedCategory !== index}
+          id={`prompt-tabpanel-${category.id}`}
+          aria-labelledby={`prompt-tab-${category.id}`}
+          sx={{ 
+            width: '100%', 
+            display: selectedCategory === index ? 'flex' : 'none',
+            flexDirection: 'column', 
+            gap: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
+            maxHeight: { xs: '250px', sm: '300px', md: '350px' },
+            overflowY: 'auto',
+            pr: 1,
+            mr: -1
+          }}
+        >
+          {category.prompts.map((prompt, promptIndex) => (
+            <Paper
+              key={promptIndex}
+              elevation={0}
+              onClick={() => onPromptClick(prompt.text)}
+              sx={{
+                py: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
+                px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 1.5),
+                borderRadius: 1.5,
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                border: '1px solid',
+                borderColor: 'rgba(26, 115, 232, 0.1)',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                transition: 'all 0.2s',
+                '&:hover': {
+                  backgroundColor: 'rgba(26, 115, 232, 0.04)',
+                  borderColor: 'rgba(26, 115, 232, 0.3)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                }
+              }}
+            >
+              <Box sx={{ 
+                color: theme.palette.primary.main,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : '0.9rem')
+              }}>
+                {prompt.icon}
+              </Box>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                  color: theme.palette.text.primary,
+                  fontWeight: 400,
+                  lineHeight: 1.4
+                }}
+              >
+                {prompt.text}
+              </Typography>
+            </Paper>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
+};
 
 // Function to format message content with markdown-like syntax
 const formatMessageContent = (content: string): JSX.Element => {
@@ -826,6 +1135,15 @@ const AIAssistant: React.FC = () => {
     navigate('/ai-assistant');
   };
   
+  // Handle clicking on an example prompt
+  const handleExamplePromptClick = (promptText: string) => {
+    setInputValue(promptText);
+    // Small delay to allow UI update
+    setTimeout(() => {
+      sendMessage(promptText);
+    }, 100);
+  };
+  
   const PaperComponent = (props: any) => {
     return (
       <Draggable
@@ -1082,207 +1400,27 @@ const AIAssistant: React.FC = () => {
                   WebkitOverflowScrolling: 'touch',
                 }}
               >
-                {/* Rest of the message area code */}
-                {displayMessages.length === 0 ? (
-                <Box
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  justifyContent="center"
-                  height="100%"
-                  p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
-                  textAlign="center"
-                  sx={{
-                    maxWidth: isVerySmallMobile ? '95%' : (isSmallMobile ? '85%' : '75%'),
-                    margin: '0 auto'
-                  }}
-                >
-                  <SmartToyIcon 
-                    fontSize="large" 
-                    color="primary" 
-                    sx={{ 
-                      mb: 0.5, 
-                      fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
-                      opacity: 0.8 
-                    }} 
-                  />
+                {/* Example prompts section */}
+                <Box sx={{ width: '100%', mb: 1 }}>
                   <Typography 
-                    variant={isSmallMobile ? "body2" : "body1"} 
-                    gutterBottom 
+                    variant="body1" 
                     fontWeight="medium"
-                    sx={{ mb: 0.4 }}
-                  >
-                    Welcome to Pulse Assistant
-                  </Typography>
-                  <Typography 
-                    variant="caption"
-                    color="textSecondary"
                     sx={{ 
-                      fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
-                      lineHeight: 1.2,
+                      mb: 1.5,
+                      fontSize: { xs: '0.9rem', md: '1rem' },
+                      textAlign: 'left'
                     }}
                   >
-                    Ask me about productivity or app usage!
+                    Try asking:
                   </Typography>
+                  
+                  <PopupCategorizedPrompts
+                    categories={PROMPT_CATEGORIES}
+                    onPromptClick={handleExamplePromptClick}
+                    isSmallMobile={isSmallMobile}
+                    isVerySmallMobile={isVerySmallMobile}
+                  />
                 </Box>
-              ) : (
-                <>
-                  {displayMessages.map((msg, index) => (
-                    <Box
-                      key={index}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
-                      }}
-                    >
-                      {msg.role === 'assistant' && (
-                        <Avatar
-                          sx={{
-                            bgcolor: theme.palette.primary.main,
-                            mr: 1,
-                            alignSelf: 'flex-start',
-                            width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
-                            height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
-                          }}
-                        >
-                          <SmartToyIcon sx={{ 
-                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                          }} />
-                        </Avatar>
-                      )}
-
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
-                          maxWidth: isVerySmallMobile ? '85%' : (isSmallMobile ? '80%' : '82%'),
-                          borderRadius: 2,
-                          backgroundColor: msg.role === 'user'
-                            ? theme.palette.primary.main
-                            : 'white',
-                          color: msg.role === 'user'
-                            ? 'white'
-                            : theme.palette.text.primary,
-                          ml: msg.role === 'user' ? 1 : 0,
-                          mr: msg.role === 'assistant' ? 1 : 0,
-                        }}
-                      >
-                        {msg.role === 'user'
-                          ? <Typography 
-                              variant="body2" 
-                              sx={{ 
-                                fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
-                                wordBreak: 'break-word' 
-                              }}
-                            >
-                              {msg.content}
-                            </Typography>
-                          : <Box sx={{ 
-                              '& .MuiTypography-root': { 
-                                fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
-                                wordBreak: 'break-word'
-                              } 
-                            }}>
-                                {/* Don't display cancellation messages */}
-                                {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
-                                
-                                {/* Add Retry button for error messages */}
-                                {msg.role === 'assistant' && 
-                                  (msg.content.toLowerCase().includes('error') || 
-                                   msg.content.toLowerCase().includes('apologize') ||
-                                   msg.content.toLowerCase().includes('sorry') ||
-                                   msg.content.toLowerCase().includes('couldn\'t process') ||
-                                   msg.content.toLowerCase().includes('issue') ||
-                                   msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
-                                  lastPrompt && (
-                                  <Box sx={{ mt: 1, textAlign: 'right' }}>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      color="primary"
-                                      onClick={handleRetry}
-                                      startIcon={<ReplayIcon fontSize="small" />}
-                                      sx={{ 
-                                        fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
-                                        py: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)
-                                      }}
-                                    >
-                                      Retry
-                                    </Button>
-                                  </Box>
-                                )}
-                              </Box>
-                        }
-                      </Paper>
-
-                      {msg.role === 'user' && (
-                        <Avatar
-                          sx={{
-                            bgcolor: theme.palette.secondary.main,
-                            ml: 1,
-                            alignSelf: 'flex-start',
-                            width: 28,
-                            height: 28
-                          }}
-                        >
-                          <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
-                            {localStorage.getItem('userName')?.[0] || 'U'}
-                          </Typography>
-                        </Avatar>
-                      )}
-                    </Box>
-                  ))}
-
-                  {isLoading && (
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'flex-start',
-                        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
-                      }}
-                    >
-                      <Avatar
-                        sx={{
-                          bgcolor: theme.palette.primary.main,
-                          mr: 1,
-                          alignSelf: 'flex-start',
-                          width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
-                          height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
-                        }}
-                      >
-                        <SmartToyIcon sx={{ 
-                          fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                        }} />
-                      </Avatar>
-
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
-                          borderRadius: 2,
-                          backgroundColor: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          minWidth: isVerySmallMobile ? '50px' : (isSmallMobile ? '60px' : '80px'),
-                        }}
-                      >
-                        <CircularProgress 
-                          size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)}
-                          thickness={5} 
-                          sx={{ mr: 1 }}
-                        />
-                        <Typography variant="body2" color="text.secondary" sx={{ 
-                          fontSize: isVerySmallMobile ? '0.65rem' : (isSmallMobile ? '0.7rem' : '0.8rem')
-                        }}>
-                          Processing...
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  )}
-                  <div ref={messagesEndRef} />
-                </>
-              )}
               </Box>
 
               {/* Input area */}
@@ -1381,8 +1519,8 @@ const AIAssistant: React.FC = () => {
               elevation={6}
               sx={{
                 width: '400px',
-                height: '500px',
-                maxHeight: '70vh',
+                height: '550px', // Increased height to accommodate the tabs and more prompts
+                maxHeight: '80vh', // Increased max-height percentage
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: 2,
@@ -1594,16 +1732,63 @@ const AIAssistant: React.FC = () => {
                     alignItems="center"
                     justifyContent="center"
                     height="100%"
-                    p={2}
+                    p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
                     textAlign="center"
+                    sx={{
+                      maxWidth: isVerySmallMobile ? '95%' : (isSmallMobile ? '85%' : '75%'),
+                      margin: '0 auto'
+                    }}
                   >
-                    <SmartToyIcon fontSize="large" color="primary" sx={{ mb: 1, fontSize: '2.5rem', opacity: 0.8 }} />
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                    <SmartToyIcon 
+                      fontSize="large" 
+                      color="primary" 
+                      sx={{ 
+                        mb: 0.5, 
+                        fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
+                        opacity: 0.8 
+                      }} 
+                    />
+                    <Typography 
+                      variant={isSmallMobile ? "body2" : "body1"} 
+                      gutterBottom 
+                      fontWeight="medium"
+                      sx={{ mb: 0.4 }}
+                    >
                       Welcome to Pulse Assistant
                     </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Ask me anything about productivity or how to use this app!
+                    <Typography 
+                      variant="caption"
+                      color="textSecondary"
+                      sx={{ 
+                        fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
+                        lineHeight: 1.2,
+                        mb: 2
+                      }}
+                    >
+                      Ask me about productivity or app usage!
                     </Typography>
+                    
+                    {/* Example prompts section */}
+                    <Box sx={{ width: '100%', mb: 1 }}>
+                      <Typography 
+                        variant="body1" 
+                        fontWeight="medium"
+                        sx={{ 
+                          mb: 1.5,
+                          fontSize: { xs: '0.9rem', md: '1rem' },
+                          textAlign: 'left'
+                        }}
+                      >
+                        Try asking:
+                      </Typography>
+                      
+                      <PopupCategorizedPrompts
+                        categories={PROMPT_CATEGORIES}
+                        onPromptClick={handleExamplePromptClick}
+                        isSmallMobile={isSmallMobile}
+                        isVerySmallMobile={isVerySmallMobile}
+                      />
+                    </Box>
                   </Box>
                 ) : (
                   <>
@@ -1613,7 +1798,7 @@ const AIAssistant: React.FC = () => {
                         sx={{
                           display: 'flex',
                           justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                          mb: 1.5,
+                          mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
                         }}
                       >
                         {msg.role === 'assistant' && (
@@ -1622,19 +1807,21 @@ const AIAssistant: React.FC = () => {
                               bgcolor: theme.palette.primary.main,
                               mr: 1,
                               alignSelf: 'flex-start',
-                              width: 28,
-                              height: 28,
+                              width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                              height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                             }}
                           >
-                            <SmartToyIcon sx={{ fontSize: '0.875rem' }} />
+                            <SmartToyIcon sx={{ 
+                              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
+                            }} />
                           </Avatar>
                         )}
 
                         <Paper
                           elevation={0}
                           sx={{
-                            p: 1.5,
-                            maxWidth: '75%',
+                            p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                            maxWidth: isVerySmallMobile ? '85%' : (isSmallMobile ? '80%' : '82%'),
                             borderRadius: 2,
                             backgroundColor: msg.role === 'user'
                               ? theme.palette.primary.main
@@ -1647,39 +1834,50 @@ const AIAssistant: React.FC = () => {
                           }}
                         >
                           {msg.role === 'user'
-                            ? <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
+                            ? <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                                  wordBreak: 'break-word' 
+                                }}
+                              >
                                 {msg.content}
                               </Typography>
-                            : <Box sx={{ '& .MuiTypography-root': { fontSize: '0.9rem' } }}>
-                                {/* Don't display cancellation messages */}
-                                {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
-                                
-                                {/* Add Retry button for error messages */}
-                                {msg.role === 'assistant' && 
-                                  (msg.content.toLowerCase().includes('error') || 
-                                   msg.content.toLowerCase().includes('apologize') ||
-                                   msg.content.toLowerCase().includes('sorry') ||
-                                   msg.content.toLowerCase().includes('couldn\'t process') ||
-                                   msg.content.toLowerCase().includes('issue') ||
-                                   msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
-                                  lastPrompt && (
-                                  <Box sx={{ mt: 1, textAlign: 'right' }}>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      color="primary"
-                                      onClick={handleRetry}
-                                      startIcon={<ReplayIcon fontSize="small" />}
-                                      sx={{ 
-                                        fontSize: '0.75rem',
-                                        py: 0.75
-                                      }}
-                                    >
-                                      Retry
-                                    </Button>
-                                  </Box>
-                                )}
-                              </Box>
+                            : <Box sx={{ 
+                                '& .MuiTypography-root': { 
+                                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                                  wordBreak: 'break-word'
+                                } 
+                              }}>
+                                  {/* Don't display cancellation messages */}
+                                  {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
+                                  
+                                  {/* Add Retry button for error messages */}
+                                  {msg.role === 'assistant' && 
+                                    (msg.content.toLowerCase().includes('error') || 
+                                     msg.content.toLowerCase().includes('apologize') ||
+                                     msg.content.toLowerCase().includes('sorry') ||
+                                     msg.content.toLowerCase().includes('couldn\'t process') ||
+                                     msg.content.toLowerCase().includes('issue') ||
+                                     msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                    lastPrompt && (
+                                    <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="primary"
+                                        onClick={handleRetry}
+                                        startIcon={<ReplayIcon fontSize="small" />}
+                                        sx={{ 
+                                          fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
+                                          py: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)
+                                        }}
+                                      >
+                                        Retry
+                                      </Button>
+                                    </Box>
+                                  )}
+                                </Box>
                           }
                         </Paper>
 
@@ -1689,8 +1887,8 @@ const AIAssistant: React.FC = () => {
                               bgcolor: theme.palette.secondary.main,
                               ml: 1,
                               alignSelf: 'flex-start',
-                              width: 28,
-                              height: 28
+                              width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                              height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24)
                             }}
                           >
                             <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
