@@ -248,11 +248,11 @@ const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ 
         borderBottom: 1, 
         borderColor: 'divider',
-        mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5)
+        mb: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1.5)
       }}>
         <Tabs 
           value={selectedCategory} 
@@ -306,11 +306,17 @@ const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
             width: '100%', 
             display: selectedCategory === index ? 'flex' : 'none',
             flexDirection: 'column', 
-            gap: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
-            maxHeight: { xs: '250px', sm: '300px', md: '350px' },
+            gap: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
+            maxHeight: { 
+              xs: isVerySmallMobile ? '300px' : '350px', 
+              sm: '400px', 
+              md: '450px' 
+            },
             overflowY: 'auto',
             pr: 1,
-            mr: -1
+            mr: -1,
+            flexGrow: 1,
+            pb: 1
           }}
         >
           {category.prompts.map((prompt, promptIndex) => (
@@ -319,7 +325,7 @@ const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
               elevation={0}
               onClick={() => onPromptClick(prompt.text)}
               sx={{
-                py: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
+                py: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
                 px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 1.5),
                 borderRadius: 1.5,
                 backgroundColor: 'white',
@@ -353,7 +359,7 @@ const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
                   fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
                   color: theme.palette.text.primary,
                   fontWeight: 400,
-                  lineHeight: 1.4
+                  lineHeight: 1.35
                 }}
               >
                 {prompt.text}
@@ -1138,10 +1144,34 @@ const AIAssistant: React.FC = () => {
   // Handle clicking on an example prompt
   const handleExamplePromptClick = (promptText: string) => {
     setInputValue(promptText);
-    // Small delay to allow UI update
+    
+    // Small delay to allow UI update then send message
     setTimeout(() => {
-      sendMessage(promptText);
-    }, 100);
+      // Add user message immediately to the UI for better responsiveness
+      const userMessage = { role: 'user', content: promptText };
+      
+      // Force update to immediately show the message
+      if (isMobile) {
+        // Clear input right away for mobile
+        setInputValue('');
+      }
+      
+      // Then send message through context
+      sendMessage(promptText)
+        .then(() => {
+          console.log('Message sent successfully');
+          
+          // For mobile view, make sure we scroll to the messages area
+          if (isMobile && messagesEndRef.current) {
+            setTimeout(() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 200);
+          }
+        })
+        .catch(error => {
+          console.error('Error sending message:', error);
+        });
+    }, 50); // Shorter delay for better responsiveness
   };
   
   const PaperComponent = (props: any) => {
@@ -1156,6 +1186,16 @@ const AIAssistant: React.FC = () => {
       </Draggable>
     );
   };
+
+  // Add useEffect to scroll to bottom whenever messages change
+  useEffect(() => {
+    if (messagesEndRef.current && displayMessages.length > 0) {
+      // Add a small delay to allow rendering to complete
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [displayMessages.length]);
 
   return (
     <>
@@ -1196,9 +1236,9 @@ const AIAssistant: React.FC = () => {
               elevation={6}
               sx={{
                 width: isVerySmallMobile ? '94%' : (isSmallMobile ? '92%' : '90%'),
-                height: isVeryShortScreen ? '85%' : (isShortScreen ? '80%' : '75%'),
+                height: isVeryShortScreen ? '92%' : (isShortScreen ? '90%' : '85%'),
                 maxWidth: '550px',
-                maxHeight: '85vh',
+                maxHeight: '92vh',
                 display: 'flex',
                 flexDirection: 'column',
                 borderRadius: 2,
@@ -1245,66 +1285,117 @@ const AIAssistant: React.FC = () => {
                     Pulse Assistant
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    '& .MuiIconButton-root': {
+                      mx: isVerySmallMobile ? 0.25 : 0.5,
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      }
+                    }
+                  }}
+                >
                   {/* Refresh button */}
+                  <Tooltip title="Refresh conversation" arrow>
+                    <span>
                   <IconButton 
                     size={isVerySmallMobile ? "small" : "small"} 
                     color="inherit" 
                     onClick={refreshConversation}
                     disabled={isRefreshing || isLoading}
-                    title="Refresh conversation"
                     sx={{ 
                       opacity: !threadId ? 0.7 : 1, 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
                       p: isVerySmallMobile ? 0.5 : undefined
                     }}
                   >
                     {isRefreshing ? (
-                      <CircularProgress size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)} color="inherit" thickness={5} />
-                    ) : (
-                      <RefreshIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                        fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                      }} />
+                          <CircularProgress 
+                            size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)} 
+                            color="inherit" 
+                            thickness={5} 
+                          />
+                        ) : (
+                          <RefreshIcon 
+                            fontSize={isVerySmallMobile ? "small" : "small"} 
+                            sx={{ fontSize: isVerySmallMobile ? '0.9rem' : undefined }}
+                          />
                     )}
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* History button with popover menu */}
+                  <Tooltip title="Conversation history" arrow>
+                    <span>
                   <IconButton 
                     ref={historyButtonRef}
                     size={isVerySmallMobile ? "small" : "small"}
                     color="inherit" 
                     onClick={handleThreadsOpen}
-                    title="View conversation history"
-                    sx={{ 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
-                      p: isVerySmallMobile ? 0.5 : undefined
-                    }}
-                  >
-                    <HistoryIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                    }} />
+                        sx={{ p: isVerySmallMobile ? 0.5 : undefined }}
+                      >
+                        <HistoryIcon 
+                          fontSize={isVerySmallMobile ? "small" : "small"} 
+                          sx={{ fontSize: isVerySmallMobile ? '0.9rem' : undefined }}
+                        />
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* Expand to full page button */}
+                  <Tooltip title="Open in full page" arrow>
+                    <span>
                   <IconButton
                     size={isVerySmallMobile ? "small" : "small"}
                     color="inherit"
                     onClick={navigateToAssistantPage}
-                    title="Open in full page"
-                    sx={{ 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
-                      p: isVerySmallMobile ? 0.5 : undefined
-                    }}
-                  >
-                    <OpenInFullIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                    }} />
+                        sx={{ p: isVerySmallMobile ? 0.5 : undefined }}
+                      >
+                        <OpenInFullIcon 
+                          fontSize={isVerySmallMobile ? "small" : "small"} 
+                          sx={{ fontSize: isVerySmallMobile ? '0.9rem' : undefined }}
+                        />
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
+                  {/* New conversation button */}
+                  <Tooltip title="New conversation" arrow>
+                    <span>
+                      <IconButton 
+                        size="small" 
+                        color="inherit" 
+                        onClick={clearMessages}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  
+                  {/* Close button */}
+                  <Tooltip title="Close" arrow>
+                    <span>
+                      <IconButton 
+                        size="small" 
+                        color="inherit" 
+                        onClick={handleClose} 
+                        aria-label="close"
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* Threads menu popover */}
                   <Popper
                     open={showThreads}
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 1400 }} // Ensure this appears above the chat
+                    style={{ zIndex: 1400 }}
                   >
                     {({ TransitionProps }) => (
                       <Grow
@@ -1365,13 +1456,6 @@ const AIAssistant: React.FC = () => {
                       </Grow>
                     )}
                   </Popper>
-                  <IconButton size="small" color="inherit" onClick={clearMessages} title="New conversation">
-                    <AddIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" 
-                    sx={{ ml: isSmallMobile ? 0.5 : 1 }}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
                 </Box>
               </Box>
 
@@ -1382,7 +1466,8 @@ const AIAssistant: React.FC = () => {
                   flexGrow: 1,
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                  p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
+                  pt: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1.5),
                   backgroundColor: '#f5f7fa',
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#d4d4d4 #f5f7fa',
@@ -1398,29 +1483,249 @@ const AIAssistant: React.FC = () => {
                   },
                   overscrollBehavior: 'contain',
                   WebkitOverflowScrolling: 'touch',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  // Ensure the message container content is always visible on mobile
+                  ...(isMobile && displayMessages.length > 0 && {
+                    scrollBehavior: 'smooth'
+                  })
                 }}
               >
-                {/* Example prompts section */}
-                <Box sx={{ width: '100%', mb: 1 }}>
-                  <Typography 
-                    variant="body1" 
-                    fontWeight="medium"
-                    sx={{ 
-                      mb: 1.5,
-                      fontSize: { xs: '0.9rem', md: '1rem' },
-                      textAlign: 'left'
-                    }}
-                  >
-                    Try asking:
-                  </Typography>
-                  
-                  <PopupCategorizedPrompts
-                    categories={PROMPT_CATEGORIES}
-                    onPromptClick={handleExamplePromptClick}
-                    isSmallMobile={isSmallMobile}
-                    isVerySmallMobile={isVerySmallMobile}
-                  />
-                </Box>
+                {displayMessages.length === 0 ? (
+                  // Empty state with example prompts
+                  <>
+                    <Box
+                      display="flex"
+                      flexDirection="column"
+                      alignItems="center"
+                      justifyContent="flex-start"
+                      height="auto"
+                      p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
+                      textAlign="center"
+                      sx={{
+                        maxWidth: isVerySmallMobile ? '100%' : (isSmallMobile ? '90%' : '80%'),
+                        margin: '0 auto',
+                        mb: 2
+                      }}
+                    >
+                      <SmartToyIcon 
+                        fontSize="large" 
+                        color="primary" 
+                        sx={{ 
+                          mb: 0.5, 
+                          fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
+                          opacity: 0.8 
+                        }} 
+                      />
+                      <Typography 
+                        variant={isSmallMobile ? "body2" : "body1"} 
+                        gutterBottom 
+                        fontWeight="medium"
+                        sx={{ mb: 0.4 }}
+                      >
+                        Welcome to Pulse Assistant
+                      </Typography>
+                      <Typography 
+                        variant="caption"
+                        color="textSecondary"
+                        sx={{ 
+                          fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
+                          lineHeight: 1.2,
+                          mb: isVerySmallMobile ? 1.5 : 2
+                        }}
+                      >
+                        Ask me about productivity or app usage!
+                      </Typography>
+                    </Box>
+
+                    {/* Example prompts section */}
+                    <Box sx={{ 
+                      width: '100%', 
+                      mb: 1,
+                      mt: isMobile ? 0.5 : 1,
+                      flexGrow: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}>
+                      <Typography 
+                        variant="body1" 
+                        fontWeight="medium"
+                        sx={{ 
+                          mb: isVerySmallMobile ? 1 : 1.5,
+                          fontSize: { xs: '0.9rem', md: '1rem' },
+                          textAlign: 'left'
+                        }}
+                      >
+                        Try asking:
+                      </Typography>
+                      
+                      <PopupCategorizedPrompts
+                        categories={PROMPT_CATEGORIES}
+                        onPromptClick={handleExamplePromptClick}
+                        isSmallMobile={isSmallMobile}
+                        isVerySmallMobile={isVerySmallMobile}
+                      />
+                    </Box>
+                  </>
+                ) : (
+                  // Message view
+                  <>
+                    {displayMessages.map((msg, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                          mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
+                        }}
+                      >
+                        {msg.role === 'assistant' && (
+                          <Avatar
+                            sx={{
+                              bgcolor: theme.palette.primary.main,
+                              mr: 1,
+                              alignSelf: 'flex-start',
+                              width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                              height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                            }}
+                          >
+                            <SmartToyIcon sx={{ 
+                              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
+                            }} />
+                          </Avatar>
+                        )}
+
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                            maxWidth: isVerySmallMobile ? '85%' : (isSmallMobile ? '80%' : '82%'),
+                            borderRadius: 2,
+                            backgroundColor: msg.role === 'user'
+                              ? theme.palette.primary.main
+                              : 'white',
+                            color: msg.role === 'user'
+                              ? 'white'
+                              : theme.palette.text.primary,
+                            ml: msg.role === 'user' ? 1 : 0,
+                            mr: msg.role === 'assistant' ? 1 : 0,
+                          }}
+                        >
+                          {msg.role === 'user'
+                            ? <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                                  wordBreak: 'break-word' 
+                                }}
+                              >
+                                {msg.content}
+                              </Typography>
+                            : <Box sx={{ 
+                                '& .MuiTypography-root': { 
+                                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                                  wordBreak: 'break-word'
+                                } 
+                              }}>
+                                  {/* Don't display cancellation messages */}
+                                  {!msg.content.includes('request was cancelled') && formatMessageContent(msg.content)}
+                                  
+                                  {/* Add Retry button for error messages */}
+                                  {msg.role === 'assistant' && 
+                                    (msg.content.toLowerCase().includes('error') || 
+                                     msg.content.toLowerCase().includes('apologize') ||
+                                     msg.content.toLowerCase().includes('sorry') ||
+                                     msg.content.toLowerCase().includes('couldn\'t process') ||
+                                     msg.content.toLowerCase().includes('issue') ||
+                                     msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                    lastPrompt && (
+                                    <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="primary"
+                                        onClick={handleRetry}
+                                        startIcon={<ReplayIcon fontSize="small" />}
+                                        sx={{ 
+                                          fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
+                                          py: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)
+                                        }}
+                                      >
+                                        Retry
+                                      </Button>
+                                    </Box>
+                                  )}
+                                </Box>
+                          }
+                        </Paper>
+
+                        {msg.role === 'user' && (
+                          <Avatar
+                            sx={{
+                              bgcolor: theme.palette.secondary.main,
+                              ml: 1,
+                              alignSelf: 'flex-start',
+                              width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                              height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24)
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
+                              {localStorage.getItem('userName')?.[0] || 'U'}
+                            </Typography>
+                          </Avatar>
+                        )}
+                      </Box>
+                    ))}
+
+                    {isLoading && (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'flex-start',
+                          mb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.25),
+                        }}
+                      >
+                        <Avatar
+                          sx={{
+                            bgcolor: theme.palette.primary.main,
+                            mr: 1,
+                            alignSelf: 'flex-start',
+                            width: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                            height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
+                          }}
+                        >
+                          <SmartToyIcon sx={{ 
+                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
+                          }} />
+                        </Avatar>
+
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5),
+                            borderRadius: 2,
+                            backgroundColor: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            minWidth: isVerySmallMobile ? '50px' : (isSmallMobile ? '60px' : '80px'),
+                          }}
+                        >
+                          <CircularProgress 
+                            size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)}
+                            thickness={5} 
+                            sx={{ mr: 1 }}
+                          />
+                          <Typography variant="body2" color="text.secondary" sx={{ 
+                            fontSize: isVerySmallMobile ? '0.65rem' : (isSmallMobile ? '0.7rem' : '0.8rem')
+                          }}>
+                            Processing...
+                          </Typography>
+                        </Paper>
+                      </Box>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </>
+                )}
               </Box>
 
               {/* Input area */}
@@ -1428,11 +1733,12 @@ const AIAssistant: React.FC = () => {
                 component="form"
                 onSubmit={handleSendMessage}
                 sx={{
-                  p: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : 1.5), 
+                  p: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1.5), 
                   borderTop: '1px solid #e0e0e0',
                   backgroundColor: 'white',
                   pt: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
-                  pb: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1)
+                  pb: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1),
+                  mt: 'auto' // Push to bottom
                 }}
               >
                 <TextField
@@ -1443,10 +1749,16 @@ const AIAssistant: React.FC = () => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleInputKeyDown}
                   multiline
-                  maxRows={isVerySmallMobile ? 1 : (isSmallMobile ? 2 : 3)}
+                  maxRows={isVeryShortScreen ? 1 : (isVerySmallMobile ? 1 : (isSmallMobile ? 2 : 3))}
                   disabled={isLoading}
                   size="small"
                   inputRef={inputRef}
+                  onClick={() => {
+                    // When text field is clicked in mobile mode, make sure we're in message view
+                    if (isMobile && messageContainerRef.current) {
+                      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+                    }
+                  }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: '20px',
@@ -1454,11 +1766,11 @@ const AIAssistant: React.FC = () => {
                       pr: 1,
                       fontSize: isVerySmallMobile ? '0.75rem' : (isSmallMobile ? '0.8rem' : '0.85rem'),
                       ...(isVerySmallMobile && {
-                        py: 0.3,
+                        py: 0.25,
                         px: 0.75
                       }),
                       ...(isSmallMobile && {
-                        py: 0.5,
+                        py: 0.4,
                         px: 1
                       })
                     }
@@ -1569,66 +1881,105 @@ const AIAssistant: React.FC = () => {
                   </Avatar>
                   <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
                 </Box>
-                <Box className="cancel-drag">
+                <Box 
+                  className="cancel-drag"
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    '& .MuiIconButton-root': {
+                      mx: 0.5,
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      }
+                    }
+                  }}
+                >
                   {/* Refresh button */}
+                  <Tooltip title="Refresh conversation" arrow>
+                    <span className="cancel-drag">
                   <IconButton 
-                    size={isVerySmallMobile ? "small" : "small"} 
+                        size="small" 
                     color="inherit" 
                     onClick={refreshConversation}
                     disabled={isRefreshing || isLoading}
-                    title="Refresh conversation"
-                    sx={{ 
-                      opacity: !threadId ? 0.7 : 1, 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
-                      p: isVerySmallMobile ? 0.5 : undefined
-                    }}
+                        className="cancel-drag"
+                        sx={{ opacity: !threadId ? 0.7 : 1 }}
                   >
                     {isRefreshing ? (
-                      <CircularProgress size={isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 20)} color="inherit" thickness={5} />
+                          <CircularProgress size={20} color="inherit" thickness={5} />
                     ) : (
-                      <RefreshIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                        fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                      }} />
+                          <RefreshIcon fontSize="small" />
                     )}
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* History button with popover menu */}
+                  <Tooltip title="Conversation history" arrow>
+                    <span className="cancel-drag">
                   <IconButton 
                     ref={historyButtonRef}
-                    size={isVerySmallMobile ? "small" : "small"}
+                        size="small"
                     color="inherit" 
                     onClick={handleThreadsOpen}
-                    title="View conversation history"
-                    sx={{ 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
-                      p: isVerySmallMobile ? 0.5 : undefined
-                    }}
-                  >
-                    <HistoryIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                    }} />
+                        className="cancel-drag"
+                      >
+                        <HistoryIcon fontSize="small" />
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* Expand to full page button */}
+                  <Tooltip title="Open in full page" arrow>
+                    <span className="cancel-drag">
                   <IconButton
-                    size={isVerySmallMobile ? "small" : "small"}
+                        size="small"
                     color="inherit"
                     onClick={navigateToAssistantPage}
-                    title="Open in full page"
-                    sx={{ 
-                      mr: isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 1),
-                      p: isVerySmallMobile ? 0.5 : undefined
-                    }}
-                  >
-                    <OpenInFullIcon fontSize={isVerySmallMobile ? "small" : "small"} sx={{
-                      fontSize: isVerySmallMobile ? '0.9rem' : undefined
-                    }} />
+                        className="cancel-drag"
+                      >
+                        <OpenInFullIcon fontSize="small" />
                   </IconButton>
+                    </span>
+                  </Tooltip>
+                  
+                  {/* New conversation button */}
+                  <Tooltip title="New conversation" arrow>
+                    <span className="cancel-drag">
+                      <IconButton 
+                        size="small" 
+                        color="inherit" 
+                        onClick={clearMessages}
+                        className="cancel-drag"
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  
+                  {/* Close button */}
+                  <Tooltip title="Close" arrow>
+                    <span className="cancel-drag">
+                      <IconButton 
+                        size="small" 
+                        color="inherit" 
+                        onClick={handleClose} 
+                        aria-label="close"
+                        className="cancel-drag"
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  
                   {/* Threads menu popover */}
                   <Popper
                     open={showThreads}
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 1400 }} // Ensure this appears above the chat
+                    style={{ zIndex: 1400 }}
                   >
                     {({ TransitionProps }) => (
                       <Grow
@@ -1689,12 +2040,6 @@ const AIAssistant: React.FC = () => {
                       </Grow>
                     )}
                   </Popper>
-                  <IconButton size="small" color="inherit" onClick={clearMessages} title="New conversation" className="cancel-drag">
-                    <AddIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton size="small" color="inherit" onClick={handleClose} aria-label="close" sx={{ ml: 1 }} className="cancel-drag">
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
                 </Box>
               </Box>
 
@@ -1730,13 +2075,14 @@ const AIAssistant: React.FC = () => {
                     display="flex"
                     flexDirection="column"
                     alignItems="center"
-                    justifyContent="center"
-                    height="100%"
+                    justifyContent="flex-start"
+                    height="auto"
                     p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
                     textAlign="center"
                     sx={{
-                      maxWidth: isVerySmallMobile ? '95%' : (isSmallMobile ? '85%' : '75%'),
-                      margin: '0 auto'
+                      maxWidth: isVerySmallMobile ? '100%' : (isSmallMobile ? '90%' : '80%'),
+                      margin: '0 auto',
+                      mb: 2
                     }}
                   >
                     <SmartToyIcon 
@@ -1762,33 +2108,13 @@ const AIAssistant: React.FC = () => {
                       sx={{ 
                         fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
                         lineHeight: 1.2,
-                        mb: 2
+                        mb: isVerySmallMobile ? 1.5 : 2
                       }}
                     >
                       Ask me about productivity or app usage!
                     </Typography>
                     
-                    {/* Example prompts section */}
-                    <Box sx={{ width: '100%', mb: 1 }}>
-                      <Typography 
-                        variant="body1" 
-                        fontWeight="medium"
-                        sx={{ 
-                          mb: 1.5,
-                          fontSize: { xs: '0.9rem', md: '1rem' },
-                          textAlign: 'left'
-                        }}
-                      >
-                        Try asking:
-                      </Typography>
-                      
-                      <PopupCategorizedPrompts
-                        categories={PROMPT_CATEGORIES}
-                        onPromptClick={handleExamplePromptClick}
-                        isSmallMobile={isSmallMobile}
-                        isVerySmallMobile={isVerySmallMobile}
-                      />
-                    </Box>
+                    {/* Example prompts section moved outside to be part of the main content */}
                   </Box>
                 ) : (
                   <>
