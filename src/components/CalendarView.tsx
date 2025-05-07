@@ -73,18 +73,16 @@ const MonthEventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => 
   transition: 'all 0.2s ease',
   display: 'flex',
   alignItems: 'center',
+  border: '1px solid rgba(255,255,255,0.3)',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
   '&:hover': {
     filter: 'brightness(0.95)',
-    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-    transform: 'scale(1.01)',
-    zIndex: 100
-  },
-  '&:active, &:focus': {
-    zIndex: 100
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    transform: 'translateX(1px)'
   }
 }));
 
-// Update the WeekEventCard styled component to remove hover effects that affect z-index
+// Update the WeekEventCard styled component
 const WeekEventCard = styled(Box, {
   shouldForwardProp: (prop) => 
     prop !== 'bgcolor' && 
@@ -100,8 +98,8 @@ const WeekEventCard = styled(Box, {
   left: string;
 }>(({ theme, bgcolor, top, height, width, left }) => ({
   backgroundColor: bgcolor,
-  borderRadius: theme.shape.borderRadius,
-  padding: '4px 6px', // Maintain padding
+  borderRadius: '4px',
+  padding: '4px 8px',
   cursor: 'pointer',
   overflow: 'hidden',
   position: 'absolute',
@@ -109,17 +107,15 @@ const WeekEventCard = styled(Box, {
   height: `${height}px`,
   width: width,
   left: left,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-  transition: 'box-shadow 0.2s ease, transform 0.2s ease', // Remove z-index from transition
-  transformOrigin: 'center center',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+  transition: 'box-shadow 0.2s ease, filter 0.2s ease',
   zIndex: 1, // Base z-index
   display: 'flex',
   flexDirection: 'column',
   border: '1px solid rgba(0,0,0,0.05)',
   '&:hover': {
-    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
     filter: 'brightness(1.03)'
-    // Removed transform and z-index changes
   }
 }));
 
@@ -732,7 +728,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     return (hours * 60 + minutes) * (HOUR_HEIGHT / 60);
   };
 
-  // Update the calculateEventPositions function for better handling of overlaps
+  // Improved function to calculate event positions with better spacing
   const calculateEventPositions = (events: CalendarEvent[]): {
     event: CalendarEvent;
     column: number;
@@ -853,8 +849,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           event,
           column: 0,
           columnsInSlot: 1,
-          width: '95%',
-          left: '2.5%',
+          width: '97%',
+          left: '1.5%',
           zIndex: typePriority
         });
         return;
@@ -893,8 +889,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               event: focusEvent,
               column: 0,
               columnsInSlot: 1,
-              width: '95%', 
-              left: '2.5%',
+              width: '97%', 
+              left: '1.5%',
               zIndex: 1 // Lowest z-index for background
             });
             
@@ -908,8 +904,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 event,
                 column: index,
                 columnsInSlot: containedInFocus.length,
-                width: '85%',
-                left: '7.5%',
+                width: '92%',
+                left: '4%',
                 zIndex: 20 + index, // Higher z-index to appear above focus time
                 isNested: true // Mark as nested for special styling
               });
@@ -923,8 +919,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               event: focusEvent,
               column: 0,
               columnsInSlot: 1,
-              width: '95%',
-              left: '2.5%',
+              width: '97%',
+              left: '1.5%',
               zIndex: 1 // Low z-index to be in the background
             });
           }
@@ -936,8 +932,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             event,
             column: 0,
             columnsInSlot: 1,
-            width: '95%',
-            left: '2.5%',
+            width: '97%',
+            left: '1.5%',
             zIndex: 1
           });
         });
@@ -959,8 +955,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       // Position standup events in a special way
       standupEvents.forEach((event, index) => {
         const totalEvents = standupEvents.length;
-        const width = '75%';
-        const left = '12.5%';
+        const width = '85%';
+        const left = '7.5%';
         
         eventPositions.push({
           event,
@@ -972,29 +968,54 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         });
       });
       
-      // Distribute regular events with a staggered offset for better visibility
+      // Distribute regular events with improved positioning for better visibility
       if (regularEvents.length > 0) {
         const totalEvents = regularEvents.length;
         
-        regularEvents.forEach((event, index) => {
+        // Sort events by duration (shortest first) to help with layout
+        const sortedRegularEvents = [...regularEvents].sort((a, b) => {
+          const aDuration = new Date(a.end).getTime() - new Date(a.start).getTime();
+          const bDuration = new Date(b.end).getTime() - new Date(b.start).getTime();
+          return aDuration - bDuration;
+        });
+        
+        sortedRegularEvents.forEach((event, index) => {
           const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
           const typePriority = eventTypePriority[eventType] || 2;
           
           let width: string, left: string;
           
-          // Different positioning strategies based on number of concurrent events
+          // Improved positioning strategies for better visibility
           if (totalEvents === 2) {
-            // For 2 events, use nice side-by-side layout with slight overlap
-            width = '65%';
-            left = index === 0 ? '5%' : '30%';
+            // For 2 events, use side-by-side layout with less overlap
+            width = '47.5%';
+            left = index === 0 ? '1.5%' : '51%';
           } else if (totalEvents === 3) {
-            // For 3 events, use a staggered layout
-            width = '60%';
-            left = `${5 + index * 15}%`;
+            // For 3 events, use a more spaced layout
+            width = '31%';
+            left = `${1.5 + index * 33.5}%`;
+          } else if (totalEvents === 4) {
+            // For 4 events, use a grid-like layout
+            const col = index % 2;
+            const row = Math.floor(index / 2);
+            width = '47.5%';
+            left = col === 0 ? '1.5%' : '51%';
+            // Row adjustment will be handled separately with topAdjustment
           } else {
-            // For 4+ events, use a more condensed layout
-            width = `${Math.min(60, 90 / totalEvents)}%`;
-            left = `${5 + index * (90 / totalEvents)}%`;
+            // For 5+ events, ensure minimum visibility with side-by-side layout
+            if (totalEvents <= 6) {
+              // For 5-6 events, use 3 columns
+              const cols = 3;
+              const col = index % cols;
+              width = `${97 / cols}%`;
+              left = `${1.5 + col * (97 / cols + 1)}%`;
+            } else {
+              // For 7+ events, use 4 columns
+              const cols = 4;
+              const col = index % cols;
+              width = `${97 / cols}%`;
+              left = `${1.5 + col * (97 / cols + 0.5)}%`;
+            }
           }
           
           eventPositions.push({
@@ -1072,11 +1093,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               sx={{
                 color: textColor,
                 fontWeight: 'bold', 
-                whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 fontSize: '0.8rem',
-                lineHeight: 1.2
+                lineHeight: 1.2,
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+                whiteSpace: 'normal',
+                maxWidth: 'calc(100% - 16px)'
               }}
             >
               {event.title}
@@ -1122,14 +1147,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             sx={{
               color: '#5F6368', // Standard gray text for OOO events
               fontWeight: 'bold', 
-              whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               fontSize: '0.8rem', // Standardized font size
               lineHeight: 1.2,
               pl: 0.5,
               textAlign: 'center',
-              textDecoration: isDeclined ? 'line-through' : 'none'
+              textDecoration: isDeclined ? 'line-through' : 'none',
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical',
+              whiteSpace: 'normal'
             }}
           >
             Out of office
@@ -1143,7 +1171,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 textAlign: 'center',
                 fontStyle: 'italic',
                 mt: 0.5,
-                textDecoration: isDeclined ? 'line-through' : 'none'
+                textDecoration: isDeclined ? 'line-through' : 'none',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical'
               }}
             >
               {event.description}
@@ -1153,7 +1186,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       );
     }
     
-    // For very small events, skip the time display
+    // For very small events, optimize for title visibility
     if (height < 30) {
       return (
         <Box sx={{ 
@@ -1169,14 +1202,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             sx={{ 
               color: isDeclined ? eventColor : textColor, // Use event color for declined events text
               fontWeight: 'medium', // Standardized font weight
-              whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               fontSize: '0.8rem', // Standardized font size
               lineHeight: 1.2,
               pl: 0.5,
               width: '100%',
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
+              textDecoration: isDeclined ? 'line-through' : 'none', // Keep strikethrough for declined events
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical',
+              whiteSpace: 'normal'
             }}
           >
             {event.title}
@@ -1195,7 +1231,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       );
     }
     
-    // For normal sized events, show the title and time
+    // For normal sized events, use Google Calendar style format
     return (
       <Box sx={{ 
         height: '100%',
@@ -1205,74 +1241,71 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         width: '100%',
         ...declinedStyle
       }}>
-        {/* Title and time in a horizontal layout */}
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          width: '100%',
-          mb: 0.2
-        }}>
-          <Typography 
-            variant="subtitle2" 
-            sx={{
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              fontWeight: 'medium', // Standardized font weight
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standardized font size
-              lineHeight: 1.2,
-              pl: 0.5,
-              flexGrow: 1,
-              mr: 1, // Add margin to separate from time
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
-            }}
-          >
-            {event.title}
-            {hasAttachments && (
-              <AttachFileIcon 
-                sx={{ 
-                  fontSize: '0.7rem', 
-                  ml: 0.5,
-                  verticalAlign: 'middle',
-                  opacity: 0.7
-                }} 
-              />
-            )}
-          </Typography>
-          
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              fontSize: '0.7rem', // Slightly increased for better readability
-              fontWeight: 'medium',
-              whiteSpace: 'nowrap',
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              flexShrink: 0,
-              pr: 0.5,
-              textDecoration: isDeclined ? 'line-through' : 'none', // Keep strikethrough for declined events
-              display: (event.eventType === 'task' && !event.hasExplicitTime) ? 'none' : 'block' // Hide time for tasks without explicit time
-            }}
-          >
-            {formatTime(event.start)}-{formatTime(event.end)}
-          </Typography>
-        </Box>
+        {/* Time at the top */}
+        <Typography 
+          variant="caption" 
+          sx={{ 
+            fontSize: '0.7rem',
+            fontWeight: 'medium',
+            color: isDeclined ? eventColor : textColor,
+            opacity: 0.9,
+            pl: 0.5,
+            mb: 0.5,
+            textDecoration: isDeclined ? 'line-through' : 'none',
+            display: (event.eventType === 'task' && !event.hasExplicitTime) ? 'none' : 'block'
+          }}
+        >
+          {formatTime(event.start)} – {formatTime(event.end)}
+        </Typography>
         
-        {/* Only show location if there's enough height */}
-        {height > 45 && event.location && (
+        {/* Title as main text */}
+        <Typography 
+          variant="subtitle2" 
+          sx={{
+            color: isDeclined ? eventColor : textColor,
+            fontWeight: 'medium',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            fontSize: '0.85rem',
+            lineHeight: 1.2,
+            pl: 0.5,
+            mb: 0.5,
+            flexGrow: 1,
+            textDecoration: isDeclined ? 'line-through' : 'none',
+            display: '-webkit-box',
+            WebkitLineClamp: height > 60 ? 2 : 1,
+            WebkitBoxOrient: 'vertical',
+            whiteSpace: 'normal'
+          }}
+        >
+          {event.title}
+          {hasAttachments && (
+            <AttachFileIcon 
+              sx={{ 
+                fontSize: '0.7rem', 
+                ml: 0.5,
+                verticalAlign: 'middle',
+                opacity: 0.7
+              }} 
+            />
+          )}
+        </Typography>
+        
+        {/* Location if there's enough space */}
+        {height > 50 && event.location && (
           <Typography 
             variant="caption" 
             sx={{ 
-              fontSize: '0.7rem', // Slightly increased for better readability
-              whiteSpace: 'nowrap',
+              fontSize: '0.7rem',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              mt: 0.2,
+              color: isDeclined ? eventColor : textColor,
+              opacity: 0.8,
               pl: 0.5,
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
+              textDecoration: isDeclined ? 'line-through' : 'none',
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical'
             }}
           >
             📍 {event.location}
@@ -1617,11 +1650,26 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     (attendee.self === true && attendee.responseStatus === 'declined')
                   );
                 
+                  // Add vertical staggering for events when there are too many concurrent ones
+                  let topAdjustment = 0;
+                  if (columnsInSlot > 3) {
+                    // For 4+ events, create rows instead of having too many columns
+                    const rowCount = Math.ceil(columnsInSlot / 2); // 2 events per row
+                    const row = Math.floor(column / 2);  
+                    topAdjustment = row * 22; // 22px offset per row
+                  } else if (columnsInSlot === 3) {
+                    // For 3 events, special handling
+                    if (column === 2) {
+                      // Third event gets pushed down
+                      topAdjustment = 15;
+                    }
+                  }
+
                   return (
                     <WeekEventCard
                       key={event.id}
                       bgcolor={eventColor}
-                      top={startPx}
+                      top={startPx + topAdjustment}
                       height={height}
                       width={width}
                       left={left}
@@ -1752,10 +1800,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </Grid>
         
         {/* Day columns */}
-        <Grid item xs={11}>
-          <Grid container>
+        <Grid item xs={11} sx={{ width: '100%', maxWidth: '100%' }}>
+          <Grid container sx={{ width: '100%' }}>
             {/* Days header */}
-            <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9' }}>
+            <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9', width: '100%' }}>
               {weekDays.map((date, index) => {
                 const isToday = date.getDate() === today.getDate() && 
                               date.getMonth() === today.getMonth() && 
@@ -1775,7 +1823,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'center',
-                      alignItems: 'center'
+                      alignItems: 'center',
+                      minWidth: '80px' // Add minimum width
                     }}
                   >
                     <Box sx={{ 
@@ -1994,11 +2043,26 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         (attendee.self === true && attendee.responseStatus === 'declined')
                       );
                     
+                      // Add vertical staggering for events when there are too many concurrent ones
+                      let topAdjustment = 0;
+                      if (columnsInSlot > 3) {
+                        // For 4+ events, create rows instead of having too many columns
+                        const rowCount = Math.ceil(columnsInSlot / 2); // 2 events per row
+                        const row = Math.floor(column / 2);  
+                        topAdjustment = row * 22; // 22px offset per row
+                      } else if (columnsInSlot === 3) {
+                        // For 3 events, special handling
+                        if (column === 2) {
+                          // Third event gets pushed down
+                          topAdjustment = 15;
+                        }
+                      }
+
                       return (
                         <WeekEventCard
                           key={event.id}
                           bgcolor={eventColor}
-                          top={startPx}
+                          top={startPx + topAdjustment}
                           height={height}
                           width={width}
                           left={left}
@@ -2256,15 +2320,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           display: 'flex',
                           alignItems: 'center',
                           mb: 0.5,
-                          px: 0.5,
+                          px: 1,
                           py: 0.25,
-                          borderRadius: 0.5,
+                          borderRadius: 1,
                           backgroundColor: isDeclined ? 'transparent' : eventColor,
-                          border: isDeclined ? `1px dashed ${eventColor}` : 'none',
+                          border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
                           overflow: 'hidden',
                           whiteSpace: 'nowrap',
                           textOverflow: 'ellipsis',
-                          color: isDeclined ? 'text.primary' : getEventTextColor(eventColor)
+                          color: isDeclined ? 'text.primary' : getEventTextColor(eventColor),
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          minHeight: '20px',
+                          maxWidth: '95%',
+                          '&:hover': {
+                            filter: 'brightness(0.95)',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                          }
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2273,9 +2344,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       >
                         <Typography variant="caption" sx={{ 
                           fontSize: '0.7rem',
-                          textDecoration: isDeclined ? 'line-through' : 'none'
+                          textDecoration: isDeclined ? 'line-through' : 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          width: '100%'
                         }}>
-                          {format(new Date(event.start), 'h:mm a')} {event.title}
+                          {!event.isAllDay && format(new Date(event.start), 'h:mm')} {event.title}
                         </Typography>
                       </Box>
                     );
@@ -3010,7 +3084,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         overflow: 'hidden',
         height: '100%', // Ensure the paper takes full height of its container
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        maxWidth: '100%', // Ensure full width usage
+        width: '100%'
       }}
     >
       {/* Calendar header */}
