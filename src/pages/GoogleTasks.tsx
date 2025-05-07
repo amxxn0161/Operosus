@@ -2154,7 +2154,7 @@ const GoogleTasks: React.FC = () => {
         <Typography 
           variant="h4" 
           component="h1" 
-          sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+          sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}
         >
           Google Tasks
         </Typography>
@@ -2220,17 +2220,18 @@ const GoogleTasks: React.FC = () => {
           }}>
             <CardHeader
               title={
-                <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
                   Starred Tasks
                 </Typography>
               }
               sx={{ 
                 bgcolor: 'rgba(16, 86, 245, 0.08)', 
-                pb: 1.5,
+                pb: 1,
+                pt: 1,
                 '& .MuiCardHeader-content': { overflow: 'hidden' }
               }}
             />
-            <CardContent sx={{ px: 2, py: 1 }}>
+            <CardContent sx={{ px: 2, py: 0.5 }}>
               <List sx={{ py: 0 }}>
                 {starredTasks.map((task) => {
                   const taskList = taskLists.find(list => 
@@ -2249,13 +2250,13 @@ const GoogleTasks: React.FC = () => {
                         }
                       }}
                       sx={{
-                        py: 1,
+                        py: 0.5, // Reduced padding
                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
                         '&:last-child': { borderBottom: 'none' },
                         cursor: 'pointer'
                       }}
                     >
-                      <ListItemIcon sx={{ minWidth: '40px' }}>
+                      <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
                         <Checkbox
                           checked={task.status === 'completed'}
                           onChange={(e) => {
@@ -2264,7 +2265,8 @@ const GoogleTasks: React.FC = () => {
                           }}
                           edge="start"
                           sx={{ 
-                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
+                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                            p: 0.5 // Reduced padding
                           }}
                         />
                       </ListItemIcon>
@@ -2275,6 +2277,7 @@ const GoogleTasks: React.FC = () => {
                               textDecoration: task.status === 'completed' ? 'line-through' : 'none',
                               color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
                               fontFamily: 'Poppins',
+                              fontSize: '0.875rem' // Reduced font size
                             }}
                           >
                             {task.title}
@@ -2289,7 +2292,8 @@ const GoogleTasks: React.FC = () => {
                                 sx={{ 
                                   fontFamily: 'Poppins',
                                   color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                  display: 'block'
+                                  display: 'block',
+                                  fontSize: '0.7rem' // Further reduced font size
                                 }}
                               >
                                 {formatDueInfoWithNotes(task)}
@@ -2304,7 +2308,8 @@ const GoogleTasks: React.FC = () => {
                                   fontFamily: 'Poppins',
                                   color: 'text.secondary',
                                   display: 'block',
-                                  mt: 0.5,
+                                  mt: 0.25, // Reduced margin
+                                  fontSize: '0.7rem',
                                   // Limit to 2 lines with ellipsis
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -2368,7 +2373,7 @@ const GoogleTasks: React.FC = () => {
                 }}>
                   <CardHeader
                     title={
-                      <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
                         {taskList.title}
                       </Typography>
                     }
@@ -2391,13 +2396,14 @@ const GoogleTasks: React.FC = () => {
                     sx={{ 
                       bgcolor: 'rgba(16, 86, 245, 0.08)', 
                       pb: 1.5,
-                      '& .MuiCardHeader-content': { overflow: 'hidden' }
+                      '& .MuiCardHeader-content': { overflow: 'hidden' },
+                      py: 1 // Reduce padding
                     }}
                   />
                   <CardContent 
                     sx={{ 
-                      px: 2, 
-                      py: 1, 
+                      px: 1.5,
+                      py: 0.5,
                       flexGrow: 1, 
                       overflowY: 'auto', 
                       overflowX: 'hidden', // Prevent horizontal scrolling
@@ -2426,13 +2432,13 @@ const GoogleTasks: React.FC = () => {
                                     {...provided.dragHandleProps}
                                     onClick={(e) => handleTaskItemClick(taskList.id, task, taskList.title, e)}
                                     sx={{
-                                      py: 1,
+                                      py: 0.5, // Reduced vertical padding
                                       borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
                                       '&:last-child': { borderBottom: 'none' },
                                       cursor: 'pointer'
                                     }}
                                   >
-                                    <ListItemIcon sx={{ minWidth: '40px' }}>
+                                    <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
                                       <Checkbox
                                         checked={task.status === 'completed'}
                                         onChange={(e) => {
@@ -2441,7 +2447,8 @@ const GoogleTasks: React.FC = () => {
                                         }}
                                         edge="start"
                                         sx={{ 
-                                          color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
+                                          color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                                          p: 0.5 // Reduced padding
                                         }}
                                       />
                                     </ListItemIcon>
@@ -2467,14 +2474,15 @@ const GoogleTasks: React.FC = () => {
                                               textDecoration: task.status === 'completed' ? 'line-through' : 'none',
                                               color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
                                               fontFamily: 'Poppins',
+                                              fontSize: '0.875rem', // Reduced font size
                                               ...(isSubtask(task) ? { 
-                                                paddingLeft: '24px', // Increased padding
-                                                marginLeft: '16px', // Added margin
-                                                borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
-                                                backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
-                                                borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                                paddingLeft: '16px', // Reduced padding
+                                                marginLeft: '12px', // Reduced margin
+                                                borderLeft: '2px solid rgba(16, 86, 245, 0.6)', // Thinner border
+                                                backgroundColor: 'rgba(16, 86, 245, 0.03)',
+                                                borderRadius: '0 4px 4px 0',
                                                 fontStyle: 'italic',
-                                                py: 0.5 // Add some vertical padding
+                                                py: 0.5
                                               } : {})
                                             }}
                                           >
@@ -2492,7 +2500,8 @@ const GoogleTasks: React.FC = () => {
                                               sx={{ 
                                                 fontFamily: 'Poppins',
                                                 color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                                display: 'block'
+                                                display: 'block',
+                                                fontSize: '0.7rem' // Further reduced font size for secondary
                                               }}
                                             >
                                               {formatDueInfoWithNotes(task)}
@@ -2507,7 +2516,8 @@ const GoogleTasks: React.FC = () => {
                                                 fontFamily: 'Poppins',
                                                 color: 'text.secondary',
                                                 display: 'block',
-                                                mt: 0.5,
+                                                mt: 0.25, // Reduced margin
+                                                fontSize: '0.7rem', // Further reduced font size for secondary
                                                 // Limit to 2 lines with ellipsis
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
@@ -2527,14 +2537,19 @@ const GoogleTasks: React.FC = () => {
                                         e.stopPropagation();
                                         handleToggleTaskStar(taskList.id, task.id);
                                       }}
-                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                      sx={{ 
+                                        color: task.starred ? '#FFD700' : 'action.disabled', 
+                                        mr: 0.5, 
+                                        p: 0.5
+                                      }}
                                     >
-                                      {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                      {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                                     </IconButton>
                                     <IconButton
                                       edge="end"
                                       onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
                                       size="small"
+                                      sx={{ p: 0.5 }}
                                     >
                                       <MoreVertIcon fontSize="small" />
                                     </IconButton>
@@ -2591,7 +2606,7 @@ const GoogleTasks: React.FC = () => {
                                 button 
                                 onClick={() => toggleCompletedSection(taskList.id)}
                                 sx={{ 
-                                  py: 0.5, 
+                                  py: 0.25, // Reduced padding
                                   px: 1,
                                   borderRadius: 1,
                                   '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
@@ -2617,6 +2632,7 @@ const GoogleTasks: React.FC = () => {
                                         fontFamily: 'Poppins', 
                                         color: 'text.secondary',
                                         fontWeight: 'medium',
+                                        fontSize: '0.75rem', // Smaller font size
                                       }}
                                     >
                                       Completed ({taskList.tasks.filter(task => task.status === 'completed').length})
@@ -2691,14 +2707,19 @@ const GoogleTasks: React.FC = () => {
                                           e.stopPropagation();
                                           handleToggleTaskStar(taskList.id, task.id);
                                         }}
-                                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                        sx={{ 
+                                          color: task.starred ? '#FFD700' : 'action.disabled', 
+                                          mr: 0.5, 
+                                          p: 0.5
+                                        }}
                                       >
-                                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                        {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                                       </IconButton>
                                       <IconButton
                                         edge="end"
                                         onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
                                         size="small"
+                                        sx={{ p: 0.5 }}
                                       >
                                         <MoreVertIcon fontSize="small" />
                                       </IconButton>
@@ -2714,7 +2735,7 @@ const GoogleTasks: React.FC = () => {
                   </CardContent>
                   <Box 
                     sx={{ 
-                      p: 2, 
+                      p: 1.5, // Reduced padding
                       borderTop: '1px solid rgba(0, 0, 0, 0.08)', 
                       backgroundColor: 'rgba(0, 0, 0, 0.02)' 
                     }}
@@ -2728,6 +2749,8 @@ const GoogleTasks: React.FC = () => {
                         justifyContent: 'flex-start',
                         color: 'text.primary',
                         fontFamily: 'Poppins',
+                        fontSize: '0.875rem', // Smaller font size
+                        py: 0.5 // Reduced padding
                       }}
                     >
                       Add a task
@@ -2784,7 +2807,7 @@ const GoogleTasks: React.FC = () => {
               sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                p: 2,
+                p: 1.5, // Reduced padding
                 cursor: 'pointer',
                 bgcolor: 'rgba(16, 86, 245, 0.08)'
               }}
@@ -2796,7 +2819,7 @@ const GoogleTasks: React.FC = () => {
                   <LoopIcon fontSize="small" />
                 )}
               </IconButton>
-              <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '0.95rem' }}>
                 Completed ({taskLists.flatMap(list => list.tasks.filter(task => task.status === 'completed')).length})
               </Typography>
             </Box>
@@ -2882,14 +2905,19 @@ const GoogleTasks: React.FC = () => {
                           e.stopPropagation();
                           handleToggleTaskStar(listId, task.id);
                         }}
-                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                        sx={{ 
+                          color: task.starred ? '#FFD700' : 'action.disabled', 
+                          mr: 0.5, 
+                          p: 0.5
+                        }}
                       >
-                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                        {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                       </IconButton>
                       <IconButton
                         edge="end"
                         onClick={(e) => handleTaskMenuOpen(e, listId, task)}
                         size="small"
+                        sx={{ p: 0.5 }}
                       >
                         <MoreVertIcon fontSize="small" />
                       </IconButton>

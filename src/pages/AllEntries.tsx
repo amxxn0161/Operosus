@@ -170,9 +170,9 @@ const AllEntries: React.FC = () => {
                     <TableRow key={entry.id || index} hover>
                       <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         {typeof entry.date === 'string' ? 
-                          new Date(entry.date).toLocaleDateString('en-US', { 
-                            month: 'numeric', 
+                          new Date(entry.date).toLocaleDateString('en-GB', { 
                             day: 'numeric',
+                            month: 'numeric',
                             year: isExtraSmall ? undefined : '2-digit'
                           }) : 
                           entry.date
