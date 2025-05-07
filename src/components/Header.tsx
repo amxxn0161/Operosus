@@ -211,7 +211,8 @@ const Header: React.FC = () => {
             bgcolor: location.pathname.includes('/journal') || 
                      location.pathname.includes('/entry') ||
                      location.pathname.includes('/all-entries') ||
-                     location.pathname.includes('/insights') ? 
+                     location.pathname.includes('/insights') ||
+                     location.pathname.includes('/admin-journal') ? 
                      'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
@@ -220,7 +221,8 @@ const Header: React.FC = () => {
             color: location.pathname.includes('/journal') || 
                   location.pathname.includes('/entry') ||
                   location.pathname.includes('/all-entries') ||
-                  location.pathname.includes('/insights') ? 
+                  location.pathname.includes('/insights') ||
+                  location.pathname.includes('/admin-journal') ? 
                   'primary.main' : 'text.secondary',
             fontSize: { xs: 20, sm: 22 } 
           }} />
@@ -230,12 +232,14 @@ const Header: React.FC = () => {
               fontWeight: location.pathname.includes('/journal') || 
                     location.pathname.includes('/entry') ||
                     location.pathname.includes('/all-entries') ||
-                    location.pathname.includes('/insights') ? 
+                    location.pathname.includes('/insights') ||
+                    location.pathname.includes('/admin-journal') ? 
                     'bold' : 'normal',
               color: location.pathname.includes('/journal') || 
                     location.pathname.includes('/entry') ||
                     location.pathname.includes('/all-entries') ||
-                    location.pathname.includes('/insights') ? 
+                    location.pathname.includes('/insights') ||
+                    location.pathname.includes('/admin-journal') ? 
                     'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -315,6 +319,37 @@ const Header: React.FC = () => {
                 }}
               />
             </ListItemButton>
+            
+            {/* Admin Journal Button - moved inside journal submenu */}
+            {isAdmin && (
+              <ListItemButton 
+                onClick={() => handleNavigation('/admin-journal')}
+                selected={isActive('/admin-journal')}
+                sx={{ 
+                  py: 1.5, 
+                  pl: 7,
+                  mx: 1,
+                  borderRadius: '12px',
+                  bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+                }}
+              >
+                <AdminPanelSettingsIcon 
+                  sx={{ 
+                    mr: 1, 
+                    color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary',
+                    fontSize: { xs: 16, sm: 18 } 
+                  }} 
+                />
+                <ListItemText 
+                  primary="Journal Admin" 
+                  primaryTypographyProps={{
+                    fontWeight: isActive('/admin-journal') ? 'bold' : 'normal',
+                    color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
+                    fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  }}
+                />
+              </ListItemButton>
+            )}
           </List>
         </Collapse>
         
@@ -359,30 +394,6 @@ const Header: React.FC = () => {
             }}
           />
         </ListItemButton>
-        
-        {/* Admin Journal Button - only shown for admins */}
-        {isAdmin && (
-          <ListItemButton 
-            onClick={() => handleNavigation('/admin-journal')}
-            selected={isActive('/admin-journal')}
-            sx={{ 
-              py: 1.8,
-              mx: 1,
-              borderRadius: '12px',
-              bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-            }}
-          >
-            <AdminPanelSettingsIcon sx={{ mr: 2, color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
-            <ListItemText 
-              primary="Admin Journal" 
-              primaryTypographyProps={{
-                fontWeight: isActive('/admin-journal') ? 'bold' : 'normal',
-                color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
-                fontSize: { xs: '0.95rem', sm: '1rem' }
-              }}
-            />
-          </ListItemButton>
-        )}
       </List>
 
       <Divider sx={{ my: 2 }} />
@@ -423,9 +434,14 @@ const Header: React.FC = () => {
     </Box>
   );
 
-  // Auto-open the journal submenu if we're on journal-insights page
+  // Auto-open the journal submenu if we're on journal-related pages
   useEffect(() => {
-    if (isActive('/journal-insights') && !journalSubmenuOpen) {
+    if ((isActive('/journal-insights') || 
+         isActive('/journal') || 
+         isActive('/all-entries') || 
+         isActive('/insights') || 
+         isActive('/admin-journal')) && 
+         !journalSubmenuOpen) {
       setJournalSubmenuOpen(true);
     }
   }, [location.pathname, journalSubmenuOpen, isActive]);
