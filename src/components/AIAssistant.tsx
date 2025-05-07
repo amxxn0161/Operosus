@@ -2071,51 +2071,78 @@ const AIAssistant: React.FC = () => {
               >
                 {/* Desktop messages - reuse existing code */}
                 {displayMessages.length === 0 ? (
-                  <Box
-                    display="flex"
-                    flexDirection="column"
-                    alignItems="center"
-                    justifyContent="flex-start"
-                    height="auto"
-                    p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
-                    textAlign="center"
-                    sx={{
-                      maxWidth: isVerySmallMobile ? '100%' : (isSmallMobile ? '90%' : '80%'),
-                      margin: '0 auto',
-                      mb: 2
-                    }}
-                  >
-                    <SmartToyIcon 
-                      fontSize="large" 
-                      color="primary" 
-                      sx={{ 
-                        mb: 0.5, 
-                        fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
-                        opacity: 0.8 
-                      }} 
-                    />
-                    <Typography 
-                      variant={isSmallMobile ? "body2" : "body1"} 
-                      gutterBottom 
-                      fontWeight="medium"
-                      sx={{ mb: 0.4 }}
-                    >
-                      Welcome to Pulse Assistant
-                    </Typography>
-                    <Typography 
-                      variant="caption"
-                      color="textSecondary"
-                      sx={{ 
-                        fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
-                        lineHeight: 1.2,
-                        mb: isVerySmallMobile ? 1.5 : 2
+                  <>
+                    <Box
+                      display="flex"
+                      flexDirection="column"
+                      alignItems="center"
+                      justifyContent="flex-start"
+                      height="auto"
+                      p={isVerySmallMobile ? 0.25 : (isSmallMobile ? 0.5 : 0.75)}
+                      textAlign="center"
+                      sx={{
+                        maxWidth: isVerySmallMobile ? '100%' : (isSmallMobile ? '90%' : '80%'),
+                        margin: '0 auto',
+                        mb: 2
                       }}
                     >
-                      Ask me about productivity or app usage!
-                    </Typography>
-                    
-                    {/* Example prompts section moved outside to be part of the main content */}
-                  </Box>
+                      <SmartToyIcon 
+                        fontSize="large" 
+                        color="primary" 
+                        sx={{ 
+                          mb: 0.5, 
+                          fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
+                          opacity: 0.8 
+                        }} 
+                      />
+                      <Typography 
+                        variant={isSmallMobile ? "body2" : "body1"} 
+                        gutterBottom 
+                        fontWeight="medium"
+                        sx={{ mb: 0.4 }}
+                      >
+                        Welcome to Pulse Assistant
+                      </Typography>
+                      <Typography 
+                        variant="caption"
+                        color="textSecondary"
+                        sx={{ 
+                          fontSize: isSmallMobile ? '0.68rem' : '0.75rem',
+                          lineHeight: 1.2,
+                          mb: isVerySmallMobile ? 1.5 : 2
+                        }}
+                      >
+                        Ask me about productivity or app usage!
+                      </Typography>
+                    </Box>
+                    {/* Example prompts section for both desktop and mobile */}
+                    <Box sx={{ 
+                      width: '100%', 
+                      mb: 1,
+                      mt: isMobile ? 0.5 : 1,
+                      flexGrow: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}>
+                      <Typography 
+                        variant="body1" 
+                        fontWeight="medium"
+                        sx={{ 
+                          mb: isVerySmallMobile ? 1 : 1.5,
+                          fontSize: { xs: '0.9rem', md: '1rem' },
+                          textAlign: 'left'
+                        }}
+                      >
+                        Try asking:
+                      </Typography>
+                      <PopupCategorizedPrompts
+                        categories={PROMPT_CATEGORIES}
+                        onPromptClick={handleExamplePromptClick}
+                        isSmallMobile={isSmallMobile}
+                        isVerySmallMobile={isVerySmallMobile}
+                      />
+                    </Box>
+                  </>
                 ) : (
                   <>
                     {displayMessages.map((msg, index) => (
