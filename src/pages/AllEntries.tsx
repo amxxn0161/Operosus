@@ -91,7 +91,7 @@ const AllEntries: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button 
             variant="outlined"
-            onClick={() => navigate('/journal-insights')}
+            onClick={() => navigate('/insights')}
             sx={{ 
               fontFamily: 'Poppins', 
               textTransform: 'none',
