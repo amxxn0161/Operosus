@@ -1696,23 +1696,6 @@ const Dashboard: React.FC<{}> = () => {
           </Button>
             </MuiTooltip>
           )}
-          
-          <Button 
-            variant="contained" 
-            startIcon={<AddIcon />}
-            onClick={handleNewEntry} 
-            sx={{
-              backgroundColor: '#1056F5',
-              color: 'white',
-              fontFamily: 'Poppins',
-              textTransform: 'none',
-              '&:hover': {
-                backgroundColor: '#0D47D9',
-              },
-            }}
-          >
-            New Entry
-          </Button>
         </Box>
       </Box>
 

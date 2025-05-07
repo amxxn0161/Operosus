@@ -369,9 +369,9 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       } else {
         // For regular events, just set the colorId
         if (eventType !== 'default') {
-          newEvent.colorId = eventType;
-        }
-        
+        newEvent.colorId = eventType;
+      }
+      
         // If there are tasks, use the dedicated events-with-tasks endpoint
         if (hasTasks) {
           // Create payload for the events-with-tasks endpoint
@@ -396,13 +396,13 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           
           // Use the dedicated method for events with tasks
           await createEventWithTasks(eventWithTasksPayload);
-        } else {
+          } else {
           // For regular events without tasks, use standard endpoint
           // Setup Google Meet if requested
           await addEvent(newEvent, addGoogleMeet);
+          }
         }
-      }
-      
+        
       // Close modal and reset form
       handleClose();
     } catch (error) {

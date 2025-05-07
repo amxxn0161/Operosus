@@ -1935,40 +1935,40 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                 </Box>
 
                 {/* Task list */}
-                <List dense>
-                  {taskLists
-                    .find(list => list.id === taskDialogTab)
-                    ?.tasks
-                    .filter(task => task.status !== 'completed')
-                    .map((task) => {
-                      const taskKey = `${taskDialogTab}:${task.id}`;
-                      return (
-                        <ListItem key={taskKey} dense>
-                          <ListItemIcon>
-                            <Checkbox
-                              edge="start"
-                              checked={!!selectedTasks[taskKey]}
-                              onChange={() => handleTaskToggle(taskDialogTab, task.id)}
-                              sx={{
-                                color: '#5f6368',
-                                '&.Mui-checked': {
-                                  color: '#1A73E8'
-                                }
-                              }}
-                            />
-                          </ListItemIcon>
-                          <ListItemText 
-                            primary={task.title} 
+              <List dense>
+                {taskLists
+                  .find(list => list.id === taskDialogTab)
+                  ?.tasks
+                  .filter(task => task.status !== 'completed')
+                  .map((task) => {
+                    const taskKey = `${taskDialogTab}:${task.id}`;
+                    return (
+                      <ListItem key={taskKey} dense>
+                        <ListItemIcon>
+                          <Checkbox
+                            edge="start"
+                            checked={!!selectedTasks[taskKey]}
+                            onChange={() => handleTaskToggle(taskDialogTab, task.id)}
                             sx={{
-                              '& .MuiListItemText-primary': {
-                                fontSize: '0.9rem'
+                              color: '#5f6368',
+                              '&.Mui-checked': {
+                                color: '#1A73E8'
                               }
                             }}
                           />
-                        </ListItem>
-                      );
-                    })}
-                </List>
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={task.title} 
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.9rem'
+                            }
+                          }}
+                        />
+                      </ListItem>
+                    );
+                  })}
+              </List>
               </>
             ) : (
               <Typography sx={{ p: 2, color: 'text.secondary' }}>

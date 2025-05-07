@@ -904,34 +904,34 @@ const AIAssistantPage: React.FC = () => {
                 height: { xs: 'auto', md: 'auto' },
                 maxHeight: '100%',
                 overflowY: 'auto'
-              }}>
-                <SmartToyIcon sx={{ 
+            }}>
+              <SmartToyIcon sx={{ 
                   fontSize: isVerySmallMobile ? 38 : (isSmallMobile ? 44 : { xs: 48, md: 52 }),
-                  color: 'primary.main', 
+                color: 'primary.main', 
                   mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 })
-                }} />
-                <Typography 
+              }} />
+              <Typography 
                   variant="h5" 
-                  sx={{ 
+                sx={{ 
                     mb: { xs: 1, md: 1.5 },
                     fontSize: isVerySmallMobile ? '1.1rem' : (isSmallMobile ? '1.2rem' : { xs: '1.25rem', md: '1.5rem' }),
-                    fontWeight: 500
-                  }}
-                >
-                  Welcome to Pulse Assistant
-                </Typography>
-                <Typography 
+                  fontWeight: 500
+                }}
+              >
+                Welcome to Pulse Assistant
+              </Typography>
+              <Typography 
                   variant="body1" 
-                  color="textSecondary"
-                  sx={{ 
-                    fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                color="textSecondary"
+                sx={{ 
+                  fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
                     lineHeight: 1.5,
                     mb: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 }),
                     maxWidth: { xs: '90%', sm: '80%', md: '70%' }
-                  }}
-                >
+                }}
+              >
                   Ask me about productivity or how to use this app!
-                </Typography>
+              </Typography>
                 
                 {/* Example prompts section - further adjustments */}
                 <Box sx={{ 

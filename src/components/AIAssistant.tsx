@@ -1395,7 +1395,7 @@ const AIAssistant: React.FC = () => {
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 1400 }}
+                    style={{ zIndex: 10100 }}
                   >
                     {({ TransitionProps }) => (
                       <Grow
@@ -1979,7 +1979,7 @@ const AIAssistant: React.FC = () => {
                     anchorEl={historyButtonRef.current}
                     placement="bottom-end"
                     transition
-                    style={{ zIndex: 1400 }}
+                    style={{ zIndex: 10100 }}
                   >
                     {({ TransitionProps }) => (
                       <Grow
