@@ -607,7 +607,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   // Function to handle view mode change
-  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | 'all' | null) => {
+  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | null) => {
     if (newMode !== null && newMode !== viewMode) {
       console.log(`Changing view mode from ${viewMode} to ${newMode}`);
       setViewMode(newMode);
@@ -3224,10 +3224,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               </>
             ) : (
               <>
-                <ToggleButton value="day">DAY</ToggleButton>
-                <ToggleButton value="week">WEEK</ToggleButton>
-                <ToggleButton value="month">MONTH</ToggleButton>
-                <ToggleButton value="all">ALL</ToggleButton>
+                <ToggleButton value="day" sx={{ px: 3 }}>DAY</ToggleButton>
+                <ToggleButton value="week" sx={{ px: 3 }}>WEEK</ToggleButton>
+                <ToggleButton value="month" sx={{ px: 3 }}>MONTH</ToggleButton>
               </>
             )}
           </ToggleButtonGroup>
