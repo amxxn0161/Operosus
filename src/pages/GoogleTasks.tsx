@@ -226,6 +226,9 @@ const GoogleTasks: React.FC = () => {
     time: string | null;
   }>>([]);
   const [isBreakingDown, setIsBreakingDown] = useState<boolean>(false);
+  const [requestedSubtaskCount, setRequestedSubtaskCount] = useState<number>(3);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
+  const [pendingSubtaskCount, setPendingSubtaskCount] = useState<number | null>(null);
   
   // Create a ref to track if we're extracting subtasks
   const extractingSubtasksRef = useRef<boolean>(false);
@@ -1540,10 +1543,20 @@ const GoogleTasks: React.FC = () => {
                   null
           })));
         } else {
-          setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Start with one empty subtask if none exist
+          // Start with empty subtasks based on the requested count
+          setBreakdownSubtasks(Array(requestedSubtaskCount).fill(0).map(() => ({ 
+            title: '', 
+            due: null, 
+            time: null 
+          })));
         }
       } else {
-        setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Default to one empty subtask
+        // Default to empty subtasks based on the requested count
+        setBreakdownSubtasks(Array(requestedSubtaskCount).fill(0).map(() => ({ 
+          title: '', 
+          due: null, 
+          time: null 
+        })));
       }
       
       setBreakdownTaskDialogOpen(true);
@@ -1695,9 +1708,9 @@ const GoogleTasks: React.FC = () => {
       extractingSubtasksRef.current = true;
       
       // Send a message to the assistant
-      const prompt = `I need to break down this task into smaller subtasks: "${taskToBreakdown.task.title}". ${
+      const prompt = `I need to break down this task into exactly ${requestedSubtaskCount} smaller subtasks: "${taskToBreakdown.task.title}". ${
         taskToBreakdown.task.notes ? `Additional context: ${taskToBreakdown.task.notes}` : ''
-      } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You should determine the appropriate number of subtasks based on the complexity of the task - use as many or as few as needed to be most effective. Format each subtask as a bullet point.`;
+      } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You MUST create exactly ${requestedSubtaskCount} subtasks - no more, no less. Format each subtask as a bullet point.`;
       
       // Send the message to the AI assistant without opening the popup
       await sendMessage(prompt);
@@ -1748,46 +1761,45 @@ const GoogleTasks: React.FC = () => {
         
         // Automatically set the subtasks if we found any
         if (extractedSubtasks.length > 0) {
-          // IMPORTANT: Merge with existing subtasks instead of replacing them
-          setBreakdownSubtasks((prevSubtasks) => {
-            // Filter out empty subtasks from the existing list
-            const nonEmptyPrevSubtasks = prevSubtasks.filter(task => task.title.trim() !== '');
-            
-            // If there were no existing non-empty subtasks, just use the extracted ones
-            if (nonEmptyPrevSubtasks.length === 0) {
-              return extractedSubtasks;
-            }
-            
-            // Otherwise, merge the lists
-            // Find subtasks with the same title and keep their due dates if they exist
-            const mergedSubtasks = [...nonEmptyPrevSubtasks];
-            
-            extractedSubtasks.forEach(newSubtask => {
-              // Check if this task already exists
-              const existingIndex = mergedSubtasks.findIndex(
-                task => task.title.toLowerCase() === newSubtask.title.toLowerCase()
-              );
-              
-              if (existingIndex === -1) {
-                // Add as a new subtask if not found
-                mergedSubtasks.push(newSubtask);
-              }
-              // We don't update existing subtasks to preserve their due dates
-            });
-            
-            return mergedSubtasks;
-          });
+          // Adjust to match the requested count
+          let processedSubtasks = [...extractedSubtasks];
           
-          showSnackbar('AI has created breakdown tasks for you', 'success');
+          // If AI generated too many, take the first requestedSubtaskCount
+          if (processedSubtasks.length > requestedSubtaskCount) {
+            processedSubtasks = processedSubtasks.slice(0, requestedSubtaskCount);
+          } 
+          // If AI generated too few, pad with empty subtasks
+          else if (processedSubtasks.length < requestedSubtaskCount) {
+            const additionalNeeded = requestedSubtaskCount - processedSubtasks.length;
+            const emptySubtasks = Array(additionalNeeded).fill(0).map(() => ({
+              title: '',
+              due: null,
+              time: null
+            }));
+            processedSubtasks = [...processedSubtasks, ...emptySubtasks];
+          }
+          
+          // IMPORTANT: Replace with new subtasks rather than merging
+          setBreakdownSubtasks(processedSubtasks);
+          
+          showSnackbar(`AI has created ${Math.min(extractedSubtasks.length, requestedSubtaskCount)} subtasks for you`, 'success');
         } else {
-          showSnackbar('No subtasks could be identified in AI response', 'error');
+          // Fallback: Create empty subtasks if AI failed to generate them
+          const emptySubtasks = Array(requestedSubtaskCount).fill(0).map(() => ({
+            title: '',
+            due: null,
+            time: null
+          }));
+          setBreakdownSubtasks(emptySubtasks);
+          
+          showSnackbar('AI couldn\'t create subtasks. Please try a different description or create subtasks manually.', 'error');
         }
         
         // Exit extraction mode
         extractingSubtasksRef.current = false;
       }
     }
-  }, [messages, isLoading, taskToBreakdown, showSnackbar]);
+  }, [messages, isLoading, taskToBreakdown, showSnackbar, requestedSubtaskCount]);
 
   // Handle duration input changes
   const handleHoursChange = (value: number) => {
@@ -2148,6 +2160,25 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Handle confirmation of subtask count change
+  const handleConfirmSubtaskCountChange = (confirmed: boolean) => {
+    setConfirmDialogOpen(false);
+    
+    if (confirmed && pendingSubtaskCount !== null) {
+      // Update the count
+      setRequestedSubtaskCount(pendingSubtaskCount);
+      // Reset subtasks with the new count
+      setBreakdownSubtasks(Array(pendingSubtaskCount).fill(0).map(() => ({ 
+        title: '', 
+        due: null, 
+        time: null 
+      })));
+    }
+    
+    // Reset the pending count
+    setPendingSubtaskCount(null);
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -2156,7 +2187,7 @@ const GoogleTasks: React.FC = () => {
           component="h1" 
           sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}
         >
-          Google Tasks
+          Tasks
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button 
@@ -4011,7 +4042,50 @@ const GoogleTasks: React.FC = () => {
                 Break this task into smaller, manageable subtasks. Each subtask will be created as a separate task with a link back to this parent task.
               </Typography>
               
-              <Box mb={3}>
+              <Box 
+                mb={3}
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  gap: 2,
+                  alignItems: 'flex-start', // Align items at the top
+                  p: 2,
+                  borderRadius: 1, 
+                  border: '1px solid rgba(25, 118, 210, 0.12)',
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                }}
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  width: { xs: '100%', sm: '200px' }
+                }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Number of Subtasks
+                  </Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={requestedSubtaskCount}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      if (value > 0 && value <= 10) {
+                        // If count changes and there are existing subtasks with content
+                        if (breakdownSubtasks.length > 0 && breakdownSubtasks[0].title !== '') {
+                          // Show confirmation dialog before changing
+                          setPendingSubtaskCount(value);
+                          setConfirmDialogOpen(true);
+                        } else {
+                          // No existing subtasks with content, safe to update
+                          setRequestedSubtaskCount(value);
+                        }
+                      }
+                    }}
+                    inputProps={{ min: 1, max: 10, step: 1 }}
+                    sx={{ width: '100%' }}
+                    helperText="AI will generate this many subtasks"
+                  />
+                </Box>
                 <Button
                   variant="contained"
                   startIcon={isBreakingDown ? <CircularProgress size={20} color="inherit" /> : <SmartToyIcon />}
@@ -4022,10 +4096,12 @@ const GoogleTasks: React.FC = () => {
                     '&:hover': {
                       backgroundColor: '#0D47D9',
                     },
-                    mb: 2 
+                    flex: 1,
+                    mt: { xs: 0, sm: '30px' }, // Add margin to align with the input field
+                    height: '40px', // Set explicit height
                   }}
                 >
-                  {isBreakingDown ? 'Generating subtasks...' : 'Ask AI to break down this task'}
+                  {isBreakingDown ? `Generating ${requestedSubtaskCount} subtasks...` : `Ask AI to create ${requestedSubtaskCount} subtasks`}
                 </Button>
               </Box>
               
@@ -4482,6 +4558,31 @@ const GoogleTasks: React.FC = () => {
         open={durationWarningOpen} 
         onClose={() => setDurationWarningOpen(false)} 
       />
+
+      {/* Confirmation Dialog for changing subtask count */}
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={() => handleConfirmSubtaskCountChange(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          Confirm Change
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Changing the number will clear any existing subtasks. Continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => handleConfirmSubtaskCountChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => handleConfirmSubtaskCountChange(true)} autoFocus color="primary" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

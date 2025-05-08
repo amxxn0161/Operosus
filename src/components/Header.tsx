@@ -31,6 +31,7 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import InsightsIcon from '@mui/icons-material/Insights';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 
@@ -365,10 +366,31 @@ const Header: React.FC = () => {
         >
           <AssignmentIcon sx={{ mr: 2, color: isActive('/tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
-            primary="Google Tasks" 
+            primary="Tasks" 
             primaryTypographyProps={{
               fontWeight: isActive('/tasks') ? 'bold' : 'normal',
               color: isActive('/tasks') ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
+            }}
+          />
+        </ListItemButton>
+        
+        <ListItemButton 
+          onClick={() => handleNavigation('/dashboard')}
+          selected={false}
+          sx={{ 
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
+            bgcolor: 'transparent'
+          }}
+        >
+          <CalendarMonthIcon sx={{ mr: 2, color: 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <ListItemText 
+            primary="Calendar" 
+            primaryTypographyProps={{
+              fontWeight: 'normal',
+              color: 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
