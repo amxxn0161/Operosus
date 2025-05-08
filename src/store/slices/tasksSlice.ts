@@ -22,6 +22,7 @@ export interface EnhancedGoogleTask extends GoogleTask {
   starred?: boolean;
   actual_minutes?: number;
   estimated_minutes?: number;
+  has_explicit_time?: boolean;
 }
 
 export interface EnhancedGoogleTaskList extends Omit<GoogleTaskList, 'tasks'> {

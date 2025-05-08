@@ -15,6 +15,7 @@ export interface GoogleTask {
   is_starred?: boolean;
   task_list_id?: string;
   task_list_title?: string;
+  has_explicit_time?: boolean;
 }
 
 // Define the TaskList interface

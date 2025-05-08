@@ -21,6 +21,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
+  ListItemSecondaryAction,
   Tooltip,
   Card,
   CardHeader,
@@ -33,7 +34,8 @@ import {
   Popover,
   Stack,
   InputAdornment,
-  Select
+  Select,
+  FormControlLabel
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided } from 'react-beautiful-dnd';
 import { 
@@ -143,10 +145,10 @@ const GoogleTasks: React.FC = () => {
   } = useGoogleTasks();
 
   // State for task operations
-  const [newTaskTitle, setNewTaskTitle] = useState<string>('');
-  const [newTaskNotes, setNewTaskNotes] = useState<string>('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskNotes, setNewTaskNotes] = useState('');
   const [newTaskListId, setNewTaskListId] = useState<string>('');
-  const [newTaskDialogOpen, setNewTaskDialogOpen] = useState<boolean>(false);
+  const [newTaskDialogOpen, setNewTaskDialogOpen] = useState(false);
   const [selectedTaskList, setSelectedTaskList] = useState<string | null>(null);
   const [taskAnchorEl, setTaskAnchorEl] = useState<null | HTMLElement>(null);
   const [taskListMenuAnchorEl, setTaskListMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -173,6 +175,7 @@ const GoogleTasks: React.FC = () => {
   // Due date related state
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
   const [newTaskDueTime, setNewTaskDueTime] = useState<string | null>(null);
+  const [showNewTaskTimePicker, setShowNewTaskTimePicker] = useState(false);
   const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLElement | null>(null);
   const datePickerOpen = Boolean(datePickerAnchorEl);
   const [timePickerAnchorEl, setTimePickerAnchorEl] = useState<HTMLElement | null>(null);
@@ -194,12 +197,13 @@ const GoogleTasks: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
 
   // Task editing state
-  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState<boolean>(false);
+  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<{ taskListId: string; taskId: string; title: string; notes?: string; due?: string | null; status: string } | null>(null);
-  const [editTaskTitle, setEditTaskTitle] = useState<string>('');
-  const [editTaskNotes, setEditTaskNotes] = useState<string>('');
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskNotes, setEditTaskNotes] = useState('');
   const [editTaskDueDate, setEditTaskDueDate] = useState<string | null>(null);
   const [editTaskDueTime, setEditTaskDueTime] = useState<string | null>(null);
+  const [showEditTaskTimePicker, setShowEditTaskTimePicker] = useState(false);
 
   // Add state for tracking expanded/collapsed completed sections
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
@@ -322,6 +326,7 @@ const GoogleTasks: React.FC = () => {
     setNewTaskNotes('');
     setNewTaskDueDate(null);
     setNewTaskDueTime(null);
+    setShowNewTaskTimePicker(false);
     setNewTaskDialogOpen(true);
   };
 
@@ -331,13 +336,6 @@ const GoogleTasks: React.FC = () => {
       try {
         let taskTitle = newTaskTitle.trim();
         let taskNotes = newTaskNotes.trim();
-        let hasExplicitTimeSet = false;
-        
-        // If time is set, we'll send it to the backend which will add it to notes
-        if (newTaskDueTime) {
-          hasExplicitTimeSet = true;
-          // No longer adding time to title - it will be in notes section
-        }
         
         const taskData: { 
           title: string; 
@@ -350,7 +348,8 @@ const GoogleTasks: React.FC = () => {
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
-          time_in_notes: true // Add this parameter for the backend
+          time_in_notes: true, // Add this parameter for the backend
+          has_explicit_time: showNewTaskTimePicker && newTaskDueTime !== null // Use the toggle state
         };
         
         // Add estimated minutes if set
@@ -372,7 +371,7 @@ const GoogleTasks: React.FC = () => {
           let dueString = dueDate.toISOString();
           
           // If time is also set, replace the time part of the ISO string
-          if (hasExplicitTimeSet && newTaskDueTime) {
+          if (showNewTaskTimePicker && newTaskDueTime) {
             // Parse the time in 24h format
             const [hours, minutes] = newTaskDueTime.split(':');
             
@@ -382,12 +381,6 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
-            
-            // Set has_explicit_time to true when a specific time is chosen
-            taskData.has_explicit_time = true;
-          } else {
-            // Set has_explicit_time to false when only a date is chosen without specific time
-            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
@@ -864,16 +857,18 @@ const GoogleTasks: React.FC = () => {
   // Set task due date
   const handleSetDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Set time to midnight instead of noon to avoid showing time when none was set
+      // Format the date to yyyy-MM-dd format
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(0, 0, 0, 0);
+      const year = fixedDate.getFullYear();
+      const month = (fixedDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = fixedDate.getDate().toString().padStart(2, '0');
+      const isoDate = `${year}-${month}-${day}`;
       
-      // Format date to RFC3339 as expected by the API
-      const isoDate = fixedDate.toISOString();
       setNewTaskDueDate(isoDate);
     } else {
       setNewTaskDueDate(null);
     }
+    
     handleDatePickerClose();
   };
   
@@ -898,136 +893,102 @@ const GoogleTasks: React.FC = () => {
     if (!dateString) return '';
     
     try {
-      const date = parseISO(dateString);
+      const date = new Date(dateString);
       if (!isValid(date)) return '';
       
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Format the date part
+      const formattedDate = format(date, 'MMM d, yyyy');
       
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      const dateToCheck = new Date(date);
-      dateToCheck.setHours(0, 0, 0, 0);
-      
-      let displayDate = '';
-      if (dateToCheck.getTime() === today.getTime()) {
-        displayDate = 'Today';
-      } else if (dateToCheck.getTime() === tomorrow.getTime()) {
-        displayDate = 'Tomorrow';
-      } else {
-        displayDate = format(date, 'MMM d, yyyy');
-      }
-      
-      // Add time if provided
+      // If time string is provided, add it to the display
       if (timeString) {
         const [hours, minutes] = timeString.split(':').map(Number);
-        const timeDate = new Date();
-        timeDate.setHours(hours, minutes, 0, 0);
-        const formattedTime = format(timeDate, 'h:mm a'); // 1:30 PM format
-        
-        return `${displayDate}, ${formattedTime}`;
+        const displayTime = format(new Date().setHours(hours, minutes), 'h:mm a');
+        return `${formattedDate} at ${displayTime}`;
       }
       
-      return displayDate;
-    } catch (e) {
+      return formattedDate;
+    } catch (err) {
+      console.error('Error formatting date:', err);
       return '';
     }
   };
 
   // Open task edit dialog
   const handleTaskClick = (taskListId: string, task: EnhancedGoogleTask) => {
-    // Time is now stored in notes, not in title
-    let timeString = null;
-    let notes = task.notes || '';
-    
-    // Find all time entries in the notes, and use the most recent (last) one
-    const timeMatches = [...notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
-    if (timeMatches.length > 0) {
-      // Use the last time entry (most recently added)
-      const lastMatch = timeMatches[timeMatches.length - 1];
-      timeString = lastMatch[1];
-    }
-    
-    setEditingTask({
-      taskListId,
-      taskId: task.id,
-      title: task.title,
-      notes: notes,
-      due: task.due || null,
-      status: task.status
-    });
-    
-    setEditTaskTitle(task.title);
-    setEditTaskNotes(notes);
-    setEditTaskDueDate(task.due || null);
-    
-    // Load estimated time if available
-    if (task.estimated_minutes) {
-      setEditTaskEstimatedMinutes(task.estimated_minutes);
+    if (task.status !== 'completed') {
+      setEditingTask({
+        taskListId,
+        taskId: task.id,
+        title: task.title,
+        notes: task.notes || '',
+        due: task.due || null,
+        status: task.status
+      });
       
-      // Format the display value appropriately
-      if (task.estimated_minutes >= 60) {
-        // For whole hours (60, 120, etc.)
-        if (task.estimated_minutes % 60 === 0) {
-          setEditTimeInputValue(`${task.estimated_minutes / 60}h`);
+      setEditTaskTitle(task.title);
+      
+      const notes = task.notes || '';
+      setEditTaskNotes(notes);
+      
+      // Set due date
+      setEditTaskDueDate(task.due || null);
+      
+      // Initialize time picker toggle based on has_explicit_time property
+      setShowEditTaskTimePicker(Boolean(task.has_explicit_time));
+      
+      // Parse time information from notes or due date
+      const timeMatches = [...notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
+      
+      if (timeMatches.length > 0) {
+        // Use the last time entry found in notes
+        const lastMatch = timeMatches[timeMatches.length - 1];
+        const timeStr = lastMatch[1];
+        
+        // Convert 12-hour format to 24-hour if needed
+        if (timeStr.includes('AM') || timeStr.includes('PM')) {
+          setEditTaskDueTime(formatTimeFor24Hour(timeStr));
         } else {
-          // For hour + minutes combinations (e.g., 90 = 1h30m)
-          const hours = Math.floor(task.estimated_minutes / 60);
-          const remainingMinutes = task.estimated_minutes % 60;
-          setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
+          setEditTaskDueTime(timeStr);
+        }
+      } else if (task.due) {
+        // If no time in notes but the task has a due date with an explicit time
+        const dueDate = new Date(task.due);
+        if (task.has_explicit_time && (dueDate.getHours() !== 0 || dueDate.getMinutes() !== 0)) {
+          const hours = dueDate.getHours().toString().padStart(2, '0');
+          const minutes = dueDate.getMinutes().toString().padStart(2, '0');
+          setEditTaskDueTime(`${hours}:${minutes}`);
+        } else {
+          setEditTaskDueTime(null);
         }
       } else {
-        setEditTimeInputValue(`${task.estimated_minutes}m`);
+        setEditTaskDueTime(null);
       }
-    } else {
-      setEditTaskEstimatedMinutes(null);
-      setEditTimeInputValue('');
-    }
-    
-    // If we found time in the notes, convert it to 24h format for the time picker
-    if (timeString) {
-      // Parse the time string (e.g., "3:00 AM" or "07:30")
-      const timeParts = timeString.match(/(\d{1,2}):(\d{2})(?:\s?([AP]M))?/i);
       
-      if (timeParts) {
-        let hours = parseInt(timeParts[1], 10);
-        const minutes = timeParts[2];
-        const period = timeParts[3];
-        
-        // Convert to 24-hour format if AM/PM is present
-        if (period) {
-          if (period.toUpperCase() === 'PM' && hours < 12) {
-            hours += 12;
-          } else if (period.toUpperCase() === 'AM' && hours === 12) {
-            hours = 0;
+      // Set estimated minutes if available
+      setEditTaskEstimatedMinutes(task.estimated_minutes || null);
+      
+      // Format the estimated time display value
+      if (task.estimated_minutes) {
+        const minutes = task.estimated_minutes;
+        if (minutes >= 60) {
+          // For whole hours (60, 120, etc.)
+          if (minutes % 60 === 0) {
+            setEditTimeInputValue(`${minutes / 60}h`);
+          } else {
+            // For hour + minutes combinations (e.g., 90 = 1h 30m)
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
           }
+        } else {
+          setEditTimeInputValue(`${minutes}m`);
         }
-        
-        // Format as HH:MM with leading zeros
-        const time24h = `${hours.toString().padStart(2, '0')}:${minutes}`;
-        setEditTaskDueTime(time24h);
       } else {
-        // If there's an issue parsing, default to null
-        setEditTaskDueTime(null);
+        setEditTimeInputValue('');
       }
-    } else if (task.due) {
-      // If no time in notes but due date exists, check if the API returned non-midnight time
-      const dueDate = new Date(task.due);
-      const hours = dueDate.getHours();
-      const minutes = dueDate.getMinutes();
       
-      // Only set time if hours/minutes are not defaults (midnight or noon)
-      if ((hours !== 0 && hours !== 12) || minutes !== 0) {
-        setEditTaskDueTime(`${hours.toString().padStart(2, '0')}:${minutes === 0 ? '00' : minutes.toString().padStart(2, '0')}`);
-      } else {
-        setEditTaskDueTime(null);
-      }
-    } else {
-      setEditTaskDueTime(null);
+      setEditTaskDialogOpen(true);
     }
-    
-    setEditTaskDialogOpen(true);
   };
 
   // Open task options menu
@@ -1085,40 +1046,39 @@ const GoogleTasks: React.FC = () => {
   const handleUpdateTask = async () => {
     if (editingTask && editTaskTitle.trim()) {
       try {
-        let taskTitle = editTaskTitle.trim();
-        let taskNotes = editTaskNotes.trim();
-        let hasExplicitTimeSet = false;
+        // Remove leading/trailing spaces
+        const title = editTaskTitle.trim();
+        let notes = editTaskNotes.trim();
         
-        // If time is set, we'll send it to the backend which will add it to notes
-        if (editTaskDueTime) {
-          hasExplicitTimeSet = true;
-          // No longer adding time to title - it will be in notes section
-        }
+        // Remove all "Due Time: XX:XX" entries (including any following line breaks)
+        let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
         
         const taskData: { 
           title: string; 
           notes?: string; 
           due?: string;
+          status?: string;
           timezone?: string;
           time_in_notes?: boolean;
           has_explicit_time?: boolean;
           estimated_minutes?: number;
         } = { 
-          title: taskTitle,
+          title,
           timezone: getUserTimezone(),
-          time_in_notes: true // Add this parameter for the backend
+          time_in_notes: true,
+          has_explicit_time: showEditTaskTimePicker && editTaskDueTime !== null
         };
+        
+        // Add cleaned notes if not empty
+        if (cleanedNotes) {
+          taskData.notes = cleanedNotes;
+        } else {
+          taskData.notes = ''; // Send empty string to clear notes
+        }
         
         // Add estimated minutes if set
         if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
           taskData.estimated_minutes = editTaskEstimatedMinutes;
-        }
-        
-        // Clean notes of any existing time entries and add if not empty
-        if (taskNotes) {
-          // Remove any existing time entries from notes to prevent duplication
-          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
-          taskData.notes = cleanedNotes;
         }
         
         // Add due date if it exists
@@ -1128,7 +1088,7 @@ const GoogleTasks: React.FC = () => {
           let dueString = dueDate.toISOString();
           
           // If time is also set, replace the time part of the ISO string
-          if (hasExplicitTimeSet && editTaskDueTime) {
+          if (showEditTaskTimePicker && editTaskDueTime) {
             // Parse the time in 24h format
             const [hours, minutes] = editTaskDueTime.split(':');
             
@@ -1138,18 +1098,19 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
-            
-            // Set has_explicit_time to true when a specific time is chosen
-            taskData.has_explicit_time = true;
-          } else {
-            // Set has_explicit_time to false when only a date is chosen without specific time
-            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
+        } else {
+          // If due date is cleared, we need to handle it in the backend
+          // Don't set due to null here - the backend API will handle this based on absence of field
+          delete taskData.due;
         }
         
+        setIsRefreshing(true);
         const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
+        setIsRefreshing(false);
+        
         if (result) {
           setEditTaskDialogOpen(false);
           showSnackbar('Task updated successfully', 'success');
@@ -1185,16 +1146,18 @@ const GoogleTasks: React.FC = () => {
   // Set task due date in edit mode
   const handleSetEditDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Set time to midnight instead of noon to avoid showing time when none was set
+      // Format the date to yyyy-MM-dd format
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(0, 0, 0, 0);
+      const year = fixedDate.getFullYear();
+      const month = (fixedDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = fixedDate.getDate().toString().padStart(2, '0');
+      const isoDate = `${year}-${month}-${day}`;
       
-      // Format date to RFC3339 as expected by the API
-      const isoDate = fixedDate.toISOString();
       setEditTaskDueDate(isoDate);
     } else {
       setEditTaskDueDate(null);
     }
+    
     handleEditDatePickerClose();
   };
   
@@ -1236,10 +1199,44 @@ const GoogleTasks: React.FC = () => {
 
   // Format 24-hour time to 12-hour format with AM/PM
   const formatTimeFor12Hour = (time24h: string): string => {
-    const [hours, minutes] = time24h.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12; // Convert 0 to 12 for 12 AM
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+    try {
+      const [hours, minutes] = time24h.split(':').map(part => parseInt(part, 10));
+      const date = new Date();
+      date.setHours(hours, minutes, 0, 0);
+      return format(date, 'h:mm a');
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return time24h;
+    }
+  };
+
+  const formatTimeFor24Hour = (time12h: string): string => {
+    try {
+      // Parse the time string (e.g., "3:00 AM" or "7:30 PM")
+      const timeParts = time12h.match(/(\d{1,2}):(\d{2})(?:\s?([AP]M))?/i);
+      
+      if (timeParts) {
+        let hours = parseInt(timeParts[1], 10);
+        const minutes = timeParts[2];
+        const period = timeParts[3];
+        
+        // Convert to 24-hour format if AM/PM is present
+        if (period) {
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+        }
+        
+        // Format as HH:MM with leading zeros
+        return `${hours.toString().padStart(2, '0')}:${minutes}`;
+      }
+      return time12h; // Return original if parsing fails
+    } catch (error) {
+      console.error('Error formatting time to 24h:', error);
+      return time12h;
+    }
   };
 
   // Get the user's current timezone in IANA format (e.g., "America/New_York")
@@ -1254,26 +1251,50 @@ const GoogleTasks: React.FC = () => {
 
   // Format the due information, showing both date and notes with time
   const formatDueInfoWithNotes = (task: EnhancedGoogleTask) => {
-    let dueInfo = [];
+    let dueInfo = '';
+    let displayDate = '';
     
-    // Add the due date if present
     if (task.due) {
-      dueInfo.push(`Due: ${formatDate(task.due)}`);
-    }
-    
-    // Check if notes contain time information
-    if (task.notes) {
-      // Find all time entries in the notes
-      const timeMatches = [...task.notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
-      
-      // If we found any time entries, use the last one (most recently added)
-      if (timeMatches.length > 0) {
-        const lastMatch = timeMatches[timeMatches.length - 1];
-        dueInfo.push(lastMatch[0]);
+      const dueDate = new Date(task.due);
+      if (isValid(dueDate)) {
+        // STRICTLY check if this is a date-only task by looking at has_explicit_time
+        // This is the most reliable way to determine if time should be shown
+        const hasExplicitTime = Boolean(task.has_explicit_time);
+        
+        // Format the date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        const dateToCheck = new Date(dueDate);
+        dateToCheck.setHours(0, 0, 0, 0);
+        
+        if (dateToCheck.getTime() === today.getTime()) {
+          displayDate = 'Today';
+        } else if (dateToCheck.getTime() === tomorrow.getTime()) {
+          displayDate = 'Tomorrow';
+        } else {
+          displayDate = format(dueDate, 'MMM d, yyyy');
+        }
+        
+        // Only show time if the task has an explicit time set
+        if (hasExplicitTime) {
+          const formattedTime = format(dueDate, 'h:mm a');
+          displayDate = `${displayDate}, ${formattedTime}`;
+        }
+        
+        dueInfo = displayDate;
+        
+        // Add overdue marker if the task is overdue
+        if (isOverdue(task.due) && task.status !== 'completed') {
+          dueInfo = `${dueInfo} (Overdue)`;
+        }
       }
     }
     
-    return dueInfo.join(' | ');
+    return dueInfo;
   };
 
   // Add function to toggle completed section for a specific task list
@@ -3377,18 +3398,39 @@ const GoogleTasks: React.FC = () => {
               <Divider />
               
               <Stack direction="row" spacing={1} alignItems="center">
-                <AccessTimeIcon fontSize="small" color="action" />
-                <Button 
-                  variant="text" 
-                  fullWidth 
-                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
-                  onClick={handleTimePickerOpen}
-                >
-                  {newTaskDueTime ? format(new Date().setHours(
-                    Number(newTaskDueTime.split(':')[0]), 
-                    Number(newTaskDueTime.split(':')[1])
-                  ), 'h:mm a') : 'Set time'}
-                </Button>
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox 
+                        checked={showNewTaskTimePicker}
+                        onChange={(e) => {
+                          setShowNewTaskTimePicker(e.target.checked);
+                          if (!e.target.checked) {
+                            setNewTaskDueTime(null);
+                          }
+                        }}
+                        size="small"
+                      />
+                    }
+                    label="Add due time"
+                  />
+                  {showNewTaskTimePicker && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <AccessTimeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="text" 
+                        fullWidth 
+                        sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                        onClick={handleTimePickerOpen}
+                      >
+                        {newTaskDueTime ? format(new Date().setHours(
+                          Number(newTaskDueTime.split(':')[0]), 
+                          Number(newTaskDueTime.split(':')[1])
+                        ), 'h:mm a') : 'Set time'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               </Stack>
               
               <Stack direction="row" spacing={1} alignItems="center">
@@ -3856,18 +3898,39 @@ const GoogleTasks: React.FC = () => {
               <Divider />
               
               <Stack direction="row" spacing={1} alignItems="center">
-                <AccessTimeIcon fontSize="small" color="action" />
-                <Button 
-                  variant="text" 
-                  fullWidth 
-                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
-                  onClick={handleEditTimePickerOpen}
-                >
-                  {editTaskDueTime ? format(new Date().setHours(
-                    Number(editTaskDueTime.split(':')[0]), 
-                    Number(editTaskDueTime.split(':')[1])
-                  ), 'h:mm a') : 'Set time'}
-                </Button>
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox 
+                        checked={showEditTaskTimePicker}
+                        onChange={(e) => {
+                          setShowEditTaskTimePicker(e.target.checked);
+                          if (!e.target.checked) {
+                            setEditTaskDueTime(null);
+                          }
+                        }}
+                        size="small"
+                      />
+                    }
+                    label="Add due time"
+                  />
+                  {showEditTaskTimePicker && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <AccessTimeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="text" 
+                        fullWidth 
+                        sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                        onClick={handleEditTimePickerOpen}
+                      >
+                        {editTaskDueTime ? format(new Date().setHours(
+                          Number(editTaskDueTime.split(':')[0]), 
+                          Number(editTaskDueTime.split(':')[1])
+                        ), 'h:mm a') : 'Set time'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               </Stack>
               
               <Stack direction="row" spacing={1} alignItems="center">
