@@ -850,7 +850,7 @@ const AIAssistantPage: React.FC = () => {
                 fontSize: isVerySmallMobile ? '0.9rem' : (isSmallMobile ? '1rem' : { xs: '1.125rem', md: '1.25rem' })
               }}
             >
-              AI Assistant
+              Opo
             </Typography>
           </Box>
           <Box>
@@ -918,7 +918,7 @@ const AIAssistantPage: React.FC = () => {
                   fontWeight: 500
                 }}
               >
-                Welcome to Pulse Assistant
+                Hi, I'm Opo!
               </Typography>
               <Typography 
                   variant="body1" 

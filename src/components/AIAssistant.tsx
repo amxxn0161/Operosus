@@ -1282,7 +1282,7 @@ const AIAssistant: React.FC = () => {
                     variant={isVerySmallMobile ? "caption" : (isSmallMobile ? "body2" : "body1")} 
                     fontWeight="medium"
                   >
-                    Pulse Assistant
+                    Opo
                   </Typography>
                 </Box>
                 <Box 
@@ -1523,7 +1523,7 @@ const AIAssistant: React.FC = () => {
                         fontWeight="medium"
                         sx={{ mb: 0.4 }}
                       >
-                        Welcome to Pulse Assistant
+                        Hi, I'm Opo!
                       </Typography>
                       <Typography 
                         variant="caption"
@@ -1879,7 +1879,7 @@ const AIAssistant: React.FC = () => {
                   >
                     <SmartToyIcon fontSize="small" sx={{ color: theme.palette.primary.main }} />
                   </Avatar>
-                  <Typography variant="subtitle1" fontWeight="medium">Pulse Assistant</Typography>
+                  <Typography variant="subtitle1" fontWeight="medium">Opo</Typography>
                 </Box>
                 <Box 
                   className="cancel-drag"
@@ -2101,7 +2101,7 @@ const AIAssistant: React.FC = () => {
                         fontWeight="medium"
                         sx={{ mb: 0.4 }}
                       >
-                        Welcome to Pulse Assistant
+                        Hi, I'm Opo!
                       </Typography>
                       <Typography 
                         variant="caption"
