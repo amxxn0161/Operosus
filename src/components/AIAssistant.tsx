@@ -33,7 +33,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
+import PersonIcon from '@mui/icons-material/Person';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -96,6 +96,9 @@ import {
   updateThreadTitle
 } from '../services/assistantService';
 import { format } from 'date-fns';
+// Import Opo images
+import OpoImage from '../assets/Opo.png';
+import OpoSmallImage from '../assets/Oposmall.png';
 
 // Define interface for prompt items
 interface ExamplePrompt {
@@ -482,7 +485,6 @@ export const AIAssistantButton: React.FC = () => {
   return (
     <Tooltip title="Ask AI Assistant" placement="left">
       <Fab
-        color="primary"
         size={isMobile ? "small" : "medium"}
         onClick={openAssistant}
         sx={{
@@ -493,8 +495,8 @@ export const AIAssistantButton: React.FC = () => {
           right: isMobile 
             ? (isVerySmallMobile ? 8 : (isSmallMobile ? 12 : 16))
             : 24,
-          boxShadow: theme.shadows[4],
-          background: 'linear-gradient(45deg, #1056F5 30%, #4B7FF7 90%)',
+          boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.2)',
+          background: 'white',
           zIndex: 1200,
           width: isMobile 
             ? (isVerySmallMobile ? 32 : (isSmallMobile ? 36 : 40)) 
@@ -502,13 +504,23 @@ export const AIAssistantButton: React.FC = () => {
           height: isMobile 
             ? (isVerySmallMobile ? 32 : (isSmallMobile ? 36 : 40)) 
             : 48,
-          minHeight: 'auto'
+          minHeight: 'auto',
+          border: '1px solid rgba(230, 230, 230, 0.9)',
+          '&:hover': {
+            background: 'white',
+            boxShadow: '0px 6px 15px rgba(0, 0, 0, 0.25)',
+          }
         }}
       >
-        <SmartToyIcon 
-          fontSize={isMobile ? "small" : "medium"} 
+        <Box
+          component="img"
+          src={OpoSmallImage}
+          alt="Opo"
           sx={{
-            fontSize: isVerySmallMobile ? '1rem' : (isSmallMobile ? '1.1rem' : undefined)
+            width: isMobile ? 
+              (isVerySmallMobile ? 16 : (isSmallMobile ? 18 : 20)) 
+              : 24,
+            height: 'auto'
           }}
         />
       </Fab>
@@ -1270,12 +1282,15 @@ const AIAssistant: React.FC = () => {
                       height: isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 28),
                     }}
                   >
-                    <SmartToyIcon 
-                      fontSize="small" 
+                    <Box
+                      component="img"
+                      src={OpoSmallImage}
+                      alt="Opo"
                       sx={{ 
+                        width: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 18),
+                        height: 'auto',
                         color: theme.palette.primary.main,
-                        fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.8rem' : undefined)
-                      }} 
+                      }}
                     />
                   </Avatar>
                   <Typography 
@@ -1508,12 +1523,14 @@ const AIAssistant: React.FC = () => {
                         mb: 2
                       }}
                     >
-                      <SmartToyIcon 
-                        fontSize="large" 
-                        color="primary" 
+                      <Box
+                        component="img"
+                        src={OpoImage}
+                        alt="Opo"
                         sx={{ 
                           mb: 0.5, 
-                          fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
+                          width: isSmallMobile ? 70 : 90,
+                          height: 'auto',
                           opacity: 0.8 
                         }} 
                       />
@@ -1589,9 +1606,15 @@ const AIAssistant: React.FC = () => {
                               height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                             }}
                           >
-                            <SmartToyIcon sx={{ 
-                              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                            }} />
+                            <Box
+                              component="img"
+                              src={OpoSmallImage}
+                              alt="Opo"
+                              sx={{ 
+                                width: isVerySmallMobile ? 12 : (isSmallMobile ? 14 : 16),
+                                height: 'auto'
+                              }}
+                            />
                           </Avatar>
                         )}
 
@@ -1694,9 +1717,15 @@ const AIAssistant: React.FC = () => {
                             height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                           }}
                         >
-                          <SmartToyIcon sx={{ 
-                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                          }} />
+                          <Box
+                            component="img"
+                            src={OpoSmallImage}
+                            alt="Opo"
+                            sx={{ 
+                              width: isVerySmallMobile ? 12 : (isSmallMobile ? 14 : 16),
+                              height: 'auto'
+                            }}
+                          />
                         </Avatar>
 
                         <Paper
@@ -1877,7 +1906,16 @@ const AIAssistant: React.FC = () => {
                       height: 32,
                     }}
                   >
-                    <SmartToyIcon fontSize="small" sx={{ color: theme.palette.primary.main }} />
+                    <Box
+                      component="img"
+                      src={OpoSmallImage}
+                      alt="Opo"
+                      sx={{ 
+                        width: 18,
+                        height: 'auto',
+                        color: theme.palette.primary.main
+                      }}
+                    />
                   </Avatar>
                   <Typography variant="subtitle1" fontWeight="medium">Opo</Typography>
                 </Box>
@@ -2086,12 +2124,14 @@ const AIAssistant: React.FC = () => {
                         mb: 2
                       }}
                     >
-                      <SmartToyIcon 
-                        fontSize="large" 
-                        color="primary" 
+                      <Box
+                        component="img"
+                        src={OpoImage}
+                        alt="Opo"
                         sx={{ 
                           mb: 0.5, 
-                          fontSize: isSmallMobile ? '1.2rem' : '1.4rem',
+                          width: isSmallMobile ? 70 : 90,
+                          height: 'auto',
                           opacity: 0.8 
                         }} 
                       />
@@ -2164,9 +2204,15 @@ const AIAssistant: React.FC = () => {
                               height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                             }}
                           >
-                            <SmartToyIcon sx={{ 
-                              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                            }} />
+                            <Box
+                              component="img"
+                              src={OpoSmallImage}
+                              alt="Opo"
+                              sx={{ 
+                                width: isVerySmallMobile ? 12 : (isSmallMobile ? 14 : 16),
+                                height: 'auto'
+                              }}
+                            />
                           </Avatar>
                         )}
 
@@ -2269,9 +2315,15 @@ const AIAssistant: React.FC = () => {
                             height: isVerySmallMobile ? 18 : (isSmallMobile ? 20 : 24),
                           }}
                         >
-                          <SmartToyIcon sx={{ 
-                            fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem')
-                          }} />
+                          <Box
+                            component="img"
+                            src={OpoSmallImage}
+                            alt="Opo"
+                            sx={{ 
+                              width: isVerySmallMobile ? 12 : (isSmallMobile ? 14 : 16),
+                              height: 'auto'
+                            }}
+                          />
                         </Avatar>
 
                         <Paper

@@ -33,7 +33,6 @@ import {
   Tabs
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';
@@ -95,6 +94,9 @@ import {
   updateThreadTitle
 } from '../services/assistantService';
 import { format, parseISO, isValid } from 'date-fns';
+// Import Opo images
+import OpoImage from '../assets/Opo.png';
+import OpoSmallImage from '../assets/Oposmall.png';
 
 // Format thread date function
 const formatThreadDate = (dateString: string): string => {
@@ -905,11 +907,16 @@ const AIAssistantPage: React.FC = () => {
                 maxHeight: '100%',
                 overflowY: 'auto'
             }}>
-              <SmartToyIcon sx={{ 
-                  fontSize: isVerySmallMobile ? 38 : (isSmallMobile ? 44 : { xs: 48, md: 52 }),
-                color: 'primary.main', 
-                  mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 })
-              }} />
+              <Box
+                component="img"
+                src={OpoImage}
+                alt="Opo"
+                sx={{
+                  width: isVerySmallMobile ? 100 : (isSmallMobile ? 120 : { xs: 140, md: 160 }),
+                  height: 'auto',
+                  mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 }),
+                }}
+              />
               <Typography 
                   variant="h5" 
                 sx={{ 
@@ -990,16 +997,23 @@ const AIAssistantPage: React.FC = () => {
                 >
                   <Avatar 
                     sx={{ 
-                      mr: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, sm: 1.5, md: 1.75 }), 
-                      width: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
-                      height: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
-                      bgcolor: message.role === 'assistant' ? 'primary.main' : 'rgba(0, 0, 0, 0.08)'
+                      bgcolor: 'white',
+                      width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
+                      height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
+                      mr: isVerySmallMobile ? 0.5 : undefined,
+                      border: '1px solid rgba(16, 86, 245, 0.2)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
                     }}
                   >
-                    {message.role === 'assistant' ? 
-                      <SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : { xs: 18, md: 20 }) }} /> : 
-                      <PersonIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : { xs: 18, md: 20 }) }} />
-                    }
+                    <Box
+                      component="img"
+                      src={OpoSmallImage}
+                      alt="Opo"
+                      sx={{ 
+                        width: isVerySmallMobile ? 16 : (isSmallMobile ? 18 : { xs: 20, md: 24 }),
+                        height: 'auto'
+                      }}
+                    />
                   </Avatar>
                   <Paper 
                     elevation={0}
@@ -1257,13 +1271,27 @@ const ThreadsList: React.FC<ThreadsListProps> = ({
         <Button
           fullWidth
           variant="contained"
-          color="primary"
           onClick={handleNewConversation}
-          startIcon={<SmartToyIcon sx={{ fontSize: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 18) }} />}
+          startIcon={
+            <Box
+              component="img"
+              src={OpoSmallImage}
+              alt="Opo"
+              sx={{ width: 16, height: 'auto' }}
+            />
+          }
           sx={{
             py: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.6 : { xs: 0.75, sm: 0.9 }),
             fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
-            borderRadius: '6px'
+            borderRadius: '6px',
+            bgcolor: 'rgba(240, 247, 255, 1)',
+            color: '#1A73E8',
+            border: '1px solid rgba(16, 86, 245, 0.3)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            '&:hover': {
+              bgcolor: 'rgba(230, 240, 255, 1)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }
           }}
         >
           {isVerySmallMobile ? "New" : (isSmallMobile ? "New Chat" : "New Conversation")}
@@ -1375,15 +1403,23 @@ const ThreadsList: React.FC<ThreadsListProps> = ({
                   <ListItemAvatar>
                     <Avatar 
                       sx={{ 
-                        bgcolor: 'primary.main',
+                        bgcolor: 'rgba(240, 247, 255, 1)',
                         width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
                         height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
-                        mr: isVerySmallMobile ? 0.5 : undefined
+                        mr: isVerySmallMobile ? 0.5 : undefined,
+                        border: '1px solid rgba(16, 86, 245, 0.3)',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                       }}
                     >
-                      <SmartToyIcon sx={{ 
-                        fontSize: isVerySmallMobile ? 16 : (isSmallMobile ? 18 : { xs: 20, md: 24 })
-                      }} />
+                      <Box
+                        component="img"
+                        src={OpoSmallImage}
+                        alt="Opo"
+                        sx={{ 
+                          width: isVerySmallMobile ? 16 : (isSmallMobile ? 18 : { xs: 20, md: 24 }),
+                          height: 'auto'
+                        }}
+                      />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText 
