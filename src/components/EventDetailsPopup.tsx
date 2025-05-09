@@ -1900,7 +1900,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       {/* Notification snackbar */}
       <Snackbar
         open={snackbarOpen}
-        autoHideDuration={6000}
+        autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
       >
         <Alert 
