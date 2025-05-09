@@ -1290,7 +1290,7 @@ const AIAssistant: React.FC = () => {
                         width: isVerySmallMobile ? 14 : (isSmallMobile ? 16 : 18),
                         height: 'auto',
                         color: theme.palette.primary.main,
-                      }}
+                      }} 
                     />
                   </Avatar>
                   <Typography 

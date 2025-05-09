@@ -51,6 +51,9 @@ interface Task {
   completed: boolean;
   notes?: string;
   task_list_id?: string | null;
+  due?: string;
+  has_explicit_time?: boolean;
+  status?: string;
 }
 
 interface EventCreationModalProps {
@@ -67,7 +70,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   selectedTime
 }) => {
   const { addEvent, createFocusTimeWithTasks, createEventWithTasks } = useCalendar();
-  const { taskLists } = useGoogleTasks();
+  const { deleteTask, taskLists, refreshTaskLists } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -121,6 +124,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [taskError, setTaskError] = useState<string | null>(null);
+  
+  // New state for task due date and time
+  const [newTaskDueDate, setNewTaskDueDate] = useState<string>('');
+  const [newTaskDueTime, setNewTaskDueTime] = useState<string>('');
+  const [showTaskTimePicker, setShowTaskTimePicker] = useState<boolean>(false);
   
   // New state for task selection dialog
   const [taskDialogOpen, setTaskDialogOpen] = useState<boolean>(false);
@@ -221,22 +229,60 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       return;
     }
     
-    // Add new task
+    // Add new task with optional due date and time
     const newTask: Task = {
       id: Date.now().toString(), // Simple unique ID
       title: newTaskTitle.trim(),
       completed: false
     };
     
+    // Add due date and time if provided
+    if (newTaskDueDate) {
+      if (showTaskTimePicker && newTaskDueTime) {
+        // If both date and time are provided
+        const dueDateTime = `${newTaskDueDate}T${newTaskDueTime}:00`;
+        newTask.due = dueDateTime;
+        newTask.has_explicit_time = true;
+      } else {
+        // If only date is provided (set to midnight)
+        newTask.due = `${newTaskDueDate}T00:00:00`;
+        newTask.has_explicit_time = false;
+      }
+    }
+    
     setTasks([...tasks, newTask]);
     
-    // Reset input field
+    // Reset input fields
     setNewTaskTitle('');
+    setNewTaskDueDate('');
+    setNewTaskDueTime('');
+    setShowTaskTimePicker(false);
   };
   
   // Function to remove a task
-  const removeTask = (id: string) => {
+  const removeTask = async (id: string) => {
+    // Find the task to be removed
+    const taskToRemove = tasks.find(task => task.id === id);
+    
+    // Remove the task from local state first
     setTasks(tasks.filter(task => task.id !== id));
+    
+    // If the task has a task_list_id, it exists in Google Tasks API
+    // and should be deleted from there too
+    if (taskToRemove?.task_list_id) {
+      try {
+        // Call the Google Tasks API to delete the task
+        const success = await deleteTask(taskToRemove.task_list_id, taskToRemove.id);
+        
+        if (success) {
+          console.log(`Task ${id} successfully deleted from Google Tasks API`);
+        } else {
+          console.error(`Failed to delete task ${id} from Google Tasks API`);
+        }
+      } catch (error) {
+        console.error('Error deleting task from API:', error);
+      }
+    }
   };
 
   // Function to open task selection dialog
@@ -285,7 +331,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
             id: taskId,
             title: task.title,
             completed: false,
-            task_list_id: taskListId
+            task_list_id: taskListId,
+            due: task.due,
+            has_explicit_time: task.has_explicit_time,
+            status: task.status
           } as Task;
         }
         return null;
@@ -342,8 +391,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       // Format tasks for API
       const formattedTasks = hasTasks ? tasks.map(task => ({
         title: task.title,
-        notes: "", // Optional notes field
-        task_list_id: null // Use default task list
+        notes: task.notes || "", // Include notes if available
+        task_list_id: task.task_list_id || null, // Use task list ID if available
+        due: task.due || null, // Include due date if available
+        has_explicit_time: task.has_explicit_time || false, // Include explicit time flag
+        status: task.status || "needsAction" // Include status
       })) : [];
       
       // Handle special event types
@@ -889,6 +941,36 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                         </ListItemIcon>
                         <ListItemText
                           primary={task.title}
+                          secondary={
+                            task.due ? 
+                              <Box component="span" sx={{ 
+                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                              }}>
+                                {new Date(task.due).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                                {task.has_explicit_time && 
+                                  ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })
+                                }
+                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                              </Box>
+                            : null
+                          }
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.9rem'
+                            },
+                            '& .MuiListItemText-secondary': {
+                              fontSize: '0.8rem'
+                            }
+                          }}
                         />
                       </ListItem>
                     ))}
@@ -896,8 +978,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                 </Paper>
               )}
               
-              {/* Add task form */}
-              <Box sx={{ display: 'flex', mb: 1 }}>
+              {/* Task input area */}
+              <Box sx={{ mb: 3, p: 2, border: '1px solid rgba(0, 0, 0, 0.12)', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Add a task</Typography>
+                
+                {/* Task title input */}
                 <TextField
                   fullWidth
                   size="small"
@@ -912,27 +997,69 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                       addTask();
                     }
                   }}
-                  sx={{ mr: 1 }}
+                  sx={{ mb: 2 }}
                 />
-                <Button 
-                  variant="outlined" 
-                  onClick={addTask}
-                  startIcon={<TaskAltIcon />}
-                >
-                  Add
-                </Button>
+                
+                {/* Task due date input */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Due date (optional)"
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
+                    value={newTaskDueDate}
+                    onChange={(e) => {
+                      setNewTaskDueDate(e.target.value);
+                    }}
+                  />
+                  
+                  {/* Option to add time */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={showTaskTimePicker}
+                        onChange={(e) => setShowTaskTimePicker(e.target.checked)}
+                        disabled={!newTaskDueDate}
+                      />
+                    }
+                    label="Add specific time"
+                  />
+                  
+                  {/* Show time picker if checkbox is checked */}
+                  {showTaskTimePicker && (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Due time"
+                      type="time"
+                      InputLabelProps={{ shrink: true }}
+                      value={newTaskDueTime}
+                      onChange={(e) => setNewTaskDueTime(e.target.value)}
+                    />
+                  )}
+                </Box>
+                
+                {/* Add button */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button 
+                    variant="outlined" 
+                    onClick={addTask}
+                    startIcon={<TaskAltIcon />}
+                    disabled={!newTaskTitle.trim()}
+                  >
+                    Add
+                  </Button>
+                </Box>
               </Box>
               
               {/* Link existing tasks button */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                 <Button
                   variant="text"
-                  onClick={handleOpenTaskDialog}
                   startIcon={<LinkIcon />}
-                  sx={{ 
-                    color: '#1A73E8',
-                    textTransform: 'none'
-                  }}
+                  sx={{ color: '#1056F5' }}
+                  onClick={handleOpenTaskDialog}
                 >
                   Link existing tasks
                 </Button>
@@ -1047,12 +1174,36 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                             }}
                           />
                         </ListItemIcon>
-                        <ListItemText 
+                        <ListItemText
                           primary={task.title}
-                          secondary={isAlreadyAdded ? "Already added" : null}
+                          secondary={
+                            task.due ? 
+                              <Box component="span" sx={{ 
+                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                              }}>
+                                {new Date(task.due).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                                {task.has_explicit_time && 
+                                  ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })
+                                }
+                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                              </Box>
+                            : null
+                          }
                           sx={{
                             '& .MuiListItemText-primary': {
                               fontSize: '0.9rem'
+                            },
+                            '& .MuiListItemText-secondary': {
+                              fontSize: '0.8rem'
                             }
                           }}
                         />

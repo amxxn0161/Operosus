@@ -20,12 +20,17 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { format, isValid, parseISO } from 'date-fns';
 import { EnhancedGoogleTask } from '../contexts/GoogleTasksContext';
 
+// Make sure the task type includes the has_explicit_time property
+interface TaskWithTime extends EnhancedGoogleTask {
+  has_explicit_time?: boolean;
+}
+
 interface TaskDetailsModalProps {
   open: boolean;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  task: EnhancedGoogleTask | null;
+  task: TaskWithTime | null;
   taskListId: string;
   taskListTitle?: string;
 }
@@ -55,7 +60,27 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     }
   };
   
-  // Extract time from notes
+  // Format time display from a date
+  const formatTime = (dateString?: string | null): string | null => {
+    if (!dateString) return null;
+    
+    try {
+      const date = parseISO(dateString);
+      if (!isValid(date)) return null;
+      
+      // Check if time is midnight (00:00) - if so, assume no specific time was set
+      if (date.getHours() === 0 && date.getMinutes() === 0 && !task.has_explicit_time) {
+        return null;
+      }
+      
+      // Format time as HH:MM (24-hour format)
+      return format(date, 'HH:mm');
+    } catch (e) {
+      return null;
+    }
+  };
+  
+  // Extract time from notes (legacy support)
   const getTimeFromNotes = (notes?: string): string | null => {
     if (!notes) return null;
     
@@ -77,7 +102,12 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   };
   
   const formattedDate = formatDate(task.due);
-  const dueTime = getTimeFromNotes(task.notes);
+  // First try to get time directly from the due date when has_explicit_time is true
+  const timeFromDue = task.has_explicit_time ? formatTime(task.due) : null;
+  // Fallback to legacy method of extracting from notes
+  const timeFromNotes = getTimeFromNotes(task.notes);
+  // Use time from due date if available, otherwise fallback to time from notes
+  const dueTime = timeFromDue || timeFromNotes;
   const cleanNotes = getCleanNotes(task.notes);
   
   return (

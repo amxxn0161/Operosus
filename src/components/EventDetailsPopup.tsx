@@ -49,12 +49,14 @@ import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TaskIcon from '@mui/icons-material/Task';
 import AddTaskIcon from '@mui/icons-material/AddTask';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { CalendarEvent, respondToEventInvitation, linkTasksToEvent, getTasksForEvent } from '../services/calendarService';
 import { format } from 'date-fns';
 import EventEditForm from './EventEditForm';
 import { useCalendar } from '../contexts/CalendarContext';
 import { useGoogleTasks } from '../contexts/GoogleTasksContext';
 import { GoogleTask } from '../services/googleTasksService';
+import TaskDetailsModal from './TaskDetailsModal';
 
 interface Guest {
   name: string;
@@ -82,7 +84,14 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   onDelete
 }) => {
   const { fetchEvents } = useCalendar();
-  const { taskLists, updateTask, createTask, refreshTaskLists } = useGoogleTasks();
+  const { 
+    taskLists, 
+    updateTask, 
+    createTask, 
+    toggleTaskComplete,
+    deleteTask,
+    refreshTaskLists
+  } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -119,6 +128,22 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [taskDialogTab, setTaskDialogTab] = useState<string>('');
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [creatingTask, setCreatingTask] = useState<boolean>(false);
+  
+  // New state for task details modal
+  const [taskDetailsModalOpen, setTaskDetailsModalOpen] = useState<boolean>(false);
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState<{
+    task: GoogleTask | null;
+    taskListId: string;
+    taskListTitle: string;
+  }>({
+    task: null,
+    taskListId: '',
+    taskListTitle: ''
+  });
+  
+  // Task menu state
+  const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [currentTaskForMenu, setCurrentTaskForMenu] = useState<GoogleTask | null>(null);
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -529,6 +554,97 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       setSnackbarOpen(true);
     } finally {
       setCreatingTask(false);
+    }
+  };
+
+  // Handle opening the task menu
+  const handleTaskMenuOpen = (event: React.MouseEvent<HTMLElement>, task: GoogleTask) => {
+    event.stopPropagation();
+    setTaskMenuAnchorEl(event.currentTarget);
+    setCurrentTaskForMenu(task);
+  };
+  
+  // Handle closing the task menu
+  const handleTaskMenuClose = () => {
+    setTaskMenuAnchorEl(null);
+    setCurrentTaskForMenu(null);
+  };
+  
+  // Handle opening task details from menu
+  const handleOpenTaskDetails = () => {
+    if (!currentTaskForMenu || !currentTaskForMenu.task_list_id) return;
+    
+    // Find the task list title
+    const taskList = taskLists.find(list => list.id === currentTaskForMenu.task_list_id);
+    const taskListTitle = taskList?.title || 'Task List';
+    
+    setSelectedTaskDetails({
+      task: currentTaskForMenu,
+      taskListId: currentTaskForMenu.task_list_id,
+      taskListTitle: taskListTitle
+    });
+    
+    // Close the menu
+    handleTaskMenuClose();
+    
+    // Open the details modal
+    setTaskDetailsModalOpen(true);
+  };
+  
+  // Handle closing task details modal
+  const handleTaskDetailsClose = () => {
+    setTaskDetailsModalOpen(false);
+  };
+  
+  // Handle editing from task details modal
+  const handleEditFromDetails = () => {
+    // Close the task details modal
+    setTaskDetailsModalOpen(false);
+    
+    // We could navigate to the task page for editing, but for now
+    // we'll just show a notification that this action is not available from here
+    setSnackbarMessage('To edit this task, please go to the Tasks page');
+    setSnackbarSeverity('success');
+    setSnackbarOpen(true);
+  };
+  
+  // Handle deleting from task details modal
+  const handleDeleteFromDetails = async () => {
+    if (!selectedTaskDetails.task || !selectedTaskDetails.taskListId) return;
+    
+    try {
+      // Delete the task using the deleteTask function instead of updating status
+      const success = await deleteTask(
+        selectedTaskDetails.taskListId,
+        selectedTaskDetails.task.id
+      );
+      
+      if (success) {
+        // Close the modal
+        setTaskDetailsModalOpen(false);
+        
+        // Remove the task from the linkedTasks array
+        setLinkedTasks(prevTasks => 
+          prevTasks.filter(t => t.id !== selectedTaskDetails.task?.id)
+        );
+        
+        // Show success message
+        setSnackbarMessage('Task deleted successfully');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+        
+        // Refresh linked tasks data
+        if (event && event.id) {
+          fetchLinkedTasks(event.id);
+        }
+      } else {
+        throw new Error('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Failed to delete task:', error);
+      setSnackbarMessage('Failed to delete task');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
@@ -1285,35 +1401,83 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
               </Box>
             ) : linkedTasks.length > 0 ? (
               <List dense sx={{ ml: 3, mt: 0, padding: 0 }}>
-                {linkedTasks.map((task) => (
-                  <ListItem key={task.id} sx={{ px: 0, py: 0.5 }}>
-                    <ListItemIcon sx={{ minWidth: 32 }}>
-                      <Checkbox
-                        edge="start"
-                        checked={task.status === 'completed'}
-                        onChange={() => handleToggleTaskComplete(task)}
-                        tabIndex={-1}
-                        sx={{ 
-                          p: 0.5,
-                          color: '#5f6368',
-                          '&.Mui-checked': {
-                            color: '#1A73E8'
+                {linkedTasks.map((task) => {
+                  const taskKey = `${task.task_list_id}:${task.id}`;
+                  return (
+                    <ListItem 
+                      key={taskKey} 
+                      sx={{ px: 0, py: 0.5 }}
+                      secondaryAction={
+                        <IconButton 
+                          edge="end" 
+                          aria-label="more" 
+                          size="small"
+                          onClick={(e) => handleTaskMenuOpen(e, task)}
+                          sx={{ 
+                            mr: -1,
+                            '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' }
+                          }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Checkbox
+                          edge="start"
+                          checked={task.status === 'completed'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleTaskComplete(task);
+                          }}
+                          tabIndex={-1}
+                          sx={{ 
+                            p: 0.5,
+                            color: '#5f6368',
+                            '&.Mui-checked': {
+                              color: '#1A73E8'
+                            }
+                          }}
+                        />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={task.title} 
+                        secondary={
+                          task.due ? 
+                            <Box component="span" sx={{ 
+                              color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                              fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                            }}>
+                              {new Date(task.due).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                              {task.has_explicit_time && 
+                                ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: true
+                                })
+                              }
+                              {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                            </Box>
+                          : null
+                        }
+                        sx={{
+                          '& .MuiListItemText-primary': {
+                            fontSize: '0.85rem',
+                            textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                            color: task.status === 'completed' ? 'text.secondary' : 'text.primary'
+                          },
+                          '& .MuiListItemText-secondary': {
+                            fontSize: '0.8rem'
                           }
                         }}
                       />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={task.title} 
-                      sx={{
-                        '& .MuiListItemText-primary': {
-                          fontSize: '0.85rem',
-                          textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                          color: task.status === 'completed' ? 'text.secondary' : 'text.primary'
-                        }
-                      }}
-                    />
-                  </ListItem>
-                ))}
+                    </ListItem>
+                  );
+                })}
               </List>
             ) : (
               <Typography 
@@ -1948,7 +2112,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                           <Checkbox
                             edge="start"
                             checked={!!selectedTasks[taskKey]}
-                            onChange={() => handleTaskToggle(taskDialogTab, task.id)}
+                            onChange={(e) => handleTaskToggle(taskDialogTab, task.id)}
                             sx={{
                               color: '#5f6368',
                               '&.Mui-checked': {
@@ -1959,9 +2123,34 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                         </ListItemIcon>
                         <ListItemText 
                           primary={task.title} 
+                          secondary={
+                            task.due ? 
+                              <Box component="span" sx={{ 
+                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                              }}>
+                                {new Date(task.due).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                                {task.has_explicit_time && 
+                                  ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })
+                                }
+                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                              </Box>
+                            : null
+                          }
                           sx={{
                             '& .MuiListItemText-primary': {
                               fontSize: '0.9rem'
+                            },
+                            '& .MuiListItemText-secondary': {
+                              fontSize: '0.8rem'
                             }
                           }}
                         />
@@ -1990,6 +2179,46 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Task menu */}
+      <Menu
+        anchorEl={taskMenuAnchorEl}
+        open={Boolean(taskMenuAnchorEl)}
+        onClose={handleTaskMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        PaperProps={{
+          sx: { 
+            minWidth: 180,
+            boxShadow: '0px 2px 8px rgba(0,0,0,0.15)',
+            borderRadius: '8px'
+          }
+        }}
+      >
+        <MenuItem onClick={handleOpenTaskDetails} dense>
+          <ListItemIcon>
+            <InfoOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Task Details" />
+        </MenuItem>
+      </Menu>
+      
+      {/* Add TaskDetailsModal component */}
+      <TaskDetailsModal
+        open={taskDetailsModalOpen}
+        onClose={handleTaskDetailsClose}
+        onEdit={handleEditFromDetails}
+        onDelete={handleDeleteFromDetails}
+        task={selectedTaskDetails.task}
+        taskListId={selectedTaskDetails.taskListId}
+        taskListTitle={selectedTaskDetails.taskListTitle}
+      />
     </>
   );
 };
