@@ -243,6 +243,10 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         const dueDateTime = `${newTaskDueDate}T${newTaskDueTime}:00`;
         newTask.due = dueDateTime;
         newTask.has_explicit_time = true;
+        
+        // Add time to notes for display in task details
+        const timeStr = newTaskDueTime;
+        newTask.notes = `Due Time: ${timeStr}`;
       } else {
         // If only date is provided (set to midnight)
         newTask.due = `${newTaskDueDate}T00:00:00`;
@@ -327,15 +331,33 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         const task = taskList?.tasks.find(t => t.id === taskId);
         
         if (task) {
-          return {
+          // Prepare task object with all needed fields
+          const selectedTask: Task = {
             id: taskId,
             title: task.title,
             completed: false,
             task_list_id: taskListId,
             due: task.due,
             has_explicit_time: task.has_explicit_time,
-            status: task.status
-          } as Task;
+            status: task.status,
+            notes: task.notes || ""
+          };
+          
+          // If the task has_explicit_time but doesn't have "Due Time:" in notes,
+          // we should add it by extracting time from the due date
+          if (task.has_explicit_time && task.due && (!task.notes || !task.notes.includes("Due Time:"))) {
+            const dueDate = new Date(task.due);
+            const hours = dueDate.getHours().toString().padStart(2, '0');
+            const minutes = dueDate.getMinutes().toString().padStart(2, '0');
+            const timeStr = `${hours}:${minutes}`;
+            
+            // Append time to existing notes or create new note
+            selectedTask.notes = selectedTask.notes 
+              ? `${selectedTask.notes}\nDue Time: ${timeStr}`
+              : `Due Time: ${timeStr}`;
+          }
+          
+          return selectedTask;
         }
         return null;
       })
@@ -395,6 +417,7 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         task_list_id: task.task_list_id || null, // Use task list ID if available
         due: task.due || null, // Include due date if available
         has_explicit_time: task.has_explicit_time || false, // Include explicit time flag
+        time_in_notes: true, // Add this flag to ensure the backend knows to handle time in notes
         status: task.status || "needsAction" // Include status
       })) : [];
       

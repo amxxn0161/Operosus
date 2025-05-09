@@ -406,6 +406,8 @@ const mapApiEventToCalendarEvent = (apiEvent: any): CalendarEvent => {
     ...(apiEvent.visibility !== undefined && { visibility: apiEvent.visibility }),
     ...(apiEvent.recurringEventId && { recurringEventId: apiEvent.recurringEventId }),
     ...(apiEvent.eventType && { eventType: apiEvent.eventType }),
+    ...(apiEvent.taskListId && { taskListId: apiEvent.taskListId }),
+    ...(apiEvent.hasExplicitTime !== undefined && { hasExplicitTime: apiEvent.hasExplicitTime }),
     ...(hangoutLink && { hangoutLink: hangoutLink }),
     ...(conferenceData && { conferenceData: conferenceData }),
     ...(apiEvent.attachments && { attachments: apiEvent.attachments }) // Add attachments field

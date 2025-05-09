@@ -88,20 +88,29 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
 
   // Get task description and due time from notes
   const getTaskDetails = (): { description: string, dueTime: string | null } => {
-    if (!event?.description) return { description: '', dueTime: null };
+    if (!event) return { description: '', dueTime: null };
     
-    let description = event.description;
+    let description = event.description || '';
     let dueTime = null;
     
-    // Extract due time if present
-    if (event.description.includes('Due Time:')) {
-      const dueTimeMatch = event.description.match(/Due Time: (\d{1,2}:\d{2})/);
+    // Extract due time if present in description
+    if (description.includes('Due Time:')) {
+      const dueTimeMatch = description.match(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/);
       if (dueTimeMatch && dueTimeMatch[1]) {
         dueTime = dueTimeMatch[1];
       }
       
       // Remove the Due Time line from description
-      description = event.description.replace(/Due Time:.*\n?/, '').trim();
+      description = description.replace(/Due Time:.*\n?/, '').trim();
+    } 
+    // If no time in description but has explicit time flag is set, extract from start date
+    else if (event.hasExplicitTime && event.start) {
+      const startDate = new Date(event.start);
+      if (startDate.getHours() !== 0 || startDate.getMinutes() !== 0) {
+        const hours = startDate.getHours().toString().padStart(2, '0');
+        const minutes = startDate.getMinutes().toString().padStart(2, '0');
+        dueTime = `${hours}:${minutes}`;
+      }
     }
     
     return { description, dueTime };
