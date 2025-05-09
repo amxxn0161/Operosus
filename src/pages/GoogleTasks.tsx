@@ -1036,8 +1036,11 @@ const GoogleTasks: React.FC = () => {
     // Remove all "Due Time: XX:XX" entries (including any following line breaks)
     let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
     
-    // Also remove all "Estimated Time: X minutes" entries (including any following line breaks)
+    // Remove all "Estimated Time: X minutes" entries with various formats
     cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+ minutes?(\r?\n|\r)?/g, '');
+    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+m(\r?\n|\r)?/g, '');
+    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+h \d+m(\r?\n|\r)?/g, '');
+    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+h(\r?\n|\r)?/g, '');
     
     return cleanedNotes.trim();
   };
@@ -1050,8 +1053,8 @@ const GoogleTasks: React.FC = () => {
         const title = editTaskTitle.trim();
         let notes = editTaskNotes.trim();
         
-        // Remove all "Due Time: XX:XX" entries (including any following line breaks)
-        let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
+        // Clean all time entries (both due time and estimated time) from notes
+        const cleanedNotes = cleanNotesOfTimeEntries(notes);
         
         const taskData: { 
           title: string; 
@@ -1280,12 +1283,11 @@ const GoogleTasks: React.FC = () => {
         }
         
         // Only show time if the task has an explicit time set
+        dueInfo = displayDate;
         if (hasExplicitTime) {
           const formattedTime = format(dueDate, 'h:mm a');
-          displayDate = `${displayDate}, ${formattedTime}`;
+          dueInfo = `${displayDate} • ${formattedTime}`; // Add bullet separator and time
         }
-        
-        dueInfo = displayDate;
         
         // Add overdue marker if the task is overdue
         if (isOverdue(task.due) && task.status !== 'completed') {
@@ -2341,13 +2343,23 @@ const GoogleTasks: React.FC = () => {
                             {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                               <Typography 
                                 variant="caption" 
+                                component="div"
                                 sx={{ 
                                   fontFamily: 'Poppins',
                                   color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                  display: 'block',
-                                  fontSize: '0.7rem' // Further reduced font size
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem', // Slightly larger for better readability
+                                  fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                  mt: 0.5
                                 }}
                               >
+                                {task.has_explicit_time && (
+                                  <AccessTimeIcon 
+                                    fontSize="inherit" 
+                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : 'primary.main' }} 
+                                  />
+                                )}
                                 {formatDueInfoWithNotes(task)}
                               </Typography>
                             )}
@@ -2549,13 +2561,23 @@ const GoogleTasks: React.FC = () => {
                                           {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                                             <Typography 
                                               variant="caption" 
+                                              component="div"
                                               sx={{ 
                                                 fontFamily: 'Poppins',
                                                 color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                                display: 'block',
-                                                fontSize: '0.7rem' // Further reduced font size for secondary
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem', // Slightly larger for better readability
+                                                fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                                mt: 0.5
                                               }}
                                             >
+                                              {task.has_explicit_time && (
+                                                <AccessTimeIcon 
+                                                  fontSize="inherit" 
+                                                  sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : 'primary.main' }} 
+                                                />
+                                              )}
                                               {formatDueInfoWithNotes(task)}
                                             </Typography>
                                           )}

@@ -122,9 +122,28 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </Box>
           
           {dueTime && (
-            <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, color: 'text.secondary' }}>
-              <AccessTimeIcon sx={{ mr: 1, fontSize: 20 }} />
-              <Typography variant="body2">
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              mt: 1, 
+              py: 0.5,
+              px: 1,
+              borderRadius: 1,
+              bgcolor: 'rgba(16, 86, 245, 0.08)', 
+              width: 'fit-content'
+            }}>
+              <AccessTimeIcon sx={{ 
+                mr: 1, 
+                fontSize: 20, 
+                color: 'primary.main' 
+              }} />
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontWeight: 500, 
+                  color: 'primary.main',
+                }}
+              >
                 Due Time: {dueTime}
               </Typography>
             </Box>

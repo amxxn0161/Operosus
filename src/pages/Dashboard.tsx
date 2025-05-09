@@ -1670,10 +1670,11 @@ const Dashboard: React.FC<{}> = () => {
             pl: { xs: 1, sm: 2 } // Add left padding to move it to the right
           }}
         >
-          Your Dashboard
+          Home
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          {/* Customize button - only show on desktop */}
+          {/* Customize button temporarily removed - will be added back later */}
+          {/*
           {!isMobile && (
             <MuiTooltip title={isEditMode ? "Save layout" : "Customize dashboard"}>
           <Button 
@@ -1696,6 +1697,7 @@ const Dashboard: React.FC<{}> = () => {
           </Button>
             </MuiTooltip>
           )}
+          */}
         </Box>
       </Box>
 
