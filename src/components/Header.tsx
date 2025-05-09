@@ -34,6 +34,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
+import OpoSmallImage from '../assets/Oposmall.png';
 
 const Header: React.FC = () => {
   const { isAuthenticated, logout, user } = useAuth();
@@ -406,9 +407,20 @@ const Header: React.FC = () => {
             bgcolor: isActive('/ai-assistant') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <SmartToyIcon sx={{ mr: 2, color: isActive('/ai-assistant') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <Box 
+            component="img"
+            src={OpoSmallImage}
+            alt="Opo"
+            sx={{ 
+              width: 22,
+              height: 'auto',
+              mr: 2,
+              filter: isActive('/ai-assistant') ? 'none' : 'grayscale(0.5)',
+              opacity: isActive('/ai-assistant') ? 1 : 0.7
+            }} 
+          />
           <ListItemText 
-            primary="AI Assistant" 
+            primary="Opo AI" 
             primaryTypographyProps={{
               fontWeight: isActive('/ai-assistant') ? 'bold' : 'normal',
               color: isActive('/ai-assistant') ? 'primary.main' : 'text.primary',
