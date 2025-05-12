@@ -357,6 +357,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Add this near the other state variables (around line 350)
   const [isManualNavigation, setIsManualNavigation] = useState(false);
   
+  // Add a new state variable for showing out-of-range events
+  // Add this near the other state variables around line 350
+  const [showOutOfRangeEvents, setShowOutOfRangeEvents] = useState(false);
+  
   // Debug logging
   useEffect(() => {
     console.log(`Calendar containerWidth: ${containerWidth}, isMobile: ${isMobile}, useMobileView: ${useMobileView}`);
@@ -1285,23 +1289,38 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const separateTasksAndEvents = (events: CalendarEvent[]): {
       tasks: CalendarEvent[];
       regularEvents: CalendarEvent[];
+      outOfRangeEvents: CalendarEvent[];
     } => {
       const tasks: CalendarEvent[] = [];
       const regularEvents: CalendarEvent[] = [];
+      const outOfRangeEvents: CalendarEvent[] = [];
       
       events.forEach(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        const startHour = start.getHours();
+        const endHour = end.getHours();
+        const endMinutes = end.getMinutes();
+        
         if (event.eventType === 'task') {
           tasks.push(event);
+        } else if (
+          // Event starts before visible hours
+          (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+          // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+          (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+        ) {
+          outOfRangeEvents.push(event);
         } else {
           regularEvents.push(event);
         }
       });
       
-      return { tasks, regularEvents };
+      return { tasks, regularEvents, outOfRangeEvents };
     };
     
     // Separate tasks from regular events
-    const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+    const { tasks, regularEvents, outOfRangeEvents } = separateTasksAndEvents(dayEvents);
     
     // Log for debugging
     console.log(`Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
@@ -1328,6 +1347,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         }}>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Typography>
+        
+        {/* Out of range events section - only shown when filter is enabled */}
+        {showOutOfRangeEvents && outOfRangeEvents.length > 0 && (
+          <OutOfRangeEventsSection 
+            events={outOfRangeEvents} 
+            onEventClick={handleEventClick}
+          />
+        )}
         
         <Divider sx={{ my: 2 }} />
         
@@ -1575,19 +1602,34 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const separateTasksAndEvents = (events: CalendarEvent[]): {
       tasks: CalendarEvent[];
       regularEvents: CalendarEvent[];
+      outOfRangeEvents: CalendarEvent[];
     } => {
       const tasks: CalendarEvent[] = [];
       const regularEvents: CalendarEvent[] = [];
+      const outOfRangeEvents: CalendarEvent[] = [];
       
       events.forEach(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        const startHour = start.getHours();
+        const endHour = end.getHours();
+        const endMinutes = end.getMinutes();
+        
         if (event.eventType === 'task') {
           tasks.push(event);
+        } else if (
+          // Event starts before visible hours
+          (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+          // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+          (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+        ) {
+          outOfRangeEvents.push(event);
         } else {
           regularEvents.push(event);
         }
       });
       
-      return { tasks, regularEvents };
+      return { tasks, regularEvents, outOfRangeEvents };
     };
     
     // Log for debugging
@@ -1596,8 +1638,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     // Define height for the task row
     const TASK_ROW_HEIGHT = 60;
     
+    // Fix this line to use the updated function return that includes outOfRangeEvents
+    const { tasks: weekTasks, regularEvents: weekRegularEvents, outOfRangeEvents: weekOutOfRangeEvents } = 
+      separateTasksAndEvents(getEventsForDateRange(weekDays[0], new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000)));
+    
     return (
       <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
+        {/* Out of range events section - only shown when filter is enabled */}
+        {showOutOfRangeEvents && weekOutOfRangeEvents.length > 0 && (
+          <Grid item xs={12} sx={{ p: 2, pb: 0 }}>
+            <OutOfRangeEventsSection 
+              events={weekOutOfRangeEvents} 
+              onEventClick={handleEventClick}
+            />
+          </Grid>
+        )}
+        
         {/* Time labels column */}
         <Grid item xs={1} sx={{ 
           borderRight: 1, 
@@ -3207,6 +3263,173 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     );
   };
 
+  // Add a new component for displaying out-of-range events - add this after the renderEventContent function
+  const OutOfRangeEventsSection: React.FC<{
+    events: CalendarEvent[];
+    onEventClick: (event: CalendarEvent, e: React.MouseEvent) => void;
+  }> = ({ events, onEventClick }) => {
+    if (events.length === 0) return null;
+
+    return (
+      <Box sx={{ 
+        borderRadius: '4px',
+        border: '1px solid rgba(0,0,0,0.09)',
+        backgroundColor: 'rgba(236, 236, 255, 0.2)',
+        p: 1.5,
+        mb: 2,
+        mt: 1,
+        boxShadow: 'inset 0 0 5px rgba(0,0,0,0.05)'
+      }}>
+        <Typography variant="subtitle2" sx={{ 
+          mb: 1, 
+          color: 'text.secondary', 
+          fontSize: '0.85rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5
+        }}>
+          <AccessTimeIcon sx={{ fontSize: '1rem' }} />
+          {events.length} {events.length === 1 ? 'event' : 'events'} outside visible hours ({DAY_START_HOUR}:00 - {DAY_END_HOUR}:00)
+        </Typography>
+        
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {events.map(event => {
+            const startTime = new Date(event.start);
+            const endTime = new Date(event.end);
+            const eventColor = getEventColor(event);
+            const textColor = getEventTextColor(eventColor);
+            const isEarlyMorning = startTime.getHours() < DAY_START_HOUR;
+            const isLateEvening = startTime.getHours() >= DAY_END_HOUR;
+            
+            // Show when the event occurs
+            const timeIndicator = isEarlyMorning 
+              ? "Early Morning" 
+              : isLateEvening 
+                ? "Evening/Night" 
+                : "Extended Hours";
+                
+            return (
+              <Box 
+                key={event.id}
+                sx={{ 
+                  display: 'flex',
+                  p: 1,
+                  borderRadius: '4px',
+                  backgroundColor: 'white',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                  cursor: 'pointer',
+                  borderLeft: `4px solid ${eventColor}`,
+                  '&:hover': {
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                    transform: 'translateY(-1px)',
+                    transition: 'all 0.2s ease'
+                  }
+                }}
+                onClick={(e) => onEventClick(event, e)}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, color: '#333' }}>
+                      {event.title}
+                    </Typography>
+                    <Chip 
+                      label={timeIndicator} 
+                      size="small" 
+                      sx={{ 
+                        height: '22px', 
+                        fontSize: '0.7rem',
+                        fontWeight: 'medium',
+                        backgroundColor: isEarlyMorning 
+                          ? '#E3F2FD' // Light blue for morning
+                          : isLateEvening 
+                            ? '#EDE7F6' // Light purple for evening
+                            : '#E8F5E9', // Light green for other
+                        color: isEarlyMorning 
+                          ? '#1565C0' // Blue for morning
+                          : isLateEvening 
+                            ? '#5E35B1' // Purple for evening
+                            : '#2E7D32', // Green for other
+                        ml: 1,
+                        border: '1px solid',
+                        borderColor: isEarlyMorning 
+                          ? 'rgba(21, 101, 192, 0.2)' 
+                          : isLateEvening 
+                            ? 'rgba(94, 53, 177, 0.2)' 
+                            : 'rgba(46, 125, 50, 0.2)',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }} 
+                    />
+                  </Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.8rem', mt: 0.5 }}>
+                    {formatTime(startTime)} - {formatTime(endTime)}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    );
+  };
+
+  // Add the countOutOfRangeEvents function to calculate total out-of-range events
+  // Add this after the calculateCurrentTimePosition function around line 2350
+  const countOutOfRangeEvents = (): number => {
+    if (viewMode === 'day') {
+      const dayEvents = getEventsForDay(selectedDate);
+      const { outOfRangeEvents } = separateTasksAndEventsWithOutOfRange(dayEvents);
+      return outOfRangeEvents.length;
+    } else if (viewMode === 'week') {
+      const weekDays = generateWeekDays();
+      let count = 0;
+      
+      weekDays.forEach(day => {
+        const dayEvents = getEventsForDay(day);
+        const { outOfRangeEvents } = separateTasksAndEventsWithOutOfRange(dayEvents);
+        count += outOfRangeEvents.length;
+      });
+      
+      return count;
+    }
+    
+    return 0;
+  };
+
+  // Rename the enhanced separateTasksAndEvents function that includes outOfRangeEvents to avoid conflicts
+  // Update the existing function to have a consistent name wherever it's used
+  const separateTasksAndEventsWithOutOfRange = (events: CalendarEvent[]): {
+    tasks: CalendarEvent[];
+    regularEvents: CalendarEvent[];
+    outOfRangeEvents: CalendarEvent[];
+  } => {
+    const tasks: CalendarEvent[] = [];
+    const regularEvents: CalendarEvent[] = [];
+    const outOfRangeEvents: CalendarEvent[] = [];
+    
+    events.forEach(event => {
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+      const startHour = start.getHours();
+      const endHour = end.getHours();
+      const endMinutes = end.getMinutes();
+      
+      if (event.eventType === 'task') {
+        tasks.push(event);
+      } else if (
+        // Event starts before visible hours
+        (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+        // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+        (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+      ) {
+        outOfRangeEvents.push(event);
+      } else {
+        regularEvents.push(event);
+      }
+    });
+    
+    return { tasks, regularEvents, outOfRangeEvents };
+  };
+
   // Modify the return statement to use the mobile views when isMobile is true
   return (
     <Paper 
@@ -3242,24 +3465,52 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </Box>
         
         <Box sx={{ display: 'flex' }}>
+          <Tooltip title={`${showOutOfRangeEvents ? 'Hide' : 'Show'} events outside visible hours`}>
+            <Badge 
+              badgeContent={countOutOfRangeEvents()} 
+              color="primary"
+              sx={{ 
+                '& .MuiBadge-badge': {
+                  fontSize: '0.65rem',
+                  minWidth: '18px',
+                  height: '18px',
+                  fontWeight: 'bold',
+                  display: countOutOfRangeEvents() > 0 ? 'flex' : 'none'
+                }
+              }}
+            >
               <IconButton 
+                onClick={() => setShowOutOfRangeEvents(!showOutOfRangeEvents)}
+                size={isMobile ? "small" : "medium"}
+                sx={{ 
+                  mr: 0.5,
+                  color: showOutOfRangeEvents ? 'primary.main' : 'action.active',
+                  bgcolor: showOutOfRangeEvents ? 'rgba(16, 86, 245, 0.1)' : 'transparent',
+                }}
+              >
+                <AccessTimeIcon />
+              </IconButton>
+            </Badge>
+          </Tooltip>
+          
+          <IconButton 
             onClick={refreshCalendarData} 
             size={isMobile ? "small" : "medium"}
             sx={{ mr: 0.5 }}
           >
             <RefreshIcon />
-              </IconButton>
+          </IconButton>
           
-            <IconButton 
-              onClick={(e) => {
-                if (onAddEvent) onAddEvent();
-                setIsEventModalOpen(true);
-              }}
-              size={isMobile ? "small" : "medium"}
-              sx={{ color: '#1056F5' }}
-            >
-              <AddCircleOutlineIcon />
-            </IconButton>
+          <IconButton 
+            onClick={(e) => {
+              if (onAddEvent) onAddEvent();
+              setIsEventModalOpen(true);
+            }}
+            size={isMobile ? "small" : "medium"}
+            sx={{ color: '#1056F5' }}
+          >
+            <AddCircleOutlineIcon />
+          </IconButton>
         </Box>
       </Box>
       
