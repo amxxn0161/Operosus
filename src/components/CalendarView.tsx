@@ -83,7 +83,7 @@ const MonthEventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => 
   }
 }));
 
-// Update the WeekEventCard styled component to have an Outlook-like style
+// Update the WeekEventCard styled component to ensure consistent styling for both day and week views
 const WeekEventCard = styled(Box, {
   shouldForwardProp: (prop) => 
     prop !== 'bgcolor' && 
@@ -1293,7 +1293,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     
     return (
       <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
-        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium', color: '#333' }}>
+        <Typography variant="h6" gutterBottom sx={{ 
+          fontWeight: 'medium', 
+          color: '#333',
+          mb: 1.5, // Add more space below the title
+          fontSize: '1.25rem', // Slightly larger font
+          display: 'flex',
+          alignItems: 'center',
+          '&::after': {
+            content: '""',
+            display: 'block',
+            ml: 2,
+            flexGrow: 1,
+            height: '1px',
+            backgroundColor: 'rgba(0,0,0,0.08)' // Subtle line extending from title
+          }
+        }}>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Typography>
         
@@ -1366,10 +1381,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     borderRadius: '4px',
                     color: 'white',
                     height: '100%',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)', // Added shadow
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)', // Enhanced shadow for depth
+                    transition: 'all 0.2s ease',
                     '&:hover': {
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                      filter: 'brightness(1.03)'
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)', // Deeper shadow on hover
+                      filter: 'brightness(1.03)',
+                      transform: 'translateY(-1px)' // Slight lift effect on hover
                     }
                   }}
                 >
@@ -1385,7 +1402,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: 'text.secondary'
+                color: 'text.secondary',
+                borderRadius: '4px',
+                border: '1px dashed rgba(0,0,0,0.1)',
+                backgroundColor: 'rgba(0,0,0,0.01)'
               }}>
                 <Typography variant="caption" sx={{ fontSize: '0.85rem' }}>No tasks</Typography>
               </Box>
@@ -1434,7 +1454,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             
             {/* No events message */}
             {regularEvents.length === 0 ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                height: 200, 
+                zIndex: 1,
+                borderRadius: '4px',
+                border: '1px dashed rgba(0,0,0,0.1)',
+                backgroundColor: 'rgba(0,0,0,0.01)',
+                my: 2
+              }}>
                 <Typography variant="body1" color="text.secondary">
                   No events scheduled for this day
                 </Typography>
@@ -1476,12 +1506,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       onClick={(e) => handleEventClick(event, e)}
                       sx={{
                         zIndex: isActive ? 100 : (zIndex || 1),
-                        border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
-                        borderRadius: '4px',
+                        borderTop: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        borderRight: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        borderBottom: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        backgroundColor: 'white', // Always white background 
                         boxShadow: isActive 
                           ? '0 6px 12px rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.15)' 
                           : '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
-                        backgroundColor: isDeclined ? 'white' : eventColor,
                         p: '6px 10px', // Ensure this padding is applied consistently
                         '&:hover': {
                           boxShadow: '0 4px 8px rgba(0,0,0,0.22), 0 2px 4px rgba(0,0,0,0.15)',
@@ -1871,15 +1902,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                             borderTop: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
                             borderRight: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
                             borderBottom: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                            backgroundColor: 'white', // Always white background 
                             boxShadow: isActive 
                               ? '0 6px 12px rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.15)' 
                               : '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
-                            minHeight: '30px',
+                            p: '6px 10px', // Ensure this padding is applied consistently
                             '&:hover': {
                               boxShadow: '0 4px 8px rgba(0,0,0,0.22), 0 2px 4px rgba(0,0,0,0.15)',
                               filter: 'brightness(1.05)',
                               transform: 'translateY(-1px)' // Add lift effect
-                            }
+                            },
+                            // Add min-height to ensure adequate space for title
+                            minHeight: height < 50 ? 'auto' : '45px'
                           }}
                         >
                           {renderEventContent(
