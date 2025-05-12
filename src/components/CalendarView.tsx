@@ -15,7 +15,11 @@ import {
   styled,
   Chip,
   Divider,
-  Badge
+  Badge,
+  Popover,
+  List,
+  ListItem,
+  ListItemText
 } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -24,6 +28,7 @@ import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import CloseIcon from '@mui/icons-material/Close';
 import { useCalendar } from '../contexts/CalendarContext';
 import { CalendarEvent, getCalendarEventById } from '../services/calendarService';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isWithinInterval, addDays } from 'date-fns';
@@ -343,6 +348,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   const [tasksForDay, setTasksForDay] = useState<CalendarEvent[]>([]);
   const [taskListPopupAnchorEl, setTaskListPopupAnchorEl] = useState<HTMLElement | null>(null);
   
+  // State for day events popup
+  const [dayEventsForPopup, setDayEventsForPopup] = useState<CalendarEvent[]>([]);
+  const [dayDateForPopup, setDayDateForPopup] = useState<Date | null>(null);
+  const [dayEventsPopupAnchorEl, setDayEventsPopupAnchorEl] = useState<HTMLElement | null>(null);
+  
+  // Add a state variable to track if navigation is being performed manually or through interaction
+  // Add this near the other state variables (around line 350)
+  const [isManualNavigation, setIsManualNavigation] = useState(false);
+  
   // Debug logging
   useEffect(() => {
     console.log(`Calendar containerWidth: ${containerWidth}, isMobile: ${isMobile}, useMobileView: ${useMobileView}`);
@@ -582,6 +596,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to today
   const goToToday = () => {
     console.log('Navigating to today');
+    setIsManualNavigation(true);
     const today = new Date();
     setSelectedDate(today);
   };
@@ -589,6 +604,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to previous period
   const goToPrevious = () => {
     console.log('Navigating to previous period');
+    setIsManualNavigation(true);
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() - 1);
@@ -603,6 +619,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to next period
   const goToNext = () => {
     console.log('Navigating to next period');
+    setIsManualNavigation(true);
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() + 1);
@@ -2073,6 +2090,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   }}
                   onClick={() => {
                     console.log('Clicked on day:', day.date.toDateString());
+                    // Set flag for manual navigation
+                    setIsManualNavigation(true);
                     // First update view mode, then set the date
                     setViewMode('day');
                     setTimeout(() => {
@@ -2203,9 +2222,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       variant="caption" 
                       sx={{ 
                         fontSize: '0.7rem', 
-                        color: 'text.secondary',
-                        mt: 'auto'
+                        color: 'primary.main',
+                        mt: 'auto',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        backgroundColor: 'rgba(16, 86, 245, 0.1)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignSelf: 'flex-start',
+                        '&:hover': {
+                          backgroundColor: 'rgba(16, 86, 245, 0.15)',
+                        }
                       }}
+                      onClick={(e) => handleMoreEventsClick(day.date, day.events, e)}
                     >
                       +{day.events.length - MAX_EVENTS_PER_DAY} more
                     </Typography>
@@ -2232,20 +2262,36 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Add effect to refresh data when view mode changes
   useEffect(() => {
     console.log(`View mode changed to: ${viewMode}`);
-    setTimeout(() => {
-      console.log('Refreshing data after view mode change');
-      refreshCalendarData();
-    }, 10);
+    
+    // Only refresh data if it's not a manual navigation
+    if (!isManualNavigation) {
+      setTimeout(() => {
+        console.log('Refreshing data after view mode change');
+        refreshCalendarData();
+      }, 10);
+    } else {
+      console.log('Skipping refresh due to manual navigation');
+      // Reset the flag for next time
+      setIsManualNavigation(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
   
   // Add effect to refresh data when selected date changes
   useEffect(() => {
     console.log(`Selected date changed to: ${selectedDate.toDateString()}`);
-    setTimeout(() => {
-      console.log('Refreshing data after date change');
-      refreshCalendarData();
-    }, 10);
+    
+    // Only refresh data if it's not a manual navigation
+    if (!isManualNavigation) {
+      setTimeout(() => {
+        console.log('Refreshing data after date change');
+        refreshCalendarData();
+      }, 10);
+    } else {
+      console.log('Skipping refresh due to manual navigation');
+      // Reset the flag after this effect runs
+      setIsManualNavigation(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
@@ -2848,6 +2894,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   }}
                   onClick={() => {
                     console.log('Clicked on day:', day.date.toDateString());
+                    // Set flag for manual navigation
+                    setIsManualNavigation(true);
                     // First update view mode, then set the date
                     setViewMode('day');
                     setTimeout(() => {
@@ -2913,6 +2961,249 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           ))}
         </Box>
       </Box>
+    );
+  };
+
+  // Handle clicking on "+ more" in month view to show all events for a day
+  const handleMoreEventsClick = (date: Date, events: CalendarEvent[], e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent day cell click handler
+    setDayEventsForPopup(events);
+    setDayDateForPopup(date);
+    setDayEventsPopupAnchorEl(e.currentTarget as HTMLElement);
+  };
+
+  // Close day events popup
+  const handleCloseDayEventsPopup = () => {
+    setDayEventsPopupAnchorEl(null);
+    setDayEventsForPopup([]);
+    setDayDateForPopup(null);
+  };
+
+  // Handle navigating to day view from popup
+  const handleGoToDayView = () => {
+    if (dayDateForPopup) {
+      // Set the manual navigation flag to true
+      setIsManualNavigation(true);
+      
+      setViewMode('day');
+      // Use a slightly longer timeout to ensure view mode change completes first
+      setTimeout(() => {
+        setSelectedDate(dayDateForPopup);
+      }, 50);
+      handleCloseDayEventsPopup();
+    }
+  };
+
+  // Day Events Popup component
+  const DayEventsPopup: React.FC<{
+    events: CalendarEvent[];
+    date: Date | null;
+    anchorEl: HTMLElement | null;
+    onClose: () => void;
+    onEventClick: (event: CalendarEvent, e: React.MouseEvent) => void;
+    onGoToDayView: () => void;
+  }> = ({ events, date, anchorEl, onClose, onEventClick, onGoToDayView }) => {
+    
+    // Format the date
+    const formatPopupDate = () => {
+      if (!date) return '';
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long',
+        month: 'long', 
+        day: 'numeric',
+        year: 'numeric'
+      });
+    };
+
+    // Group events by type
+    const groupedEvents = React.useMemo(() => {
+      const groups: Record<string, CalendarEvent[]> = {
+        'Focus Time': [],
+        'Meetings': [],
+        'Other': []
+      };
+      
+      events.forEach(event => {
+        if (event.title?.toLowerCase().includes('focus')) {
+          groups['Focus Time'].push(event);
+        } else if (event.eventType === 'task') {
+          // Skip tasks - they have their own popup
+        } else {
+          groups['Meetings'].push(event);
+        }
+      });
+
+      // Remove empty groups
+      return Object.fromEntries(
+        Object.entries(groups).filter(([_, groupEvents]) => groupEvents.length > 0)
+      );
+    }, [events]);
+
+    return (
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={onClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+        PaperProps={{
+          sx: { 
+            width: 400,
+            maxWidth: '95vw',
+            borderRadius: 2,
+            height: 'auto',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+        className="day-events-popup"
+      >
+        {/* Header */}
+        <Box 
+          sx={{ 
+            p: 2, 
+            display: 'flex', 
+            alignItems: 'center',
+            bgcolor: '#1056F5', // Blue color for events
+            color: 'white',
+            flexShrink: 0 // Prevent header from shrinking
+          }}
+        >
+          <EventIcon sx={{ mr: 1 }} />
+          <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold', fontFamily: 'Poppins' }}>
+            Events for {formatPopupDate()}
+          </Typography>
+          <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+
+        {/* Events List - This is the scrollable area */}
+        <Box 
+          sx={{ 
+            flexGrow: 1, 
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            '&::-webkit-scrollbar': {
+              width: '8px',
+              height: '8px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: 'rgba(0,0,0,0.05)',
+            },
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
+          }}
+          className="events-section"
+        >
+          {Object.entries(groupedEvents).map(([groupName, groupEvents]) => (
+            <Box key={groupName} sx={{ mb: 2 }}>
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
+                  px: 2, 
+                  py: 1, 
+                  bgcolor: groupName === 'Focus Time' 
+                    ? 'rgba(224, 67, 48, 0.1)' // Light red for focus time
+                    : 'rgba(16, 86, 245, 0.1)', // Light blue for meetings
+                  fontWeight: 'bold',
+                  color: groupName === 'Focus Time' 
+                    ? '#E04330' // Red for focus time
+                    : '#1056F5' // Blue for meetings
+                }}
+              >
+                {groupName} ({groupEvents.length})
+              </Typography>
+              <List dense disablePadding>
+                {groupEvents.map(event => {
+                  const eventColor = getEventColor(event);
+                  const isDeclined = event.attendees?.some(attendee => 
+                    (attendee.self === true && attendee.responseStatus === 'declined')
+                  );
+                  return (
+                    <ListItem 
+                      key={event.id} 
+                      button 
+                      onClick={(e) => onEventClick(event, e)}
+                      sx={{ 
+                        pl: 2,
+                        borderLeft: `4px solid ${eventColor}`,
+                        marginLeft: '8px',
+                        marginRight: '8px',
+                        marginBottom: '4px',
+                        borderRadius: '4px',
+                        '&:hover': { 
+                          bgcolor: 'rgba(0, 0, 0, 0.04)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        }
+                      }}
+                    >
+                      <ListItemText 
+                        primary={
+                          <Typography
+                            variant="body2"
+                            fontWeight="medium"
+                            sx={{ 
+                              textDecoration: isDeclined ? 'line-through' : 'none',
+                              color: isDeclined ? 'text.disabled' : 'text.primary'
+                            }}
+                          >
+                            {event.title}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            {event.isAllDay 
+                              ? 'All day'
+                              : `${formatTime(event.start)} - ${formatTime(event.end)}`}
+                          </Typography>
+                        }
+                      />
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Footer */}
+        <Box sx={{ 
+          p: 2, 
+          borderTop: 1, 
+          borderColor: 'divider', 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          flexShrink: 0 // Prevent footer from shrinking
+        }}>
+          <Button 
+            variant="outlined"
+            onClick={onClose}
+            sx={{ mr: 1 }}
+          >
+            Close
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={onGoToDayView}
+            sx={{ bgcolor: '#1056F5', '&:hover': { bgcolor: '#0A3BB3' } }}
+          >
+            View Full Day
+          </Button>
+        </Box>
+      </Popover>
     );
   };
 
@@ -3168,6 +3459,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         anchorEl={taskListPopupAnchorEl}
         onClose={handleCloseTaskListPopup}
         onTaskClick={handleTaskFromListClick}
+      />
+      
+      {/* Day Events Popup */}
+      <DayEventsPopup
+        events={dayEventsForPopup}
+        date={dayDateForPopup}
+        anchorEl={dayEventsPopupAnchorEl}
+        onClose={handleCloseDayEventsPopup}
+        onEventClick={handleEventClick}
+        onGoToDayView={handleGoToDayView}
       />
     </Paper>
   );
