@@ -57,6 +57,12 @@ import { useCalendar } from '../contexts/CalendarContext';
 import { useGoogleTasks } from '../contexts/GoogleTasksContext';
 import { GoogleTask } from '../services/googleTasksService';
 import TaskDetailsModal from './TaskDetailsModal';
+import TaskDurationDialog, { TaskWithEstimate } from './TaskDurationDialog';
+
+// Extended GoogleTask interface with estimated_minutes property
+interface ExtendedGoogleTask extends GoogleTask {
+  estimated_minutes?: number;
+}
 
 interface Guest {
   name: string;
@@ -90,7 +96,8 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     createTask, 
     toggleTaskComplete,
     deleteTask,
-    refreshTaskLists
+    refreshTaskLists,
+    recordDuration
   } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -111,7 +118,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
-  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning'>('success');
   const [noteDialogOpen, setNoteDialogOpen] = useState<boolean>(false);
   const [responseNote, setResponseNote] = useState<string>('');
   const [recurringDialogOpen, setRecurringDialogOpen] = useState<boolean>(false);
@@ -121,7 +128,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false);
   const [deleteScope, setDeleteScope] = useState<'single' | 'all'>('single');
-  const [linkedTasks, setLinkedTasks] = useState<GoogleTask[]>([]);
+  const [linkedTasks, setLinkedTasks] = useState<ExtendedGoogleTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState<boolean>(false);
   const [selectedTasks, setSelectedTasks] = useState<{[key: string]: boolean}>({});
@@ -132,7 +139,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   // New state for task details modal
   const [taskDetailsModalOpen, setTaskDetailsModalOpen] = useState<boolean>(false);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<{
-    task: GoogleTask | null;
+    task: ExtendedGoogleTask | null;
     taskListId: string;
     taskListTitle: string;
   }>({
@@ -143,7 +150,14 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   
   // Task menu state
   const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [currentTaskForMenu, setCurrentTaskForMenu] = useState<GoogleTask | null>(null);
+  const [currentTaskForMenu, setCurrentTaskForMenu] = useState<ExtendedGoogleTask | null>(null);
+  
+  // Duration dialog state
+  const [durationDialogOpen, setDurationDialogOpen] = useState<boolean>(false);
+  const [taskForDuration, setTaskForDuration] = useState<{
+    task: TaskWithEstimate;
+    taskListId: string;
+  } | null>(null);
   
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -393,13 +407,14 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     }
   }, [event]);
   
-  // Fetch tasks linked to the event
+  // Fetch tasks linked to this event
   const fetchLinkedTasks = async (eventId: string) => {
     try {
       setLoadingTasks(true);
       const response = await getTasksForEvent(eventId);
       if (response.status === 'success') {
-        setLinkedTasks(response.linkedTasks);
+        // Cast linkedTasks to ExtendedGoogleTask[]
+        setLinkedTasks(response.linkedTasks as ExtendedGoogleTask[]);
         
         // Initialize selected tasks for the dialog
         const initialSelection: {[key: string]: boolean} = {};
@@ -490,22 +505,40 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     }
     
     try {
-      // Toggle the status between 'completed' and 'needsAction'
-      const newStatus = task.status === 'completed' ? 'needsAction' : 'completed';
+      // If task is already completed, just toggle it back to active without showing the dialog
+      if (task.status === 'completed') {
+        // Toggle the status back to active
+        const updatedTask = await updateTask(task.task_list_id, task.id, { status: 'needsAction' });
+        
+        // Update the local state to reflect the change
+        if (updatedTask) {
+          setLinkedTasks(prevTasks => 
+            prevTasks.map(t => 
+              t.id === task.id ? { ...t, status: 'needsAction' } : t
+            )
+          );
+          
+          setSnackbarMessage('Task marked as active');
+          setSnackbarSeverity('success');
+          setSnackbarOpen(true);
+        }
+        return;
+      }
       
-      // Update the task via the Google Tasks context
-      await updateTask(task.task_list_id, task.id, { status: newStatus });
+      // Cast to ExtendedGoogleTask to access estimated_minutes
+      const extendedTask = task as ExtendedGoogleTask;
       
-      // Update the local state to reflect the change
-      setLinkedTasks(prevTasks => 
-        prevTasks.map(t => 
-          t.id === task.id ? { ...t, status: newStatus } : t
-        )
-      );
+      // If the task is being marked as completed, show duration dialog
+      setTaskForDuration({
+        task: {
+          id: task.id,
+          title: task.title,
+          estimated_minutes: extendedTask.estimated_minutes
+        },
+        taskListId: task.task_list_id
+      });
       
-      setSnackbarMessage(`Task marked as ${newStatus === 'completed' ? 'completed' : 'active'}`);
-      setSnackbarSeverity('success');
-      setSnackbarOpen(true);
+      setDurationDialogOpen(true);
     } catch (error) {
       console.error('Error toggling task completion:', error);
       setSnackbarMessage('Failed to update task status');
@@ -558,7 +591,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
   };
 
   // Handle opening the task menu
-  const handleTaskMenuOpen = (event: React.MouseEvent<HTMLElement>, task: GoogleTask) => {
+  const handleTaskMenuOpen = (event: React.MouseEvent<HTMLElement>, task: ExtendedGoogleTask) => {
     event.stopPropagation();
     setTaskMenuAnchorEl(event.currentTarget);
     setCurrentTaskForMenu(task);
@@ -925,6 +958,68 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       onDelete(event);
     }
     onClose();
+  };
+
+  // Handle completion time recorded
+  const handleCompletionTimeRecorded = async (actualMinutes: number) => {
+    if (!taskForDuration) return;
+    
+    try {
+      // First change status to completed
+      const updatedTask = await updateTask(
+        taskForDuration.taskListId, 
+        taskForDuration.task.id, 
+        { status: 'completed' }
+      );
+      
+      // Then record duration if successful
+      if (updatedTask) {
+        try {
+          // Update the local state to reflect the task completion
+          setLinkedTasks(prevTasks => 
+            prevTasks.map(t => 
+              t.id === taskForDuration.task.id ? { ...t, status: 'completed' } : t
+            )
+          );
+          
+          // Record the task duration
+          const durationResult = await recordDuration(
+            taskForDuration.taskListId,
+            taskForDuration.task.id,
+            actualMinutes
+          );
+          
+          if (durationResult) {
+            setSnackbarMessage('Task completed and duration recorded');
+            setSnackbarSeverity('success');
+          } else {
+            setSnackbarMessage('Task completed but failed to record duration');
+            setSnackbarSeverity('warning');
+          }
+        } catch (error) {
+          console.error('Error recording task duration:', error);
+          setSnackbarMessage('Task completed but failed to record duration');
+          setSnackbarSeverity('warning');
+        }
+      } else {
+        setSnackbarMessage('Failed to complete task');
+        setSnackbarSeverity('error');
+      }
+    } catch (error) {
+      console.error('Error completing task:', error);
+      setSnackbarMessage('Failed to complete task');
+      setSnackbarSeverity('error');
+    } finally {
+      setDurationDialogOpen(false);
+      setTaskForDuration(null);
+      setSnackbarOpen(true);
+    }
+  };
+  
+  // Handle duration dialog close
+  const handleDurationDialogClose = () => {
+    setDurationDialogOpen(false);
+    setTaskForDuration(null);
   };
 
   return (
@@ -1428,7 +1523,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                           checked={task.status === 'completed'}
                           onChange={(e) => {
                             e.stopPropagation();
-                            handleToggleTaskComplete(task);
+                            handleToggleTaskComplete(task as ExtendedGoogleTask);
                           }}
                           tabIndex={-1}
                           sx={{ 
@@ -2218,6 +2313,15 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
         task={selectedTaskDetails.task}
         taskListId={selectedTaskDetails.taskListId}
         taskListTitle={selectedTaskDetails.taskListTitle}
+      />
+      
+      {/* Task Duration Dialog */}
+      <TaskDurationDialog
+        open={durationDialogOpen}
+        onClose={handleDurationDialogClose}
+        task={taskForDuration?.task || null}
+        taskListId={taskForDuration?.taskListId || null}
+        onComplete={handleCompletionTimeRecorded}
       />
     </>
   );

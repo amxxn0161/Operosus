@@ -31,6 +31,7 @@ import EventCreationModal from './EventCreationModal';
 import EventDetailsPopup from './EventDetailsPopup';
 import TaskDetailsPopup from './TaskDetailsPopup';
 import TaskListPopup from './TaskListPopup';
+import CalendarTaskItem from './CalendarTaskItem';
 import { 
   AccessTime as AccessTimeIcon, 
   People as PeopleIcon,

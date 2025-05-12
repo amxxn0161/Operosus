@@ -87,11 +87,12 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
   };
 
   // Get task description and due time from notes
-  const getTaskDetails = (): { description: string, dueTime: string | null } => {
-    if (!event) return { description: '', dueTime: null };
+  const getTaskDetails = (): { description: string, dueTime: string | null, estimatedTime: string | null } => {
+    if (!event) return { description: '', dueTime: null, estimatedTime: null };
     
     let description = event.description || '';
     let dueTime = null;
+    let estimatedTime = null;
     
     // Extract due time if present in description
     if (description.includes('Due Time:')) {
@@ -113,7 +114,18 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
       }
     }
     
-    return { description, dueTime };
+    // Extract estimated time if present
+    if (description.includes('Estimated Time:')) {
+      const estimatedTimeMatch = description.match(/Estimated Time: ([\d.]+h(?:\s?[\d.]+m)?|[\d.]+m)/i);
+      if (estimatedTimeMatch && estimatedTimeMatch[1]) {
+        estimatedTime = estimatedTimeMatch[1];
+      }
+      
+      // Remove the Estimated Time line from description
+      description = description.replace(/Estimated Time:.*\n?/, '').trim();
+    }
+    
+    return { description, dueTime, estimatedTime };
   };
 
   // Extract task list name from summary (format: "Task from {listName}")
@@ -189,6 +201,13 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
             <Box sx={{ mb: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
                 Due Time: {getTaskDetails().dueTime}
+              </Typography>
+            </Box>
+          )}
+          {getTaskDetails().estimatedTime && (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                Estimated Time: {getTaskDetails().estimatedTime}
               </Typography>
             </Box>
           )}
