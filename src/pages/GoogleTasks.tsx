@@ -250,6 +250,9 @@ const GoogleTasks: React.FC = () => {
   // Add state for duration warning
   const [durationWarningOpen, setDurationWarningOpen] = useState<boolean>(false);
 
+  // Add a new state for tracking which specific list is being updated
+  const [updatingListId, setUpdatingListId] = useState<string | null>(null);
+
   // Initialize default task list ID when data loads
   useEffect(() => {
     if (taskLists.length > 0 && !newTaskListId) {
@@ -675,8 +678,11 @@ const GoogleTasks: React.FC = () => {
     
     // If moving between different lists
     if (sourceTaskListId !== destinationTaskListId) {
+      // Start showing the loading indicator only on the destination list
+      setUpdatingListId(destinationTaskListId);
+      showSnackbar('Moving task...', 'success');
+      
       try {
-        setIsRefreshing(true);
         // Find the task in the source list
         const sourceTask = task;
         
@@ -685,7 +691,7 @@ const GoogleTasks: React.FC = () => {
         if (!destList) {
           console.error("Destination task list not found");
           showSnackbar('Error: Destination list not found', 'error');
-          setIsRefreshing(false);
+          setUpdatingListId(null);
           return;
         }
         
@@ -724,17 +730,21 @@ const GoogleTasks: React.FC = () => {
         await refreshTaskLists({ forceRefresh: true });
         showSnackbar('Error moving task', 'error');
       } finally {
+        setUpdatingListId(null);
         setIsRefreshing(false);
       }
     } 
     // Reordering within the same list
     else {
       try {
-        // Handling reordering logic continues below...
+        // For reordering within same list, show loading indicator on that list
+        setUpdatingListId(destinationTaskListId);
+        
         // Get the destination list (same as source list in this case)
         const destList = taskLists.find(list => list.id === destinationTaskListId);
         if (!destList) {
           console.error("Destination task list not found", { destinationTaskListId });
+          setUpdatingListId(null);
           return;
         }
         
@@ -797,12 +807,14 @@ const GoogleTasks: React.FC = () => {
         if (!taskExists) {
           console.error(`Task with ID ${taskId} not found in list ${destinationTaskListId}`);
           showSnackbar('Error: Task not found', 'error');
+          setUpdatingListId(null);
           return;
         }
         
         if (!previousTaskExists) {
           console.error(`Previous task with ID ${previousTaskId} not found in list ${destinationTaskListId}`);
           showSnackbar('Error: Previous task reference not found', 'error');
+          setUpdatingListId(null);
           return;
         }
         
@@ -864,9 +876,14 @@ const GoogleTasks: React.FC = () => {
             showSnackbar('Error reordering task', 'error');
           }
         }
+        
+        // Clear the updating list indicator once reordering is complete
+        setUpdatingListId(null);
       } catch (err) {
         console.error('Error reordering task:', err);
         showSnackbar('Error reordering task', 'error');
+        setUpdatingListId(null);
+        setIsRefreshing(false);
       }
     }
   };
@@ -2334,6 +2351,7 @@ const GoogleTasks: React.FC = () => {
               '&:hover': {
                 backgroundColor: '#0D47D9',
               },
+              minWidth: '120px' // Ensure consistent width during state changes
             }}
           >
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -2524,8 +2542,33 @@ const GoogleTasks: React.FC = () => {
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  overflow: 'visible'
+                  overflow: 'visible',
+                  position: 'relative' // Add position relative for overlay positioning
                 }}>
+                  {/* Loading overlay - only show on list being updated */}
+                  {updatingListId === taskList.id && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                        zIndex: 10,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderRadius: 2,
+                      }}
+                    >
+                      <CircularProgress size={40} />
+                      <Typography variant="body2" sx={{ mt: 1, color: 'primary.main' }}>
+                        Updating list...
+                      </Typography>
+                    </Box>
+                  )}
                   <CardHeader
                     title={
                       <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
