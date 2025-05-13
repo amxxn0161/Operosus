@@ -176,6 +176,8 @@ export const moveGoogleTask = async (
     status: string;
     notes?: string;
     due?: string;
+    estimated_minutes?: number;
+    starred?: boolean;
   }
 ): Promise<GoogleTask | null> => {
   try {
@@ -192,52 +194,94 @@ export const moveGoogleTask = async (
       return null;
     }
     
-    console.log(`Moving task between lists:`, {
+    console.log(`API moveGoogleTask: Moving task between lists:`, {
       originalTaskId: taskId,
       sanitizedTaskId,
       sourceTaskListId,
-      targetTaskListId
+      targetTaskListId,
+      taskData
     });
     
     // Step 1: Create a new task with the same data in the target list
-    const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(`/api/google/tasklists/${targetTaskListId}/tasks`, {
-      method: 'POST',
-      body: {
-        title: taskData.title,
-        status: taskData.status,
-        notes: taskData.notes,
-        due: taskData.due
-      }
-    });
+    const createBody = {
+      title: taskData.title,
+      status: taskData.status,
+      notes: taskData.notes,
+      due: taskData.due,
+      estimated_minutes: taskData.estimated_minutes
+    };
+    
+    console.log('Creating task in target list with data:', createBody);
     
     let newTask: GoogleTask | null = null;
     
-    // Check for both response formats for the new task
-    if (newTaskResponse.status === 'success') {
-      if (newTaskResponse.task) {
-        newTask = newTaskResponse.task;
-      } else if (newTaskResponse.data && newTaskResponse.data.task) {
-        newTask = newTaskResponse.data.task;
+    try {
+      const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(
+        `/api/google/tasklists/${targetTaskListId}/tasks`, 
+        {
+          method: 'POST',
+          body: createBody
+        }
+      );
+      
+      console.log('Response from create task API:', newTaskResponse);
+      
+      // Check for both response formats for the new task
+      if (newTaskResponse.status === 'success') {
+        if (newTaskResponse.task) {
+          newTask = newTaskResponse.task;
+          console.log('Task created successfully (direct format):', newTask);
+        } else if (newTaskResponse.data && newTaskResponse.data.task) {
+          newTask = newTaskResponse.data.task;
+          console.log('Task created successfully (nested format):', newTask);
+        } else {
+          console.warn('Task creation successful but unexpected response format:', newTaskResponse);
+          return null;
+        }
       } else {
-        console.warn('Task creation successful but unexpected response format:', newTaskResponse);
+        console.error('Failed to create task in target list:', newTaskResponse);
         return null;
       }
-    } else {
-      console.error('Failed to create task in target list:', newTaskResponse);
+      
+      // Step 2: Apply star status if needed
+      if (taskData.starred && newTask) {
+        try {
+          console.log('Setting star status on new task');
+          await toggleTaskStar(targetTaskListId, newTask.id);
+        } catch (starError) {
+          console.warn('Created task but failed to star it:', starError);
+          // Continue even if starring fails
+        }
+      }
+      
+      // Step 3: Delete the original task ONLY if the new task was created successfully
+      if (newTask) {
+        try {
+          console.log(`Deleting original task ${sanitizedTaskId} from list ${sourceTaskListId}`);
+          const deleteResponse = await apiRequest<{ status: string }>(
+            `/api/google/tasklists/${sourceTaskListId}/tasks/${sanitizedTaskId}`, 
+            { method: 'DELETE' }
+          );
+          
+          if (deleteResponse.status !== 'success') {
+            console.warn('Created new task, but failed to delete original task:', deleteResponse);
+          } else {
+            console.log('Original task deleted successfully');
+          }
+        } catch (deleteError) {
+          console.error('Error deleting original task:', deleteError);
+          // Continue even if deletion fails - we still have the new task
+        }
+        
+        return newTask;
+      } else {
+        console.error('New task was not created successfully, aborting move operation');
+        return null;
+      }
+    } catch (createError) {
+      console.error('Error creating task in target list:', createError);
       return null;
     }
-    
-    // Step 2: Delete the original task
-    const deleteResponse = await apiRequest<{ status: string }>(`/api/google/tasklists/${sourceTaskListId}/tasks/${sanitizedTaskId}`, {
-      method: 'DELETE'
-    });
-    
-    if (deleteResponse.status !== 'success') {
-      console.warn('Created new task, but failed to delete original task:', deleteResponse);
-      // We still return the new task since the move was partially successful
-    }
-    
-    return newTask;
   } catch (error) {
     console.error('Failed to move Google Task:', error);
     throw error;
@@ -247,15 +291,43 @@ export const moveGoogleTask = async (
 // Create a new task list
 export const createGoogleTaskList = async (title: string): Promise<GoogleTaskList | null> => {
   try {
-    const response = await apiRequest<{ status: string; data: { taskList: GoogleTaskList } }>(`/api/google/tasklists`, {
+    console.log(`API: Creating Google Task list with title: "${title}"`);
+    
+    const response = await apiRequest<{ 
+      status: string; 
+      data: { taskList: any }; 
+      message?: string; 
+    }>(`/api/google/tasklists`, {
       method: 'POST',
       body: { title }
     });
     
+    console.log('Create task list API response:', response);
+    
     if (response.status === 'success' && response.data && response.data.taskList) {
-      return response.data.taskList;
+      // If the API response doesn't include a tasks array, add an empty one
+      const taskList = response.data.taskList;
+      if (!taskList.tasks) {
+        console.log('Adding empty tasks array to task list response');
+        taskList.tasks = [];
+      }
+      
+      console.log('Task list created successfully with ID:', taskList.id);
+      return taskList as GoogleTaskList;
     }
     
+    // Even if we get a 'success' status but no taskList object, log this but don't fail
+    if (response.status === 'success') {
+      console.warn('API returned success but no taskList object in response:', response);
+      // Return a minimal task list object with the title
+      return {
+        id: 'pending-id',  // This will be replaced on refresh
+        title,
+        tasks: []
+      };
+    }
+    
+    console.error('Failed to create task list, API returned non-success status:', response);
     return null;
   } catch (error) {
     console.error('Failed to create Google Task list:', error);

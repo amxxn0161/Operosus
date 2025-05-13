@@ -140,13 +140,38 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
     taskId: string
   ): Promise<EnhancedGoogleTask | null> => {
     try {
+      console.log(`Context moveTask: Moving task ${taskId} from ${sourceTaskListId} to ${targetTaskListId}`);
+      
+      // First find the task to get all its data
+      const sourceList = taskLists.find(list => list.id === sourceTaskListId);
+      if (!sourceList) {
+        console.error('Source task list not found');
+        return null;
+      }
+      
+      // Need to find the task to move
+      const task = sourceList.tasks.find(t => t.id === taskId);
+      if (!task) {
+        console.error('Task not found in source list');
+        return null;
+      }
+      
+      console.log(`Found task to move: "${task.title}"`);
+      
+      // Dispatch the action with full task data
       const resultAction = await dispatch(
-        moveTaskBetweenLists({ sourceTaskListId, targetTaskListId, taskId })
+        moveTaskBetweenLists({ 
+          sourceTaskListId, 
+          targetTaskListId, 
+          taskId 
+        })
       );
       
       if (moveTaskBetweenLists.fulfilled.match(resultAction)) {
         return resultAction.payload.newTask;
       }
+      
+      console.error('moveTaskBetweenLists action did not fulfill successfully');
       return null;
     } catch (err) {
       console.error('Error moving Google Task:', err);
@@ -157,14 +182,34 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
   // Create a new task list
   const createTaskList = async (title: string): Promise<EnhancedGoogleTaskList | null> => {
     try {
+      console.log(`Creating task list with title: "${title}"`);
       const resultAction = await dispatch(createTaskListAction(title));
       
+      // Always refresh task lists after a create operation, regardless of result
+      await refreshTaskLists({ forceRefresh: true });
+      
       if (createTaskListAction.fulfilled.match(resultAction)) {
+        console.log('Task list created successfully:', resultAction.payload);
         return resultAction.payload;
       }
+      
+      // If we got here, the action might have been rejected by Redux
+      // but the API could still have succeeded (as shown in the UI behavior)
+      const errorPayload = resultAction.payload;
+      console.log('Task list creation action result:', resultAction);
+      
+      // Check the task lists after refresh to see if our list appears
+      const newList = taskLists.find(list => list.title === title);
+      if (newList) {
+        console.log('Found new task list after refresh:', newList);
+        return newList;
+      }
+      
       return null;
     } catch (err) {
       console.error('Error creating Google Task list:', err);
+      // Try refreshing anyway, as the list might have been created despite the error
+      await refreshTaskLists({ forceRefresh: true });
       return null;
     }
   };

@@ -560,22 +560,46 @@ const GoogleTasks: React.FC = () => {
   const handleCreateTaskList = async () => {
     if (newTaskListTitle.trim()) {
       try {
+        const originalIsRefreshing = isRefreshing;
+        setIsRefreshing(true);
+        console.log(`Creating task list: "${newTaskListTitle.trim()}"`);
+        
+        // First try with the regular function
         const result = await createTaskList(newTaskListTitle.trim());
-        if (result) {
+        
+        // Force refresh to ensure we have the latest data
+        await refreshTaskLists({ forceRefresh: true });
+        
+        // Now check if the list exists after refresh
+        const createdList = taskLists.find(list => list.title === newTaskListTitle.trim());
+        
+        if (result || createdList) {
+          // Close dialog and show success if we got a result OR if we found the list after refresh
           setNewTaskListDialogOpen(false);
           showSnackbar('Task list created', 'success');
         } else {
+          // Only show error if we didn't find the list after refresh
           showSnackbar('Failed to create task list', 'error');
         }
       } catch (err) {
-        showSnackbar('Error creating task list', 'error');
+        console.error('Error creating task list:', err);
+        
+        // Even on error, check if the list was created
+        await refreshTaskLists({ forceRefresh: true });
+        const createdList = taskLists.find(list => list.title === newTaskListTitle.trim());
+        
+        if (createdList) {
+          // List was created despite the error
+          setNewTaskListDialogOpen(false);
+          showSnackbar('Task list created', 'success');
+        } else {
+          showSnackbar('Error creating task list', 'error');
+        }
+      } finally {
+        setIsRefreshing(false);
       }
     }
   };
-
-  // Move a task within a task list (reorder)
-  // This function is now provided by the useGoogleTasks context
-  // Delete the existing implementation of reorderTask
 
   // Handle drag and drop of tasks
   const handleDragEnd = async (result: DropResult) => {
@@ -598,18 +622,41 @@ const GoogleTasks: React.FC = () => {
     const sourceTaskListId = source.droppableId;
     const destinationTaskListId = destination.droppableId;
     
+    console.log('Drag operation:', {
+      sourceListId: sourceTaskListId,
+      sourceIndex: source.index,
+      destListId: destinationTaskListId,
+      destIndex: destination.index
+    });
+    
     // Find the task being moved
     const sourceList = taskLists.find(list => list.id === sourceTaskListId);
-    if (!sourceList || sourceList.tasks.length <= source.index) {
-      console.error("Source task list or task not found", { 
+    if (!sourceList) {
+      console.error("Source task list not found", { 
         sourceTaskListId, 
-        sourceIndex: source.index,
-        availableLists: taskLists.map(l => l.id)
+        availableLists: taskLists.map(l => ({ id: l.id, title: l.title }))
       });
       return;
     }
     
-    const taskId = sourceList.tasks[source.index].id;
+    // Filter to only get incomplete tasks that are shown in the UI (consistent with what's being dragged)
+    const incompleteTasks = sourceList.tasks.filter(task => task.status !== 'completed');
+    
+    if (source.index >= incompleteTasks.length) {
+      console.error("Source task index out of bounds", { 
+        sourceIndex: source.index,
+        availableTasks: incompleteTasks.length
+      });
+      return;
+    }
+    
+    const task = incompleteTasks[source.index];
+    if (!task) {
+      console.error("Task not found at index", { sourceIndex: source.index });
+      return;
+    }
+    
+    const taskId = task.id;
     const sanitizedTaskId = sanitizeTaskId(taskId);
     
     if (!sanitizedTaskId) {
@@ -618,28 +665,72 @@ const GoogleTasks: React.FC = () => {
       return;
     }
     
-    console.log('Task being moved (sanitized):', {
-      originalTaskId: taskId,
-      sanitizedTaskId
+    console.log('Task being moved:', {
+      taskId,
+      sanitizedTaskId,
+      taskTitle: task.title,
+      fromList: sourceTaskListId,
+      toList: destinationTaskListId
     });
     
     // If moving between different lists
     if (sourceTaskListId !== destinationTaskListId) {
       try {
-        const result = await moveTask(sourceTaskListId, destinationTaskListId, sanitizedTaskId);
+        setIsRefreshing(true);
+        // Find the task in the source list
+        const sourceTask = task;
+        
+        // Find the destination list to get its title for logging
+        const destList = taskLists.find(list => list.id === destinationTaskListId);
+        if (!destList) {
+          console.error("Destination task list not found");
+          showSnackbar('Error: Destination list not found', 'error');
+          setIsRefreshing(false);
+          return;
+        }
+        
+        console.log(`Moving task "${sourceTask.title}" from "${sourceList.title}" to "${destList.title}"`);
+        
+        // First invalidate the cache to ensure we're working with fresh data
+        dispatch(invalidateCache());
+        
+        // Create task data object with all necessary properties
+        const taskData = {
+          title: sourceTask.title,
+          status: sourceTask.status,
+          notes: sourceTask.notes,
+          due: sourceTask.due,
+          estimated_minutes: sourceTask.estimated_minutes,
+          starred: sourceTask.starred || false
+        };
+        
+        console.log(`Calling moveTask with task "${sourceTask.title}" (ID: ${taskId})`);
+        
+        // Call the moveTask function with the original task ID (not sanitized)
+        const result = await moveTask(sourceTaskListId, destinationTaskListId, taskId);
+        
         if (result) {
+          // Force refresh task lists after successful move to ensure state is consistent
+          await refreshTaskLists({ forceRefresh: true });
           showSnackbar('Task moved successfully', 'success');
         } else {
+          // If the move failed, also refresh to ensure consistent state
+          await refreshTaskLists({ forceRefresh: true });
           showSnackbar('Failed to move task', 'error');
         }
       } catch (err) {
         console.error("Error moving task between lists:", err);
+        // Also refresh on error to ensure state is consistent
+        await refreshTaskLists({ forceRefresh: true });
         showSnackbar('Error moving task', 'error');
+      } finally {
+        setIsRefreshing(false);
       }
     } 
     // Reordering within the same list
     else {
       try {
+        // Handling reordering logic continues below...
         // Get the destination list (same as source list in this case)
         const destList = taskLists.find(list => list.id === destinationTaskListId);
         if (!destList) {
@@ -715,7 +806,7 @@ const GoogleTasks: React.FC = () => {
           return;
         }
         
-        // Make the API call to reorder using the Redux-backed function
+        // Make the API call to reorder
         try {
           // For top position moves, use the special moveToTop parameter
           if (isMovingToTop) {

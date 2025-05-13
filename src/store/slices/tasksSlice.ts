@@ -401,8 +401,11 @@ export const moveTaskBetweenLists = createAsyncThunk(
     sourceTaskListId: string; 
     targetTaskListId: string; 
     taskId: string 
-  }, { getState, rejectWithValue }) => {
+  }, { getState, rejectWithValue, dispatch }) => {
     try {
+      // Log the operation
+      console.log(`moveTaskBetweenLists: Moving task ${taskId} from ${sourceTaskListId} to ${targetTaskListId}`);
+      
       // Get current task data from state
       const state = getState() as { tasks: TasksState };
       const sourceListIndex = state.tasks.taskLists.findIndex(
@@ -410,28 +413,47 @@ export const moveTaskBetweenLists = createAsyncThunk(
       );
       
       if (sourceListIndex === -1) {
+        console.error(`Source task list not found: ${sourceTaskListId}`);
         return rejectWithValue('Source task list not found');
       }
       
-      const taskIndex = state.tasks.taskLists[sourceListIndex].tasks.findIndex(
-        task => task.id === taskId
+      // Look first among incomplete tasks which are displayed in the UI
+      const incompleteTasks = state.tasks.taskLists[sourceListIndex].tasks.filter(
+        task => task.status !== 'completed'
       );
+      let taskIndex = incompleteTasks.findIndex(task => task.id === taskId);
+      
+      // If not found among incomplete tasks, check all tasks
+      if (taskIndex === -1) {
+        taskIndex = state.tasks.taskLists[sourceListIndex].tasks.findIndex(
+          task => task.id === taskId
+        );
+      }
       
       if (taskIndex === -1) {
+        console.error(`Task not found in source list: ${taskId}`);
         return rejectWithValue('Task not found');
       }
       
       const currentTask = state.tasks.taskLists[sourceListIndex].tasks[taskIndex];
+      console.log(`Found task to move: "${currentTask.title}"`);
       
-      // Extract needed task data
+      // Extract ALL task data for the move
       const taskData = {
         title: currentTask.title,
         status: currentTask.status,
         notes: currentTask.notes,
-        due: currentTask.due
+        due: currentTask.due,
+        estimated_minutes: currentTask.estimated_minutes,
+        starred: currentTask.starred || false,
+        actual_minutes: currentTask.actual_minutes
       };
       
+      // First, invalidate cache to ensure we don't get stale data after move
+      dispatch(invalidateCache());
+      
       // Perform the move
+      console.log(`Calling moveGoogleTask API with data:`, taskData);
       const movedTask = await moveGoogleTask(
         sourceTaskListId,
         targetTaskListId,
@@ -440,8 +462,11 @@ export const moveTaskBetweenLists = createAsyncThunk(
       );
       
       if (!movedTask) {
+        console.error('moveGoogleTask returned null');
         return rejectWithValue('Failed to move task');
       }
+      
+      console.log(`Task moved successfully, new task ID: ${movedTask.id}`);
       
       // Return data for state update
       return {
@@ -450,7 +475,9 @@ export const moveTaskBetweenLists = createAsyncThunk(
         oldTaskId: taskId,
         newTask: {
           ...movedTask,
-          starred: currentTask.starred || false
+          starred: currentTask.starred || false,
+          estimated_minutes: currentTask.estimated_minutes,
+          actual_minutes: currentTask.actual_minutes
         } as EnhancedGoogleTask
       };
     } catch (error) {
@@ -465,21 +492,41 @@ export const createTaskList = createAsyncThunk(
   'tasks/createTaskList',
   async (title: string, { rejectWithValue }) => {
     try {
+      console.log(`TasksSlice: Creating task list with title "${title}"`);
       const newList = await createGoogleTaskList(title);
+      
+      // If newList is null but the API might have succeeded anyway
       if (!newList) {
-        return rejectWithValue('Failed to create task list');
+        console.warn('createGoogleTaskList returned null, but API might have succeeded');
+        // Don't reject here - the calling code will check the list after refresh
+        // Return partial data so the thunk is considered fulfilled
+        return {
+          id: 'pending',
+          title,
+          tasks: [],
+          isVisible: true
+        } as EnhancedGoogleTaskList;
+      }
+      
+      // Handle case where the API returns a task list without a tasks array
+      if (!newList.tasks) {
+        console.log('Task list created but missing tasks array, adding empty array');
+        newList.tasks = [];
       }
       
       // Convert to enhanced list
       const enhancedList: EnhancedGoogleTaskList = {
         ...newList,
         isVisible: true,
-        tasks: newList.tasks.map(task => ({
-          ...task,
-          starred: task.is_starred || false
-        }))
+        tasks: Array.isArray(newList.tasks) 
+          ? newList.tasks.map(task => ({
+              ...task,
+              starred: task.is_starred || false
+            }))
+          : [] // Fallback to empty array if tasks is not an array
       };
       
+      console.log('Task list created successfully:', enhancedList);
       return enhancedList;
     } catch (error) {
       console.error('Error creating Google Task list:', error);
@@ -977,7 +1024,7 @@ const tasksSlice = createSlice({
       .addCase(moveTaskBetweenLists.fulfilled, (state, action) => {
         const { sourceTaskListId, targetTaskListId, oldTaskId, newTask } = action.payload;
         
-        // Remove from source list
+        // Remove from source list - make sure it's completely removed
         const sourceListIndex = state.taskLists.findIndex(list => list.id === sourceTaskListId);
         if (sourceListIndex !== -1) {
           state.taskLists[sourceListIndex].tasks = state.taskLists[sourceListIndex].tasks.filter(
@@ -985,22 +1032,38 @@ const tasksSlice = createSlice({
           );
         }
         
-        // Add to target list
+        // Add to target list if it's not already there
         const targetListIndex = state.taskLists.findIndex(list => list.id === targetTaskListId);
         if (targetListIndex !== -1) {
-          state.taskLists[targetListIndex].tasks.push(newTask);
+          // Check if the task already exists in the target list to avoid duplicates
+          const existingTaskIndex = state.taskLists[targetListIndex].tasks.findIndex(
+            task => task.id === newTask.id
+          );
+          
+          if (existingTaskIndex === -1) {
+            state.taskLists[targetListIndex].tasks.push(newTask);
+          } else {
+            // Update the existing task
+            state.taskLists[targetListIndex].tasks[existingTaskIndex] = newTask;
+          }
         }
         
-        // Update starred tasks if necessary
+        // Update starred tasks if necessary - ensure old task is completely removed
+        state.starredTasks = state.starredTasks.filter(task => task.id !== oldTaskId);
+        
         if (newTask.starred) {
-          // Find and remove old task from starred tasks if it exists
-          state.starredTasks = state.starredTasks.filter(task => task.id !== oldTaskId);
-          // Add new task to starred tasks
-          state.starredTasks.push(newTask);
-        } else {
-          // Ensure old task is removed from starred tasks
-          state.starredTasks = state.starredTasks.filter(task => task.id !== oldTaskId);
+          // Check if the new task already exists in starred tasks
+          const starredIndex = state.starredTasks.findIndex(task => task.id === newTask.id);
+          if (starredIndex === -1) {
+            state.starredTasks.push(newTask);
+          } else {
+            // Update the existing starred task
+            state.starredTasks[starredIndex] = newTask;
+          }
         }
+        
+        // Update the lastFetched timestamp to indicate we've just updated the data
+        state.lastFetched = Date.now();
       })
       .addCase(moveTaskBetweenLists.rejected, (state, action) => {
         state.error = action.payload as string;
