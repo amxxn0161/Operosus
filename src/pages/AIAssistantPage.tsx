@@ -711,41 +711,51 @@ const AIAssistantPage: React.FC = () => {
                 >
                   Hi, I'm Opo!
                 </Typography>
-                <Typography 
-                  variant="body1" 
-                  color="textSecondary"
-                  sx={{ 
-                    fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
-                    lineHeight: 1.5,
-                    mb: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 })
-                  }}
-                >
-                  Ask me about productivity or how to use this app!
-                </Typography>
                 
-                {/* Example prompts section */}
+                {/* Modified layout to combine the two text elements */}
+                <Box sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  mb: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 2, md: 2.5 })
+                }}>
+                  <Typography 
+                    variant="body1" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                      lineHeight: 1.5
+                    }}
+                  >
+                    Ask me about productivity or how to use this app!
+                  </Typography>
+                  <Typography 
+                    variant="body1" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                      color: 'text.secondary'
+                    }}
+                  >
+                    Try asking:
+                  </Typography>
+                </Box>
+                
+                {/* Example prompts section - moved up by removing the Try asking text */}
                 <Box sx={{ 
                   width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
                   px: 1,
-                  bgcolor: '#ffffff'
+                  bgcolor: '#ffffff',
+                  mt: 0, // Reduced margin top
+                  alignItems: 'center' // Center the prompts
                 }}>
-                  <Typography 
-                    variant="body1" 
-                    fontWeight="medium"
-                    sx={{ 
-                      fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
-                      mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : 2),
-                      mt: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : 2),
-                      color: 'text.primary'
-                    }}
-                  >
-                    Try asking:
-                  </Typography>
-
                   <Box sx={{ 
                     width: '100%',
+                    maxWidth: { xs: '90%', sm: '85%', md: '80%' }, // Reduce width of prompts
                     display: 'flex',
                     flexDirection: 'column',
                     gap: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.25 }),
