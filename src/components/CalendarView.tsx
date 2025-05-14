@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Paper, 
   Box, 
@@ -50,6 +50,8 @@ import {
   Edit as EditIcon,
   AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
+import { useGoogleTasks } from '../contexts/GoogleTasksContext';
+import { sanitizeTaskId } from '../services/googleTasksService';
 
 // Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -320,6 +322,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     refreshCalendarData,
     removeEvent
   } = useCalendar();
+  
+  // Get the deleteTask function from GoogleTasksContext at the component level
+  const { deleteTask } = useGoogleTasks();
   
   // Loading state is only from calendar
   const isLoading = calendarLoading;
@@ -1241,24 +1246,69 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     }
     
     try {
-      console.log(`Deleting specific event with ID: ${event.id}`);
+      console.log(`Deleting item with ID: ${event.id}, type: ${event.eventType}`);
       
-      const success = await removeEvent(event.id);
+      let success = false;
+      
+      // Check if this is a task (from Google Tasks) or a regular calendar event
+      if (event.eventType === 'task' && event.taskListId) {
+        // For tasks, use the Google Tasks API
+        console.log(`Deleting task from list ${event.taskListId}`);
+        
+        // Important: Use extracted task ID for Google Tasks
+        // Calendar events representing tasks may have a different ID format than what Google Tasks API expects
+        // The original task ID might be embedded in the event ID or in a different format
+        
+        // Extract the actual task ID from the event
+        let taskId = event.id;
+        
+        // If the event ID contains a prefix or suffix (e.g., "task-123" or "list-123-task-456"),
+        // we need to extract the actual task ID
+        if (taskId.includes('task-')) {
+          // Try to extract just the task ID portion
+          const taskIdMatch = taskId.match(/task[-_]([^-_]+)/);
+          if (taskIdMatch && taskIdMatch[1]) {
+            taskId = taskIdMatch[1];
+          }
+        }
+        
+        // Sanitize the task ID to ensure it's in the format Google Tasks API expects
+        const sanitizedTaskId = sanitizeTaskId(taskId);
+        
+        console.log(`Task ID processing:`, {
+          original: event.id,
+          extracted: taskId,
+          sanitized: sanitizedTaskId
+        });
+        
+        if (sanitizedTaskId) {
+          success = await deleteTask(event.taskListId, sanitizedTaskId);
+        } else {
+          console.error('Invalid task ID after sanitization');
+          success = false;
+        }
+      } else {
+        // For regular calendar events, use the calendar event API
+        console.log(`Deleting calendar event`);
+        success = await removeEvent(event.id);
+      }
       
       if (success) {
-        console.log(`Successfully deleted event with ID: ${event.id}`);
+        console.log(`Successfully deleted item with ID: ${event.id}`);
         // Close popup and refresh data
         setSelectedEvent(null);
+        setSelectedTask(null);
         setActiveEventId(null);
         setPopupAnchorEl(null);
+        setTaskPopupAnchorEl(null);
         
         // Refresh events to make sure we're up to date
         refreshCalendarData();
       } else {
-        console.error(`Failed to delete event with ID: ${event.id}`);
+        console.error(`Failed to delete item with ID: ${event.id}`);
       }
     } catch (error) {
-      console.error(`Error deleting event with ID: ${event.id}:`, error);
+      console.error(`Error deleting item with ID: ${event.id}:`, error);
     }
   };
 
@@ -3720,7 +3770,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         event={selectedTask}
         anchorEl={taskPopupAnchorEl}
         onClose={handleCloseTaskPopup}
-        onEdit={handleEditEvent}
         onDelete={handleDeleteEvent}
       />
       

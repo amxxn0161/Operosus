@@ -10,12 +10,15 @@ import {
   ListItemIcon,
   Paper,
   Button,
-  Divider
+  Divider,
+  ListItemSecondaryAction
 } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
 import CloseIcon from '@mui/icons-material/Close';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { CalendarEvent } from '../services/calendarService';
+import { format } from 'date-fns';
 
 interface TaskListPopupProps {
   tasks: CalendarEvent[];
@@ -30,62 +33,30 @@ const TaskListPopup: React.FC<TaskListPopupProps> = ({
   onClose,
   onTaskClick
 }) => {
-  const navigate = useNavigate();
+  if (!tasks || tasks.length === 0) return null;
 
-  // Format a task's title (remove any [Task] suffix and time info)
-  const formatTaskTitle = (title: string): string => {
-    return title
-      .replace(/\s*\[\s*Task\s*\]\s*$/, '')  // Remove [Task] suffix
-      .replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '');  // Remove time info in parentheses
+  // Format date function
+  const formatDate = (date: string | Date) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return format(dateObj, 'MMM d, yyyy');
   };
-
-  // Format the date
-  const formatDate = () => {
-    if (tasks.length === 0) return '';
-    const date = new Date(tasks[0].start);
-    return date.toLocaleDateString('en-US', { 
-      month: 'long', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  // Navigate to Google Tasks page
-  const handleOpenTasks = () => {
-    onClose(); // Close the popup first
-    navigate('/tasks'); // Navigate to the Tasks page
-  };
-
-  // Group tasks by task list
-  const groupedTasks = React.useMemo(() => {
-    const groups: Record<string, CalendarEvent[]> = {};
+  
+  // Extract due time from task title
+  const extractDueTime = (task: CalendarEvent): string => {
+    const titleMatch = task.title.match(/\((\d{1,2}:\d{2})\)/);
     
-    tasks.forEach(task => {
-      const listName = task.summary?.replace('Task from ', '') || 'My Tasks';
-      if (!groups[listName]) {
-        groups[listName] = [];
-      }
-      groups[listName].push(task);
-    });
+    if (titleMatch && titleMatch[1]) {
+      return titleMatch[1];
+    }
     
-    return groups;
-  }, [tasks]);
-
-  // Define scrollbar styles
-  const scrollbarStyles = {
-    '&::-webkit-scrollbar': {
-      width: '8px',
-      height: '8px',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      backgroundColor: 'rgba(0,0,0,0.2)',
-      borderRadius: '4px',
-    },
-    '&::-webkit-scrollbar-track': {
-      backgroundColor: 'rgba(0,0,0,0.05)',
-    },
-    scrollbarWidth: 'thin',
-    scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
+    // Check for 24-hour format like (21:00)
+    const militaryTimeMatch = task.title.match(/\((\d{2}:\d{2})\)/);
+    if (militaryTimeMatch && militaryTimeMatch[1]) {
+      return militaryTimeMatch[1];
+    }
+    
+    // If no time in title format, return empty string
+    return '';
   };
 
   return (
@@ -95,144 +66,128 @@ const TaskListPopup: React.FC<TaskListPopupProps> = ({
       onClose={onClose}
       anchorOrigin={{
         vertical: 'bottom',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
       transformOrigin={{
         vertical: 'top',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
-      PaperProps={{
-        sx: { 
-          width: 360,
-          maxWidth: '95vw',
-          borderRadius: 2,
-          height: 'auto',
-          maxHeight: '80vh',
-          display: 'flex',
-          flexDirection: 'column'
+      slotProps={{
+        paper: {
+          sx: {
+            width: 320,
+            p: 0,
+            mt: 1,
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            overflow: 'hidden'
+          }
         }
       }}
-      className="pending-tasks-popup"
     >
       {/* Header */}
-      <Box 
-        sx={{ 
-          p: 2, 
-          display: 'flex', 
-          alignItems: 'center',
-          bgcolor: '#F29702', // Orange color for tasks
-          color: 'white',
-          flexShrink: 0 // Prevent header from shrinking
-        }}
-      >
-        <TaskAltIcon sx={{ mr: 1 }} />
-        <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold', fontFamily: 'Poppins' }}>
-          Pending tasks
-        </Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
-          <CloseIcon />
+      <Box sx={{ 
+        bgcolor: '#F29702', 
+        p: 2,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <TaskAltIcon sx={{ color: 'white', mr: 1 }} />
+          <Typography variant="h6" sx={{ 
+            fontWeight: 'bold', 
+            color: 'white', 
+            fontSize: '1.1rem'
+          }}>
+            Tasks ({tasks.length})
+          </Typography>
+        </Box>
+        <IconButton 
+          size="small" 
+          onClick={onClose}
+          sx={{ color: 'white', p: 0.5, bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+        >
+          <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
 
-      {/* Subheader */}
-      <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-        <Typography variant="body2" color="text.secondary">
-          {tasks.length} tasks due on {formatDate()}
-        </Typography>
-      </Box>
-
-      {/* Task List - This is the scrollable area */}
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          overflow: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          ...scrollbarStyles
-        }}
-        className="tasks-section"
-        data-scrollable="pending-tasks"
-      >
-        {Object.entries(groupedTasks).map(([listName, listTasks]) => (
-          <Box key={listName} sx={{ mb: 2 }}>
-            <Typography 
-              variant="subtitle2" 
-              sx={{ 
-                px: 2, 
-                py: 1, 
-                bgcolor: 'rgba(242, 151, 2, 0.1)',
-                fontWeight: 'bold'
-              }}
-            >
-              {listName}
-            </Typography>
-            <List dense disablePadding>
-              {listTasks.map(task => {
-                // Extract due time if available
-                let dueTime = '';
-                if (task.description?.includes('Due Time:')) {
-                  const match = task.description.match(/Due Time: (\d{1,2}:\d{2})/);
-                  if (match && match[1]) {
-                    dueTime = match[1];
+      {/* Content */}
+      <List sx={{ p: 0, maxHeight: 300, overflow: 'auto' }}>
+        {tasks.map((task, index) => {
+          const dueTime = extractDueTime(task);
+          return (
+            <React.Fragment key={task.id || index}>
+              <ListItem 
+                button 
+                onClick={(e) => onTaskClick(task, e)}
+                sx={{ 
+                  py: 1.5,
+                  '&:hover': {
+                    bgcolor: 'rgba(242, 151, 2, 0.05)'
                   }
-                }
-
-                return (
-                  <ListItem 
-                    key={task.id} 
-                    button 
-                    onClick={(e) => onTaskClick(task, e)}
-                    sx={{ 
-                      pl: 2,
-                      '&:hover': { bgcolor: 'rgba(242, 151, 2, 0.05)' }
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 40 }}>
-                      <TaskAltIcon sx={{ color: '#F29702' }} />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={formatTaskTitle(task.title)}
-                      secondary={dueTime ? `Due at ${dueTime}` : 'Anytime during the day'}
-                      primaryTypographyProps={{
-                        variant: 'body2',
-                        fontWeight: 'medium'
+                }}
+              >
+                <TaskAltIcon 
+                  fontSize="small" 
+                  sx={{ 
+                    mr: 2, 
+                    color: '#F29702', 
+                    fontSize: '1.1rem'
+                  }} 
+                />
+                <ListItemText 
+                  primary={
+                    <Typography 
+                      variant="body1" 
+                      sx={{ 
+                        fontWeight: 'medium',
+                        color: '#333',
+                        lineHeight: 1.4
                       }}
-                      secondaryTypographyProps={{
-                        variant: 'caption'
-                      }}
-                    />
-                  </ListItem>
-                );
-              })}
-            </List>
-          </Box>
-        ))}
-      </Box>
-
-      {/* Footer */}
-      <Box sx={{ 
-        p: 2, 
-        borderTop: 1, 
-        borderColor: 'divider', 
-        display: 'flex', 
-        justifyContent: 'flex-end',
-        flexShrink: 0 // Prevent footer from shrinking
-      }}>
-        <Button 
-          variant="outlined"
-          onClick={onClose}
-          sx={{ mr: 1 }}
-        >
-          Close
-        </Button>
-        <Button 
-          variant="contained"
-          onClick={handleOpenTasks}
-          sx={{ bgcolor: '#F29702', '&:hover': { bgcolor: '#D17F00' } }}
-        >
-          Open Tasks
-        </Button>
-      </Box>
+                    >
+                      {task.title}
+                    </Typography>
+                  }
+                  secondary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                      {dueTime && (
+                        <>
+                          <AccessTimeIcon 
+                            fontSize="small" 
+                            sx={{ 
+                              mr: 0.5, 
+                              fontSize: '0.75rem',
+                              color: 'text.secondary',
+                            }} 
+                          />
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: 'text.secondary',
+                              fontSize: '0.75rem',
+                            }}
+                          >
+                            Due Time: {dueTime}
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+                  }
+                />
+                <ListItemSecondaryAction>
+                  <IconButton edge="end" size="small" onClick={(e) => onTaskClick(task, e)}>
+                    <ArrowForwardIosIcon fontSize="small" />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              </ListItem>
+              {index < tasks.length - 1 && (
+                <Divider sx={{ opacity: 0.6 }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </List>
     </Popover>
   );
 };

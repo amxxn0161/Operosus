@@ -1974,7 +1974,7 @@ const Dashboard: React.FC<{}> = () => {
                       onEventClick={handleCalendarEventClick}
                       onAddEvent={handleAddCalendarEvent}
                       containerWidth={window.innerWidth}
-                      hideHeader={true} // Hide header on desktop
+                      hideHeader={false} // Changed from true to false to show the header with the filter button
                     />
                   </Box>
                 </Paper>

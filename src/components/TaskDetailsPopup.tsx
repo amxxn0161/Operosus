@@ -11,18 +11,17 @@ import {
 import { 
   Close as CloseIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
   TaskAlt as TaskAltIcon,
-  Schedule as ScheduleIcon,
-  Notes as NotesIcon
+  List as ListIcon
 } from '@mui/icons-material';
 import { CalendarEvent } from '../services/calendarService';
+import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 interface TaskDetailsPopupProps {
   event: CalendarEvent | null;
   anchorEl: HTMLElement | null;
   onClose: () => void;
-  onEdit: (event: CalendarEvent) => void;
   onDelete: (event: CalendarEvent) => void;
 }
 
@@ -30,58 +29,21 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
   event,
   anchorEl,
   onClose,
-  onEdit,
   onDelete
 }) => {
+  const navigate = useNavigate();
+  
   if (!event) return null;
 
-  // Format the date range
-  const formatDateRange = (): string => {
-    if (!event) return '';
-    
-    const start = new Date(event.start);
-    let dateStr = start.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric',
-      year: start.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-    });
-    
-    if (!event.isAllDay) {
-      dateStr += ` · ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()}`;
-      
-      // Add end time if different from start
-      const end = new Date(event.end);
-      if (start.getTime() !== end.getTime()) {
-        dateStr += ` - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()}`;
-      }
-    }
-    
-    return dateStr;
+  // Format date for display
+  const formatDate = (date: string | Date) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return format(dateObj, 'MMM d, yyyy');
   };
 
-  // Parse and format task details
-  const getTaskDetails = () => {
-    if (!event.description) return { dueTime: '', notes: '' };
-    
-    const dueTimeMatch = event.description.match(/Due Time: (\d{1,2}:\d{2}(?:\s*[AP]M)?)/i);
-    const dueTime = dueTimeMatch ? dueTimeMatch[1] : '';
-    
-    // Remove the due time part from description to get the notes
-    const notes = event.description
-      .replace(/Due Time: \d{1,2}:\d{2}(?:\s*[AP]M)?/i, '')
-      .trim();
-    
-    return { dueTime, notes };
-  };
-  
-  const taskDetails = getTaskDetails();
-
-  // Format task title (remove any [Task] suffix)
-  const formatTaskTitle = (title: string): string => {
-    return title
-      .replace(/\s*\[\s*Task\s*\]\s*$/, '')  // Remove [Task] suffix
-      .replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '');  // Remove time info in parentheses
+  const goToTasksPage = () => {
+    onClose();
+    navigate('/tasks');
   };
 
   return (
@@ -91,93 +53,118 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
       onClose={onClose}
       anchorOrigin={{
         vertical: 'bottom',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
       transformOrigin={{
         vertical: 'top',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
-      PaperProps={{
-        elevation: 3,
-        sx: { 
-          width: 320,
-          borderRadius: 2,
-          overflow: 'hidden'
+      slotProps={{
+        paper: {
+          sx: {
+            width: 320,
+            p: 0,
+            mt: 1,
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            overflow: 'hidden'
+          }
         }
       }}
     >
       {/* Header */}
-      <Box 
-        sx={{ 
-          p: 2, 
-          display: 'flex', 
-          alignItems: 'center',
-          bgcolor: '#F29702', // Orange color for tasks
-          color: 'white'
-        }}
-      >
-        <TaskAltIcon sx={{ mr: 1 }} />
-        <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-          Task Details
-        </Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
-          <CloseIcon />
+      <Box sx={{ 
+        bgcolor: '#F29702', 
+        p: 2,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <TaskAltIcon sx={{ color: 'white', mr: 1 }} />
+          <Typography variant="h6" sx={{ 
+            fontWeight: 'bold', 
+            color: 'white', 
+            fontSize: '1.1rem'
+          }}>
+            Task Details
+          </Typography>
+        </Box>
+        <IconButton 
+          size="small" 
+          onClick={onClose}
+          sx={{ color: 'white', p: 0.5, bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+        >
+          <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
 
       {/* Content */}
       <Box sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom sx={{ wordBreak: 'break-word' }}>
-          {formatTaskTitle(event.title)}
+        <Typography variant="h6" sx={{ fontWeight: 'medium', mb: 1, color: '#333' }}>
+          {event.title}
         </Typography>
         
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, color: 'text.secondary' }}>
-          <ScheduleIcon fontSize="small" sx={{ mr: 1 }} />
-          <Typography variant="body2">
-            {formatDateRange()}
+        {event.description && (
+          <Typography variant="body2" sx={{ mb: 2, color: '#666', whiteSpace: 'pre-line' }}>
+            {event.description}
+          </Typography>
+        )}
+        
+        <Divider sx={{ my: 1.5 }} />
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 'medium', mr: 1, color: '#555' }}>
+            Date:
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            {formatDate(event.start)}
           </Typography>
         </Box>
         
-        {taskDetails.dueTime && (
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, color: 'text.secondary' }}>
-            <ScheduleIcon fontSize="small" sx={{ mr: 1 }} />
-            <Typography variant="body2">
-              Due at {taskDetails.dueTime}
+        {event.location && (
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'medium', mr: 1, color: '#555' }}>
+              Location:
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#666' }}>
+              {event.location}
             </Typography>
           </Box>
         )}
-        
-        {taskDetails.notes && (
-          <>
-            <Divider sx={{ my: 1.5 }} />
-            <Box sx={{ display: 'flex', mt: 1 }}>
-              <NotesIcon fontSize="small" sx={{ mr: 1, mt: 0.3, color: 'text.secondary' }} />
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {taskDetails.notes}
-              </Typography>
-            </Box>
-          </>
-        )}
       </Box>
 
-      {/* Actions */}
-      <Divider />
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1.5 }}>
-        <Tooltip title="Edit">
-          <IconButton onClick={() => {
-            onEdit(event);
-            onClose();
-          }}>
-            <EditIcon />
-          </IconButton>
+      {/* Footer with action buttons */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'flex-end', 
+        p: 2, 
+        bgcolor: '#f5f5f5',
+        borderTop: '1px solid #eee'
+      }}>
+        <Tooltip title="Go to Tasks">
+          <Button
+            variant="outlined"
+            startIcon={<ListIcon />}
+            onClick={goToTasksPage}
+            sx={{ mr: 1 }}
+          >
+            Go to Tasks
+          </Button>
         </Tooltip>
-        <Tooltip title="Delete">
-          <IconButton onClick={() => {
-            onDelete(event);
-            onClose();
-          }} color="error">
-            <DeleteIcon />
-          </IconButton>
+        
+        <Tooltip title="Delete Task">
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => {
+              onClose();
+              onDelete(event);
+            }}
+          >
+            Delete
+          </Button>
         </Tooltip>
       </Box>
     </Popover>
