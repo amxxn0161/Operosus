@@ -538,19 +538,6 @@ const Header: React.FC = () => {
                   marginRight: isMobile ? '8px' : '12px' 
                 }} 
               />
-              <Typography
-                variant="h6"
-                sx={{
-                  fontFamily: 'Poppins',
-                  fontWeight: 'bold',
-                  color: '#1056F5',
-                  letterSpacing: '0.5px',
-                  textDecoration: 'none',
-                  fontSize: { xs: '1rem', sm: '1.25rem', md: '1.4rem' }
-                }}
-              >
-                {isMobile ? 'PP' : 'Productivity Pulse'}
-              </Typography>
             </Box>
           </Box>
 
