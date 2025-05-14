@@ -290,13 +290,15 @@ interface CalendarViewProps {
   onEventClick?: (event: CalendarEvent) => void;
   onAddEvent?: () => void;
   containerWidth?: number;
+  hideHeader?: boolean; // Add this prop to optionally hide the header
 }
 
 // Update the component to use containerWidth
 const CalendarView: React.FC<CalendarViewProps> = ({ 
   onEventClick, 
   onAddEvent,
-  containerWidth = 0
+  containerWidth = 0,
+  hideHeader = false // Default to showing the header
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -1643,7 +1645,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       separateTasksAndEvents(getEventsForDateRange(weekDays[0], new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000)));
     
     return (
-      <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
+      <Grid container sx={{ 
+        position: 'relative', 
+        minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT,
+        width: '100%',
+        maxWidth: '100%'
+      }}>
         {/* Out of range events section - only shown when filter is enabled */}
         {showOutOfRangeEvents && weekOutOfRangeEvents.length > 0 && (
           <Grid item xs={12} sx={{ p: 2, pb: 0 }}>
@@ -1664,7 +1671,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           zIndex: 2,
           display: 'flex',
           flexDirection: 'column',
-          minWidth: '65px' // Add minimum width for time labels column
+          minWidth: '60px', // Adjusted for better spacing
+          width: '60px'
         }}>
           {/* Empty header space to align with day headers */}
           <Box sx={{ 
@@ -1715,7 +1723,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </Grid>
         
         {/* Day columns */}
-        <Grid item xs={11} sx={{ width: '100%', maxWidth: '100%' }}>
+        <Grid item xs={11} sx={{ width: 'calc(100% - 60px)', maxWidth: 'calc(100% - 60px)' }}>
           <Grid container sx={{ width: '100%' }}>
             {/* Days header */}
             <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9', width: '100%' }}>
@@ -1739,7 +1747,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       flexDirection: 'column',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      minWidth: '90px' // Increased from 80px
+                      minWidth: 0 // Allow grid to shrink below minimum width
                     }}
                   >
                     <Box sx={{ 
@@ -3436,83 +3444,87 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       elevation={1} 
       sx={{ 
         p: 0,
-        borderRadius: 2,
+        borderRadius: hideHeader ? 0 : 2, // Remove border radius when header is hidden (desktop mode)
         overflow: 'hidden',
-        height: '100%', // Ensure the paper takes full height of its container
+        height: '100%', 
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        maxWidth: '100%', // Ensure full width usage
-        width: '100%'
+        maxWidth: '100%',
+        boxShadow: hideHeader ? 'none' : 1, // Remove shadow in desktop mode
+        border: 'none'
       }}
     >
-      {/* Calendar header */}
-      <Box sx={{ 
-        p: isMobile ? 1.5 : 2, 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        borderBottom: 1,
-        borderColor: 'divider',
-        backgroundColor: 'rgba(198, 232, 242, 0.3)'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Typography 
-            variant={isMobile ? "body1" : "h6"} 
-            sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: 'black' }}
-          >
-            Calendar
-          </Typography>
-        </Box>
-        
-        <Box sx={{ display: 'flex' }}>
-          <Tooltip title={`${showOutOfRangeEvents ? 'Hide' : 'Show'} events outside visible hours`}>
-            <Badge 
-              badgeContent={countOutOfRangeEvents()} 
-              color="primary"
-              sx={{ 
-                '& .MuiBadge-badge': {
-                  fontSize: '0.65rem',
-                  minWidth: '18px',
-                  height: '18px',
-                  fontWeight: 'bold',
-                  display: countOutOfRangeEvents() > 0 ? 'flex' : 'none'
-                }
-              }}
+      {/* Calendar header - Only show if hideHeader is false */}
+      {!hideHeader && (
+        <Box sx={{ 
+          p: isMobile ? 1.5 : 2, 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          borderBottom: 1,
+          borderColor: 'divider',
+          backgroundColor: 'rgba(198, 232, 242, 0.3)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography 
+              variant={isMobile ? "body1" : "h6"} 
+              sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: 'black' }}
             >
-              <IconButton 
-                onClick={() => setShowOutOfRangeEvents(!showOutOfRangeEvents)}
-                size={isMobile ? "small" : "medium"}
+              Calendar
+            </Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex' }}>
+            <Tooltip title={`${showOutOfRangeEvents ? 'Hide' : 'Show'} events outside visible hours`}>
+              <Badge 
+                badgeContent={countOutOfRangeEvents()} 
+                color="primary"
                 sx={{ 
-                  mr: 0.5,
-                  color: showOutOfRangeEvents ? 'primary.main' : 'action.active',
-                  bgcolor: showOutOfRangeEvents ? 'rgba(16, 86, 245, 0.1)' : 'transparent',
+                  '& .MuiBadge-badge': {
+                    fontSize: '0.65rem',
+                    minWidth: '18px',
+                    height: '18px',
+                    fontWeight: 'bold',
+                    display: countOutOfRangeEvents() > 0 ? 'flex' : 'none'
+                  }
                 }}
               >
-                <AccessTimeIcon />
-              </IconButton>
-            </Badge>
-          </Tooltip>
-          
-          <IconButton 
-            onClick={refreshCalendarData} 
-            size={isMobile ? "small" : "medium"}
-            sx={{ mr: 0.5 }}
-          >
-            <RefreshIcon />
-          </IconButton>
-          
-          <IconButton 
-            onClick={(e) => {
-              if (onAddEvent) onAddEvent();
-              setIsEventModalOpen(true);
-            }}
-            size={isMobile ? "small" : "medium"}
-            sx={{ color: '#1056F5' }}
-          >
-            <AddCircleOutlineIcon />
-          </IconButton>
+                <IconButton 
+                  onClick={() => setShowOutOfRangeEvents(!showOutOfRangeEvents)}
+                  size={isMobile ? "small" : "medium"}
+                  sx={{ 
+                    mr: 0.5,
+                    color: showOutOfRangeEvents ? 'primary.main' : 'action.active',
+                    bgcolor: showOutOfRangeEvents ? 'rgba(16, 86, 245, 0.1)' : 'transparent',
+                  }}
+                >
+                  <AccessTimeIcon />
+                </IconButton>
+              </Badge>
+            </Tooltip>
+            
+            <IconButton 
+              onClick={refreshCalendarData} 
+              size={isMobile ? "small" : "medium"}
+              sx={{ mr: 0.5 }}
+            >
+              <RefreshIcon />
+            </IconButton>
+            
+            <IconButton 
+              onClick={(e) => {
+                if (onAddEvent) onAddEvent();
+                setIsEventModalOpen(true);
+              }}
+              size={isMobile ? "small" : "medium"}
+              sx={{ color: '#1056F5' }}
+            >
+              <AddCircleOutlineIcon />
+            </IconButton>
+          </Box>
         </Box>
-      </Box>
+      )}
       
       {/* Date navigation */}
       <Box sx={{ 
@@ -3622,8 +3634,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         sx={{ 
           flexGrow: 1, 
           overflow: 'auto',
-          height: 'calc(100% - 130px)', // Ensure the content area has a defined height
-          minHeight: useMobileView ? '350px' : '400px' // Set a minimum height so it's always scrollable
+          height: hideHeader ? 'calc(100% - 56px)' : 'calc(100% - 130px)', // Adjust height based on whether header is shown
+          minHeight: useMobileView ? '350px' : '400px', // Set a minimum height so it's always scrollable
+          width: '100%', // Ensure it takes full width
+          '& .MuiGrid-container': {
+            width: '100%',
+            maxWidth: '100%'
+          },
+          '& .MuiGrid-item': {
+            maxWidth: '100%'
+          }
         }}
       >
         {error ? (

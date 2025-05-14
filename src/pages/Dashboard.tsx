@@ -83,7 +83,7 @@ import CancelIcon from '@mui/icons-material/Cancel';
 
 // Import default layouts from DashboardLayout component
 const defaultLayout: Layout[] = [
-  { i: 'calendar', x: 0, y: 0, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 }
+  { i: 'calendar', x: 0, y: 0, w: 100, h: 30, minW: 4, minH: 10, maxW: 100, maxH: 40 }
 ];
 
 const defaultMobileLayout: Layout[] = [
@@ -707,11 +707,7 @@ const Dashboard: React.FC<{}> = () => {
           newLayout = [...defaultMobileLayout]; // Create a fresh copy
         } else if (window.innerWidth >= 1920) {
           newLayout = [  // XL layout
-            { i: 'quickStats', x: 0, y: 0, w: 60, h: 7, minW: 4, minH: 4, maxW: 100, maxH: 12 },
-            { i: 'calendar', x: 0, y: 7, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-            { i: 'progress', x: 0, y: 22, w: 60, h: 15, minW: 4, minH: 8, maxW: 100, maxH: 30 },
-            { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-            { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
+            { i: 'calendar', x: 0, y: 0, w: 100, h: 30, minW: 4, minH: 10, maxW: 100, maxH: 40 }
           ];
         } else {
           newLayout = [...defaultLayout]; // Create a fresh copy
@@ -1421,12 +1417,8 @@ const Dashboard: React.FC<{}> = () => {
   const getXLLayout = (): Layout[] => {
     // Special wide layout for xl screens that matches the desired default view
     return [
-        { i: 'quickStats', x: 0, y: 0, w: 60, h: 7, minW: 4, minH: 4, maxW: 100, maxH: 12 },
-        { i: 'calendar', x: 0, y: 7, w: 60, h: 15, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-        { i: 'progress', x: 0, y: 22, w: 60, h: 15, minW: 4, minH: 8, maxW: 100, maxH: 30 },
-        { i: 'recentEntries', x: 0, y: 37, w: 35, h: 18, minW: 4, minH: 10, maxW: 100, maxH: 36 },
-        { i: 'topDistractions', x: 35, y: 37, w: 25, h: 18, minW: 4, minH: 6, maxW: 100, maxH: 36 }
-      ];
+      { i: 'calendar', x: 0, y: 0, w: 100, h: 30, minW: 4, minH: 10, maxW: 100, maxH: 40 }
+    ];
   };
 
   // Filter layout to only show visible widgets
@@ -1467,13 +1459,18 @@ const Dashboard: React.FC<{}> = () => {
 
   return (
     <Container 
-      disableGutters={isMobile}
-      maxWidth="xl" 
+      disableGutters
+      maxWidth={false} 
       sx={{ 
-        pt: 4,
-        pb: 8,
+        pt: isMobile ? 4 : 0,
+        pb: isMobile ? 8 : 0,
         minHeight: '100vh',
-        position: 'relative'
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden', // Prevent any scrolling in the container
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
       {/* Display layout loading indicator */}
@@ -1577,6 +1574,17 @@ const Dashboard: React.FC<{}> = () => {
       {/* Add CSS for the pulsing dot animation using MUI's GlobalStyles */}
       <GlobalStyles 
         styles={{
+          'html, body': {
+            width: '100%',
+            height: '100%',
+            margin: 0,
+            padding: 0,
+            overflow: 'hidden'
+          },
+          '#root': {
+            width: '100%',
+            height: '100%'
+          },
           '@keyframes pulse': {
             '0%': {
               r: 8,
@@ -1599,7 +1607,7 @@ const Dashboard: React.FC<{}> = () => {
             width: '100%',
             overflow: 'visible !important', // Ensure content doesn't get clipped when dragging
             margin: '0 auto', // Center the grid layout
-            maxWidth: '1600px' // Limit max width for very large screens
+            maxWidth: '100%' // Use full width
           },
           '.react-grid-item.react-grid-placeholder': {
             background: '#1056F5 !important',
@@ -1649,15 +1657,32 @@ const Dashboard: React.FC<{}> = () => {
           },
           '.dashboard-widget:hover': {
             boxShadow: isEditMode ? '0 0 0 2px #1056F5' : 'none',
+          },
+          // Add full-width calendar style for desktop
+          '.full-width-calendar': {
+            width: '100vw',
+            maxWidth: '100vw',
+            height: 'calc(100vh - 60px)',
+            margin: 0,
+            padding: 0
+          },
+          // Make sure MUI Grid items stretch properly
+          '.MuiGrid-container': {
+            width: '100% !important',
+            margin: '0 !important'
+          },
+          '.MuiGrid-item': {
+            paddingLeft: '0 !important',
+            paddingRight: '0 !important'
           }
         }}
       />
       
       <Box sx={{ 
-        display: 'flex', 
+        display: isMobile ? 'flex' : 'none', // Only show on mobile
         justifyContent: 'space-between', 
         alignItems: 'center', 
-        mb: { xs: isExtraSmall ? 1 : 2, sm: 4 },
+        mb: { xs: isExtraSmall ? 1 : 2, sm: 0 },
         px: { xs: isExtraSmall ? 0.5 : 1, sm: 0 }
       }}>
         <Typography 
@@ -1674,37 +1699,19 @@ const Dashboard: React.FC<{}> = () => {
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           {/* Customize button temporarily removed - will be added back later */}
-          {/*
-          {!isMobile && (
-            <MuiTooltip title={isEditMode ? "Save layout" : "Customize dashboard"}>
-          <Button 
-                variant={isEditMode ? "contained" : "outlined"}
-                startIcon={isEditMode ? <SaveIcon /> : <DashboardCustomizeIcon />}
-                onClick={handleToggleEditMode}
-            sx={{
-              borderColor: '#1056F5',
-                  backgroundColor: isEditMode ? '#1056F5' : 'transparent',
-                  color: isEditMode ? 'white' : '#1056F5',
-              fontFamily: 'Poppins',
-              textTransform: 'none',
-              '&:hover': {
-                borderColor: '#0D47D9',
-                    backgroundColor: isEditMode ? '#0D47D9' : '#f5f9ff',
-              },
-            }}
-          >
-                {isEditMode ? "Save Layout" : "Customize"}
-          </Button>
-            </MuiTooltip>
-          )}
-          */}
         </Box>
       </Box>
 
       <Box ref={containerRef} sx={{ 
         width: '100%',
-        minWidth: '100%',
-        overflow: 'visible'  // Allow content to overflow, important for dragging
+        height: isMobile ? 'auto' : 'calc(100vh - 60px)', // Full height on desktop, minus top bar
+        overflow: 'hidden',  // Change from 'visible' to 'hidden' to prevent scrollbars
+        flex: 1,
+        position: isMobile ? 'relative' : 'absolute', // Use absolute positioning on desktop
+        left: isMobile ? 'auto' : 0,
+        right: isMobile ? 'auto' : 0,
+        bottom: isMobile ? 'auto' : 0,
+        top: isMobile ? 'auto' : '60px', // Start right after the top bar
       }}>
       {journalLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 10 }}>
@@ -1843,110 +1850,139 @@ const Dashboard: React.FC<{}> = () => {
               </Paper>
             )}
             
-            <GridLayout
-              key={gridKey} // Add key to force remount of the component
-              className="layout"
-              layout={getCurrentLayout()}
-              cols={isMobile ? 12 : 100}  // Increase cols from 60 to 100 to allow more horizontal space
-              rowHeight={isMobile ? (isExtraSmall ? 16 : 25) : 30}
-              width={containerWidth}
-              margin={[isMobile ? (isExtraSmall ? 2 : 6) : 15, isMobile ? (isExtraSmall ? 6 : 10) : 15]}
-              containerPadding={[isMobile ? 0 : 20, 0]} // Add horizontal padding for centering on desktop
-              isDraggable={isEditMode}
-              isResizable={isEditMode}
-              onLayoutChange={handleLayoutChange}
-              draggableHandle=".drag-handle"
-              resizeHandles={['se', 'e', 's', 'sw', 'w', 'nw']}
-              compactType={null}
-              useCSSTransforms={true}
-              autoSize={true}
-              preventCollision={false}
-              isBounded={false}
-              allowOverlap={true}  // Change to true to allow widgets to overlap
-              verticalCompact={false}
-              onDragStop={(layout) => {
-                setCurrentLayout(layout);
-              }}
-              onResizeStop={(layout) => {
-                setCurrentLayout(layout);
-              }}
-              onResize={(layout, oldItem, newItem) => {
-                // This is important for left-side resizing to properly update the layout
-                const updatedLayout = layout.map(item => {
-                  if (item.i === newItem.i) {
-                    return newItem;
-                  }
-                  return item;
-                });
-                setCurrentLayout(updatedLayout);
-              }}
-              onDrag={handleDrag}
-            >
-          {/* Quick Stats Section */}
-              {/* Quick Stats Section - Removed, now in Journal Insights */}
-
-              {/* Calendar Section */}
-              {visibleWidgets.includes('calendar') && (
-              <div key="calendar" className="dashboard-widget">
-                <Paper sx={{ 
-                  p: 0, 
-                  height: '100%',
-                  borderRadius: 2, 
-                  overflow: 'auto',
-                  position: 'relative',
-                  boxShadow: isMobile ? 1 : 3
-                }}>
-                  {isEditMode && (
+            {/* Conditional rendering based on device */}
+            {isMobile ? (
+              <GridLayout
+                key={gridKey}
+                className="layout"
+                layout={getCurrentLayout()}
+                cols={12}
+                rowHeight={isExtraSmall ? 16 : 25}
+                width={containerWidth}
+                margin={[isExtraSmall ? 2 : 6, isExtraSmall ? 6 : 10]}
+                containerPadding={[0, 0]}
+                isDraggable={isEditMode}
+                isResizable={isEditMode}
+                onLayoutChange={handleLayoutChange}
+                draggableHandle=".drag-handle"
+                resizeHandles={['se', 'e', 's', 'sw', 'w', 'nw']}
+                compactType={null}
+                useCSSTransforms={true}
+                autoSize={true}
+                preventCollision={false}
+                isBounded={false}
+                allowOverlap={true}
+                verticalCompact={false}
+                onDragStop={(layout) => setCurrentLayout(layout)}
+                onResizeStop={(layout) => setCurrentLayout(layout)}
+                onDrag={handleDrag}
+              >
+                {/* Calendar Section for Mobile */}
+                {visibleWidgets.includes('calendar') && (
+                <div key="calendar" className="dashboard-widget">
+                  <Paper sx={{ 
+                    p: 0, 
+                    height: '100%',
+                    borderRadius: 2, 
+                    overflow: 'auto',
+                    position: 'relative',
+                    boxShadow: 1
+                  }}>
+                    {isEditMode && (
+                      <Box 
+                        className="drag-handle"
+                        sx={{ 
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: '30px',
+                          cursor: 'move',
+                          backgroundColor: 'rgba(16, 86, 245, 0.05)',
+                          borderBottom: '1px dashed #1056F5',
+                          zIndex: 10,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '12px',
+                          color: '#1056F5'
+                        }}
+                      >
+                        Drag to move
+                      </Box>
+                    )}
                     <Box 
-                      className="drag-handle"
+                      ref={calendarWidgetRef}
                       sx={{ 
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: '30px',
-                        cursor: 'move',
-                        backgroundColor: 'rgba(16, 86, 245, 0.05)',
-                        borderBottom: '1px dashed #1056F5',
-                        zIndex: 10,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        color: '#1056F5'
+                        height: '100%',
+                        pt: isEditMode ? 4 : 0,
+                        minHeight: '200px',
+                        overflow: 'auto'
                       }}
                     >
-                      Drag to move
+                      <CalendarView 
+                        onEventClick={handleCalendarEventClick}
+                        onAddEvent={handleAddCalendarEvent}
+                        containerWidth={calendarWidgetWidth}
+                        hideHeader={false} // Show header on mobile
+                      />
                     </Box>
-                  )}
+                  </Paper>
+                </div>
+                )}
+              </GridLayout>
+            ) : (
+              /* Desktop Full-Width Calendar */
+              <Box 
+                sx={{
+                  position: 'fixed', // Change from absolute to fixed
+                  top: '60px',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: '100vw',
+                  maxWidth: '100vw',
+                  height: 'calc(100vh - 60px)',
+                  overflow: 'hidden',
+                  m: 0,
+                  p: 0,
+                  boxSizing: 'border-box',
+                  zIndex: 10, // Ensure it renders above other content
+                  transform: 'translateZ(0)', // Force hardware acceleration
+                  willChange: 'transform' // Hint to browser about potential changes
+                }}
+              >
+                <Paper sx={{ 
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 0, 
+                  boxShadow: 'none',
+                  m: 0,
+                  p: 0,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
                   <Box 
-                    ref={calendarWidgetRef}
                     sx={{ 
+                      flexGrow: 1,
+                      width: '100%',
                       height: '100%',
-                      pt: isEditMode ? 4 : 0,
-                      minHeight: '200px',
                       overflow: 'auto'
                     }}
                   >
-            <CalendarView 
-              onEventClick={handleCalendarEventClick}
-              onAddEvent={handleAddCalendarEvent}
-                      containerWidth={calendarWidgetWidth}
-            />
+                    <CalendarView 
+                      onEventClick={handleCalendarEventClick}
+                      onAddEvent={handleAddCalendarEvent}
+                      containerWidth={window.innerWidth}
+                      hideHeader={true} // Hide header on desktop
+                    />
                   </Box>
-          </Paper>
-              </div>
-              )}
-
-          {/* Progress Graph Section - Removed, now in Journal Insights */}
-              
-              {/* Recent Entries Section - Removed, now in Journal Insights */}
-
-              {/* Top Distractions Section - Removed, now in Journal Insights */}
-            </GridLayout>
+                </Paper>
+              </Box>
+            )}
         </>
       )}
-                            </Box>
+      </Box>
 
       {/* Mobile fixed tooltip */}
       {isMobile && activeDataPoint && tooltipPosition && (
