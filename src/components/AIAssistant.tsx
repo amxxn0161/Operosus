@@ -116,12 +116,10 @@ interface PromptCategory {
 
 // Example prompts for the AI assistant with associated icons
 const EXAMPLE_PROMPTS: ExamplePrompt[] = [
+  { text: "Summarise my task list", icon: <AssignmentTurnedInIcon fontSize="small" /> },
+  { text: "Summarise my meeting schedule", icon: <EventAvailableIcon fontSize="small" /> },
   { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
-  { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
-  { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
-  { text: "Analyze my meeting schedule efficiency", icon: <EventAvailableIcon fontSize="small" /> },
-  { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
-  { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
+  { text: "Prioritise My Week", icon: <DateRangeIcon fontSize="small" /> }
 ];
 
 // All categorized prompts
@@ -131,100 +129,10 @@ const PROMPT_CATEGORIES: PromptCategory[] = [
     name: 'Featured',
     icon: <StarIcon fontSize="small" />,
     prompts: [
+      { text: "Summarise my task list", icon: <AssignmentTurnedInIcon fontSize="small" /> },
+      { text: "Summarise my meeting schedule", icon: <EventAvailableIcon fontSize="small" /> },
       { text: "Help me plan my day", icon: <TodayIcon fontSize="small" /> },
-      { text: "How can I improve my focus habits?", icon: <TrackChangesIcon fontSize="small" /> },
-      { text: "Suggest a weekly planning template", icon: <ViewWeekIcon fontSize="small" /> },
-      { text: "What's my productivity score for this week?", icon: <AssessmentIcon fontSize="small" /> },
-      { text: "Plan my week ahead", icon: <DateRangeIcon fontSize="small" /> },
-      { text: "Create time blocks based on my energy levels", icon: <AccessTimeIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'setup',
-    name: 'Initial Setup',
-    icon: <SettingsIcon fontSize="small" />,
-    prompts: [
-      { text: "I feel most energized around morning", icon: <WbSunnyIcon fontSize="small" /> },
-      { text: "The tasks requiring my deepest focus are usually coding", icon: <TrackChangesIcon fontSize="small" /> },
-      { text: "I generally stay focused for about 45 minutes before needing a short break", icon: <ScheduleIcon fontSize="small" /> },
-      { text: "I like to make my daily plan in the morning", icon: <TodayIcon fontSize="small" /> },
-      { text: "I currently use Google Calendar for managing my tasks/calendar", icon: <DateRangeIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'daily',
-    name: 'Daily Planning',
-    icon: <TodayIcon fontSize="small" />,
-    prompts: [
-      { text: "I have multiple small tasks today—help me prioritize by urgency and duration", icon: <AssignmentTurnedInIcon fontSize="small" /> },
-      { text: "Today I have important presentations; help me allocate prep- and recovery-time", icon: <ScheduleIcon fontSize="small" /> },
-      { text: "Yesterday's meetings distracted me. Can you suggest today's meetings that might work as emails?", icon: <EmailIcon fontSize="small" /> },
-      { text: "My energy today feels low; adjust today's tasks accordingly", icon: <BatteryAlertIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'task',
-    name: 'Task Prioritization',
-    icon: <AssignmentTurnedInIcon fontSize="small" />,
-    prompts: [
-      { text: "Highlight tasks due by end of day today", icon: <AssignmentLateIcon fontSize="small" /> },
-      { text: "Suggest urgent overdue tasks needing immediate rescheduling", icon: <PriorityHighIcon fontSize="small" /> },
-      { text: "Flag any commitments over 2 hours this week without prep-time", icon: <FlagIcon fontSize="small" /> },
-      { text: "Show me important tasks I've repeatedly postponed", icon: <ReplayIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'reflection',
-    name: 'Reflection',
-    icon: <ReplayIcon fontSize="small" />,
-    prompts: [
-      { text: "I struggled yesterday because of noisy environment; help me address this today", icon: <VolumeOffIcon fontSize="small" /> },
-      { text: "Yesterday's productivity was high due to fewer meetings. Suggest replicating today", icon: <TrendingUpIcon fontSize="small" /> },
-      { text: "My recent meeting wasn't productive. Advise how to improve similar meetings", icon: <PeopleIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'checkin',
-    name: 'Check-In',
-    icon: <UpdateIcon fontSize="small" />,
-    prompts: [
-      { text: "My meeting just ran overtime; rearrange the schedule accordingly", icon: <ScheduleIcon fontSize="small" /> },
-      { text: "Remind me of today's priority tasks and adjust my remaining time blocks", icon: <NotificationsActiveIcon fontSize="small" /> },
-      { text: "My main priority today has changed; reprioritize today's tasks accordingly", icon: <SwapVertIcon fontSize="small" /> },
-      { text: "Give me strategies to reduce interruptions for my upcoming deep-work session", icon: <DoNotDisturbIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'dashboard',
-    name: 'Dashboard',
-    icon: <DashboardIcon fontSize="small" />,
-    prompts: [
-      { text: "Summarize my productivity this month", icon: <SummarizeIcon fontSize="small" /> },
-      { text: "Show productivity patterns—when am I typically most productive?", icon: <ShowChartIcon fontSize="small" /> },
-      { text: "Highlight common distractions impacting my productivity", icon: <ErrorIcon fontSize="small" /> },
-      { text: "Compare task completions on planned vs unplanned-days", icon: <CompareIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'weekly',
-    name: 'Weekly Planning',
-    icon: <DateRangeIcon fontSize="small" />,
-    prompts: [
-      { text: "Assess where I lost productivity last week; suggest improvements", icon: <TrendingDownIcon fontSize="small" /> },
-      { text: "Which days should I reserve for deep-focus based on next week's deadlines?", icon: <LowPriorityIcon fontSize="small" /> },
-      { text: "Identify recurring challenges from last week and propose strategies", icon: <RepeatIcon fontSize="small" /> },
-      { text: "Distribute deep work, admin, and meetings optimally for next week's schedule", icon: <ViewWeekIcon fontSize="small" /> }
-    ]
-  },
-  {
-    id: 'learning',
-    name: 'Learning',
-    icon: <SchoolIcon fontSize="small" />,
-    prompts: [
-      { text: "Yesterday's schedule worked great—remember this preference", icon: <BookmarkIcon fontSize="small" /> },
-      { text: "I handle administrative tasks best on Fridays; suggest this going forward", icon: <EventNoteIcon fontSize="small" /> },
-      { text: "Suggest scheduling adjustments based on patterns from last week", icon: <AutorenewIcon fontSize="small" /> },
-      { text: "Reflect on this month's planning effectiveness and suggest one impactful adjustment", icon: <LightbulbIcon fontSize="small" /> }
+      { text: "Prioritise My Week", icon: <DateRangeIcon fontSize="small" /> }
     ]
   }
 ];
@@ -244,133 +152,76 @@ const PopupCategorizedPrompts: React.FC<PopupCategorizedPromptsProps> = ({
   isVerySmallMobile = false
 }) => {
   const theme = useTheme();
-  const [selectedCategory, setSelectedCategory] = React.useState(0);
-
-  const handleCategoryChange = (event: React.SyntheticEvent, newValue: number) => {
-    setSelectedCategory(newValue);
-  };
+  const category = categories[0]; // Always use the first (and only) category
 
   return (
     <Box sx={{ width: '100%', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ 
-        borderBottom: 1, 
-        borderColor: 'divider',
-        mb: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : 1.5)
-      }}>
-        <Tabs 
-          value={selectedCategory} 
-          onChange={handleCategoryChange}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          aria-label="prompt categories"
-          sx={{
-            minHeight: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
-            '& .MuiTab-root': {
-              minHeight: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
-              py: 0.5,
-              fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.7rem'),
-            },
-            '& .MuiTabs-scrollButtons': {
-              width: isVerySmallMobile ? 20 : (isSmallMobile ? 24 : 28),
-              '& svg': {
-                fontSize: isVerySmallMobile ? '1rem' : (isSmallMobile ? '1.1rem' : '1.2rem')
+      <Box
+        sx={{ 
+          width: '100%', 
+          display: 'flex',
+          flexDirection: 'column', 
+          gap: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
+          maxHeight: { 
+            xs: isVerySmallMobile ? '300px' : '350px', 
+            sm: '400px', 
+            md: '450px' 
+          },
+          overflowY: 'auto',
+          pr: 1,
+          mr: -1,
+          flexGrow: 1,
+          pb: 1
+        }}
+      >
+        {category.prompts.map((prompt, promptIndex) => (
+          <Paper
+            key={promptIndex}
+            elevation={0}
+            onClick={() => onPromptClick(prompt.text)}
+            sx={{
+              py: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
+              px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 1.5),
+              borderRadius: 1.5,
+              backgroundColor: 'white',
+              cursor: 'pointer',
+              border: '1px solid',
+              borderColor: 'rgba(26, 115, 232, 0.1)',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              transition: 'all 0.2s',
+              '&:hover': {
+                backgroundColor: 'rgba(26, 115, 232, 0.04)',
+                borderColor: 'rgba(26, 115, 232, 0.3)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
               }
-            }
-          }}
-        >
-          {categories.map((category, index) => (
-            <Tab 
-              key={category.id} 
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Box sx={{ mr: 0.5 }}>{category.icon}</Box>
-                  <span>{category.name}</span>
-                </Box>
-              }
+            }}
+          >
+            <Box sx={{ 
+              color: theme.palette.primary.main,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : '0.9rem')
+            }}>
+              {prompt.icon}
+            </Box>
+            <Typography 
+              variant="body1" 
               sx={{ 
-                textTransform: 'none',
-                fontWeight: 500,
-                minWidth: isVerySmallMobile ? 70 : (isSmallMobile ? 80 : 90),
-              }}
-            />
-          ))}
-        </Tabs>
-      </Box>
-
-      {categories.map((category, index) => (
-        <Box
-          key={category.id}
-          role="tabpanel"
-          hidden={selectedCategory !== index}
-          id={`prompt-tabpanel-${category.id}`}
-          aria-labelledby={`prompt-tab-${category.id}`}
-          sx={{ 
-            width: '100%', 
-            display: selectedCategory === index ? 'flex' : 'none',
-            flexDirection: 'column', 
-            gap: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
-            maxHeight: { 
-              xs: isVerySmallMobile ? '300px' : '350px', 
-              sm: '400px', 
-              md: '450px' 
-            },
-            overflowY: 'auto',
-            pr: 1,
-            mr: -1,
-            flexGrow: 1,
-            pb: 1
-          }}
-        >
-          {category.prompts.map((prompt, promptIndex) => (
-            <Paper
-              key={promptIndex}
-              elevation={0}
-              onClick={() => onPromptClick(prompt.text)}
-              sx={{
-                py: isVerySmallMobile ? 0.6 : (isSmallMobile ? 0.8 : 1.25),
-                px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 1.5),
-                borderRadius: 1.5,
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                border: '1px solid',
-                borderColor: 'rgba(26, 115, 232, 0.1)',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                transition: 'all 0.2s',
-                '&:hover': {
-                  backgroundColor: 'rgba(26, 115, 232, 0.04)',
-                  borderColor: 'rgba(26, 115, 232, 0.3)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                }
+                fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
+                color: theme.palette.text.primary,
+                fontWeight: 400,
+                lineHeight: 1.35
               }}
             >
-              <Box sx={{ 
-                color: theme.palette.primary.main,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : '0.9rem')
-              }}>
-                {prompt.icon}
-              </Box>
-              <Typography 
-                variant="body1" 
-                sx={{ 
-                  fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : '0.8rem'),
-                  color: theme.palette.text.primary,
-                  fontWeight: 400,
-                  lineHeight: 1.35
-                }}
-              >
-                {prompt.text}
-              </Typography>
-            </Paper>
-          ))}
-        </Box>
-      ))}
+              {prompt.text}
+            </Typography>
+          </Paper>
+        ))}
+      </Box>
     </Box>
   );
 };

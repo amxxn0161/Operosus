@@ -17,12 +17,15 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import NotesIcon from '@mui/icons-material/Notes';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import EmailIcon from '@mui/icons-material/Email';
 import { format, isValid, parseISO } from 'date-fns';
 import { EnhancedGoogleTask } from '../contexts/GoogleTasksContext';
 
 // Make sure the task type includes the has_explicit_time property
 interface TaskWithTime extends EnhancedGoogleTask {
   has_explicit_time?: boolean;
+  gmail_attachment?: any;
+  has_gmail_attachment?: boolean;
 }
 
 interface TaskDetailsModalProps {
@@ -175,6 +178,50 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                 }}
               >
                 Due Time: {dueTime}
+              </Typography>
+            </Box>
+          )}
+          
+          {/* Display Gmail attachment if available */}
+          {task.has_gmail_attachment && task.gmail_attachment && (
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                mt: 1, 
+                py: 0.5,
+                px: 1,
+                borderRadius: 1,
+                bgcolor: 'rgba(16, 86, 245, 0.08)', 
+                width: 'fit-content',
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'rgba(16, 86, 245, 0.15)',
+                }
+              }}
+              onClick={() => {
+                if (task.gmail_attachment?.link) {
+                  window.open(task.gmail_attachment.link, '_blank');
+                }
+              }}
+            >
+              <EmailIcon sx={{ 
+                mr: 1, 
+                fontSize: 20, 
+                color: 'primary.main' 
+              }} />
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontWeight: 500, 
+                  color: 'primary.main',
+                  textDecoration: 'none',
+                  '&:hover': {
+                    textDecoration: 'underline'
+                  }
+                }}
+              >
+                {task.gmail_attachment.title || 'View Email'}
               </Typography>
             </Box>
           )}

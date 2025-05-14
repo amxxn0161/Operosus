@@ -16,6 +16,8 @@ export interface GoogleTask {
   task_list_id?: string;
   task_list_title?: string;
   has_explicit_time?: boolean;
+  gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
+  has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
 }
 
 // Define the TaskList interface

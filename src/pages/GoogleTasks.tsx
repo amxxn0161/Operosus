@@ -70,7 +70,8 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   AddCircleOutline as AddCircleOutlineIcon,
-  MenuOpen as MenuOpenIcon
+  MenuOpen as MenuOpenIcon,
+  Email as EmailIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -2448,6 +2449,37 @@ const GoogleTasks: React.FC = () => {
                         }
                         secondary={
                           <>
+                            {/* Show Gmail attachment if present */}
+                            {task.has_gmail_attachment && task.gmail_attachment && (
+                              <Typography 
+                                variant="caption" 
+                                component="div"
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: 'primary.main',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 500,
+                                  mt: 0.5,
+                                  cursor: 'pointer',
+                                  '&:hover': { textDecoration: 'underline' }
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent task item click
+                                  if (task.gmail_attachment?.link) {
+                                    window.open(task.gmail_attachment.link, '_blank');
+                                  }
+                                }}
+                              >
+                                <EmailIcon 
+                                  fontSize="inherit" 
+                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                />
+                                {task.gmail_attachment.title || 'View Email'}
+                              </Typography>
+                            )}
+                            
                             {/* Show due date and time information from notes */}
                             {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                               <Typography 
@@ -2691,6 +2723,37 @@ const GoogleTasks: React.FC = () => {
                                       }
                                       secondary={
                                         <>
+                                          {/* Show Gmail attachment if present */}
+                                          {task.has_gmail_attachment && task.gmail_attachment && (
+                                            <Typography 
+                                              variant="caption" 
+                                              component="div"
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 500,
+                                                mt: 0.5,
+                                                cursor: 'pointer',
+                                                '&:hover': { textDecoration: 'underline' }
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation(); // Prevent task item click
+                                                if (task.gmail_attachment?.link) {
+                                                  window.open(task.gmail_attachment.link, '_blank');
+                                                }
+                                              }}
+                                            >
+                                              <EmailIcon 
+                                                fontSize="inherit" 
+                                                sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                              />
+                                              {task.gmail_attachment.title || 'View Email'}
+                                            </Typography>
+                                          )}
+                                          
                                           {/* Show due date and time information from notes */}
                                           {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                                             <Typography 
@@ -2902,11 +2965,44 @@ const GoogleTasks: React.FC = () => {
                                           </Typography>
                                         }
                                         secondary={
-                                          task.completed && (
-                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                                              Completed: {formatDate(task.completed)}
-                                            </Typography>
-                                          )
+                                          <>
+                                            {/* Show Gmail attachment if present */}
+                                            {task.has_gmail_attachment && task.gmail_attachment && (
+                                              <Typography 
+                                                variant="caption" 
+                                                component="div"
+                                                sx={{ 
+                                                  fontFamily: 'Poppins',
+                                                  color: 'primary.main',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  fontSize: '0.75rem',
+                                                  fontWeight: 500,
+                                                  mt: 0.5,
+                                                  cursor: 'pointer',
+                                                  '&:hover': { textDecoration: 'underline' }
+                                                }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation(); // Prevent task item click
+                                                  if (task.gmail_attachment?.link) {
+                                                    window.open(task.gmail_attachment.link, '_blank');
+                                                  }
+                                                }}
+                                              >
+                                                <EmailIcon 
+                                                  fontSize="inherit" 
+                                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                                />
+                                                {task.gmail_attachment.title || 'View Email'}
+                                              </Typography>
+                                            )}
+                                            
+                                            {task.completed && (
+                                              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                                Completed: {formatDate(task.completed)}
+                                              </Typography>
+                                            )}
+                                          </>
                                         }
                                       />
                                       <IconButton
@@ -3096,6 +3192,37 @@ const GoogleTasks: React.FC = () => {
                         }
                         secondary={
                           <Box>
+                            {/* Show Gmail attachment if present */}
+                            {task.has_gmail_attachment && task.gmail_attachment && (
+                              <Typography 
+                                variant="caption" 
+                                component="div"
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: 'primary.main',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 500,
+                                  mb: 0.5,
+                                  cursor: 'pointer',
+                                  '&:hover': { textDecoration: 'underline' }
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent task item click
+                                  if (task.gmail_attachment?.link) {
+                                    window.open(task.gmail_attachment.link, '_blank');
+                                  }
+                                }}
+                              >
+                                <EmailIcon 
+                                  fontSize="inherit" 
+                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                />
+                                {task.gmail_attachment.title || 'View Email'}
+                              </Typography>
+                            )}
+                            
                             {task.completed && (
                               <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins', display: 'block' }}>
                                 Completed: {formatDate(task.completed)}

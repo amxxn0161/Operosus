@@ -23,6 +23,8 @@ export interface EnhancedGoogleTask extends GoogleTask {
   actual_minutes?: number;
   estimated_minutes?: number;
   has_explicit_time?: boolean;
+  gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
+  has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
 }
 
 export interface EnhancedGoogleTaskList extends Omit<GoogleTaskList, 'tasks'> {
