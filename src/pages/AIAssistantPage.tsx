@@ -397,10 +397,19 @@ const AIAssistantPage: React.FC = () => {
     <Box sx={{ 
       display: 'flex', 
       height: 'calc(100vh - 64px)', 
-      width: '100%', 
+      width: '100vw', 
       overflow: 'hidden',
-      position: 'relative',
-      bgcolor: theme.palette.grey[50]
+      position: 'absolute',
+      top: 64, // Position directly below the top bar
+      left: 0,
+      right: 0,
+      bgcolor: '#ffffff',
+      m: 0,
+      p: 0,
+      boxSizing: 'border-box',
+      borderTop: 'none',
+      boxShadow: 'none', // Remove shadow from content
+      zIndex: 1
     }}>
       {/* Left sidebar for conversation history */}
       {!isMobile && (
@@ -454,7 +463,7 @@ const AIAssistantPage: React.FC = () => {
               flexDirection: 'column',
               position: 'relative',
               height: '100%',
-              bgcolor: theme.palette.background.paper,
+              bgcolor: '#ffffff',
               borderRadius: 0
             }}
           >
@@ -590,7 +599,9 @@ const AIAssistantPage: React.FC = () => {
         flexDirection: 'column',
         height: '100%',
         width: isMobile ? '100%' : (showThreadsList ? `calc(100% - ${sidebarWidth}px)` : '100%'),
-        transition: 'width 0.3s ease'
+        transition: 'width 0.3s ease',
+        bgcolor: '#ffffff',
+        borderRadius: 0
       }}>
         {/* Header */}
         <Box 
@@ -601,7 +612,7 @@ const AIAssistantPage: React.FC = () => {
             px: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, sm: 2, md: 3 }),
             py: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1, sm: 1.25, md: 1.5 }),
             borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-            bgcolor: theme.palette.background.paper,
+            bgcolor: '#ffffff',
             minHeight: isVerySmallMobile ? 48 : (isSmallMobile ? 56 : 64)
           }}
         >
@@ -650,7 +661,8 @@ const AIAssistantPage: React.FC = () => {
           flexDirection: 'column',
           alignItems: 'stretch',
           justifyContent: isMobile ? 'flex-start' : 'flex-start',
-          bgcolor: theme.palette.grey[50]
+          bgcolor: '#ffffff',
+          width: '100%'
         }}>
           {messages.length === 0 ? (
             <Box sx={{ 
@@ -658,64 +670,66 @@ const AIAssistantPage: React.FC = () => {
               flexDirection: 'column', 
               alignItems: 'center', 
               justifyContent: 'center',
-              minHeight: { xs: '100%', md: 'auto' },
-              height: { xs: '100%', md: 'auto' },
+              minHeight: '100%',
+              height: '100%',
               width: '100%',
-              maxWidth: '100%',
+              p: 0,
               pt: isVerySmallMobile ? 4 : (isSmallMobile ? 4.5 : { xs: 5, sm: 5.5, md: 6.5 }),
-              pb: isVerySmallMobile ? 0 : (isSmallMobile ? 0 : { xs: 0, sm: 2, md: 4 }),
-              px: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, sm: 4 }),
-              textAlign: 'center'
+              textAlign: 'center',
+              bgcolor: '#ffffff',
+              m: 0,
+              borderRadius: 0
             }}>
               <Box sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                maxWidth: '700px',
                 width: '100%',
-                height: { xs: 'auto', md: 'auto' },
-                maxHeight: '100%',
-                overflowY: 'auto'
-            }}>
-              <Box
-                component="img"
-                src={OpoImage}
-                alt="Opo"
-                sx={{
-                  width: isVerySmallMobile ? 100 : (isSmallMobile ? 120 : { xs: 140, md: 160 }),
-                  height: 'auto',
-                  mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 }),
-                }}
-              />
-              <Typography 
+                height: '100%',
+                bgcolor: '#ffffff',
+                p: 0,
+                m: 0,
+                borderRadius: 0
+              }}>
+                <Box
+                  component="img"
+                  src={OpoImage}
+                  alt="Opo"
+                  sx={{
+                    width: isVerySmallMobile ? 100 : (isSmallMobile ? 120 : { xs: 140, md: 160 }),
+                    height: 'auto',
+                    mb: isVerySmallMobile ? 1.5 : (isSmallMobile ? 1.75 : { xs: 2, md: 2.5 }),
+                  }}
+                />
+                <Typography 
                   variant="h5" 
-                sx={{ 
+                  sx={{ 
                     mb: { xs: 1, md: 1.5 },
                     fontSize: isVerySmallMobile ? '1.1rem' : (isSmallMobile ? '1.2rem' : { xs: '1.25rem', md: '1.5rem' }),
-                  fontWeight: 500
-                }}
-              >
-                Hi, I'm Opo!
-              </Typography>
-              <Typography 
+                    fontWeight: 500
+                  }}
+                >
+                  Hi, I'm Opo!
+                </Typography>
+                <Typography 
                   variant="body1" 
-                color="textSecondary"
-                sx={{ 
-                  fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
+                  color="textSecondary"
+                  sx={{ 
+                    fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '1rem' }),
                     lineHeight: 1.5,
-                    mb: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 }),
-                    maxWidth: { xs: '90%', sm: '80%', md: '70%' }
-                }}
-              >
+                    mb: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 })
+                  }}
+                >
                   Ask me about productivity or how to use this app!
-              </Typography>
+                </Typography>
                 
-                {/* Example prompts section - further adjustments */}
+                {/* Example prompts section */}
                 <Box sx={{ 
                   width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  px: isVerySmallMobile ? 0.5 : (isSmallMobile ? 0.75 : { xs: 1, sm: 1 })
+                  px: 1,
+                  bgcolor: '#ffffff'
                 }}>
                   <Typography 
                     variant="body1" 
@@ -737,9 +751,8 @@ const AIAssistantPage: React.FC = () => {
                     gap: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.25 }),
                     maxHeight: { xs: '320px', sm: '400px', md: '450px' },
                     overflowY: 'auto',
-                    pr: 1,
-                    mr: -1,
-                    pb: 2
+                    pb: 2,
+                    bgcolor: '#ffffff'
                   }}>
                     {PROMPT_CATEGORIES[0].prompts.map((prompt, promptIndex) => (
                       <Paper
@@ -801,11 +814,13 @@ const AIAssistantPage: React.FC = () => {
             </Box>
           ) : (
             <Box sx={{ 
-              maxWidth: '900px', 
-              mx: 'auto', 
               width: '100%',
+              height: '100%',
               pt: isVerySmallMobile ? 2 : (isSmallMobile ? 2.5 : { xs: 3, md: 3.5 }),
-              px: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : { xs: 2.5, md: 3 })
+              px: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : { xs: 2.5, md: 3 }),
+              bgcolor: '#ffffff',
+              m: 0,
+              borderRadius: 0
             }}>
               {messages.map((message, index) => (
                 <Box 
@@ -814,7 +829,8 @@ const AIAssistantPage: React.FC = () => {
                     display: 'flex',
                     mb: isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 2, md: 2.5 }),
                     mt: index === 0 ? (isVerySmallMobile ? 1 : (isSmallMobile ? 1.5 : { xs: 2, md: 2.5 })) : 0,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
+                    width: '100%'
                   }}
                 >
                   <Avatar 
@@ -822,7 +838,7 @@ const AIAssistantPage: React.FC = () => {
                       bgcolor: 'white',
                       width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
                       height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : { xs: 36, md: 40 }),
-                      mr: isVerySmallMobile ? 0.5 : undefined,
+                      mr: 1,
                       border: '1px solid rgba(16, 86, 245, 0.2)',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
                     }}
@@ -843,7 +859,7 @@ const AIAssistantPage: React.FC = () => {
                       p: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.75 }),
                       borderRadius: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : { xs: 1.5, md: 1.75 }),
                       bgcolor: message.role === 'assistant' ? 'rgba(16, 86, 245, 0.08)' : 'rgba(0, 0, 0, 0.03)',
-                      maxWidth: isVerySmallMobile ? 'calc(100% - 36px)' : (isSmallMobile ? 'calc(100% - 44px)' : { xs: 'calc(100% - 48px)', md: '85%' }),
+                      width: 'calc(100% - 50px)',
                       wordBreak: 'break-word',
                       '& .MuiTypography-root': {
                         fontSize: isVerySmallMobile ? '0.8rem' : (isSmallMobile ? '0.85rem' : { xs: '0.9rem', md: '0.95rem' })
@@ -876,10 +892,11 @@ const AIAssistantPage: React.FC = () => {
             pt: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, md: 1.5 }),
             pb: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.25, md: 1.5 }),
             borderTop: '1px solid rgba(0, 0, 0, 0.12)',
-            bgcolor: theme.palette.background.paper
+            bgcolor: '#ffffff',
+            width: '100%'
           }}
         >
-          <Box sx={{ maxWidth: '900px', mx: 'auto', width: '100%' }}>
+          <Box sx={{ width: '100%' }}>
             <TextField
               fullWidth
               placeholder="Ask a question..."
@@ -890,12 +907,13 @@ const AIAssistantPage: React.FC = () => {
               disabled={isLoading}
               sx={{ 
                 mb: 0,
+                width: '100%',
                 '& .MuiOutlinedInput-root': {
                   borderRadius: isVerySmallMobile ? '16px' : (isSmallMobile ? '18px' : '24px'),
                   pr: 0.75,
                   py: isVerySmallMobile ? 0.15 : (isSmallMobile ? 0.25 : { xs: 0.5, md: 0.75 }),
                   fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : { xs: '0.875rem', md: '0.9375rem' }),
-                  backgroundColor: theme.palette.background.paper
+                  backgroundColor: '#ffffff'
                 },
                 '& .MuiOutlinedInput-input': {
                   pl: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.5, md: 1.75 })
