@@ -908,7 +908,7 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
-  // Check if a date is overdue (in the past)
+  // Check if a date is overdue (in the past, excluding today)
   const isOverdue = (dateString?: string | null): boolean => {
     if (!dateString) return false;
     
@@ -916,12 +916,45 @@ const GoogleTasks: React.FC = () => {
       const dueDate = parseISO(dateString);
       if (!isValid(dueDate)) return false;
       
-      // Set due date to end of day for comparison
-      const dueDateEndOfDay = new Date(dueDate);
-      dueDateEndOfDay.setHours(23, 59, 59, 999);
+      // Get today's date at start of day for comparison
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
-      // Compare with current date
-      return dueDateEndOfDay < new Date();
+      // Get tomorrow's date
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Check if the due date is before today (truly overdue)
+      const dueDateStart = new Date(dueDate);
+      dueDateStart.setHours(0, 0, 0, 0);
+      
+      return dueDateStart < today;
+    } catch (e) {
+      return false;
+    }
+  };
+  
+  // Check if a date is due today
+  const isDueToday = (dateString?: string | null): boolean => {
+    if (!dateString) return false;
+    
+    try {
+      const dueDate = parseISO(dateString);
+      if (!isValid(dueDate)) return false;
+      
+      // Get today's date at start of day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Get tomorrow's date
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Check if due date is today
+      const dueDateStart = new Date(dueDate);
+      dueDateStart.setHours(0, 0, 0, 0);
+      
+      return dueDateStart.getTime() === today.getTime();
     } catch (e) {
       return false;
     }
@@ -1443,17 +1476,21 @@ const GoogleTasks: React.FC = () => {
           displayDate = format(dueDate, 'MMM d, yyyy');
         }
         
-        // Only show time if the task has an explicit time set
-        dueInfo = displayDate;
-        if (hasExplicitTime) {
-          const formattedTime = format(dueDate, 'h:mm a');
-          dueInfo = `${displayDate} • ${formattedTime}`; // Add bullet separator and time
-        }
-        
-        // Add overdue marker if the task is overdue
-        if (isOverdue(task.due) && task.status !== 'completed') {
+              // Only show time if the task has an explicit time set
+      dueInfo = displayDate;
+      if (hasExplicitTime) {
+        const formattedTime = format(dueDate, 'h:mm a');
+        dueInfo = `${displayDate} • ${formattedTime}`; // Add bullet separator and time
+      }
+      
+      // Add due/overdue marker based on date
+      if (task.status !== 'completed') {
+        if (isOverdue(task.due)) {
           dueInfo = `${dueInfo} (Overdue)`;
+        } else if (isDueToday(task.due)) {
+          dueInfo = `${dueInfo} (Due)`;
         }
+      }
       }
     }
     
@@ -2539,7 +2576,7 @@ const GoogleTasks: React.FC = () => {
                                 component="div"
                                 sx={{ 
                                   fontFamily: 'Poppins',
-                                  color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
+                                  color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
                                   display: 'flex',
                                   alignItems: 'center',
                                   fontSize: '0.75rem', // Slightly larger for better readability
@@ -2550,7 +2587,7 @@ const GoogleTasks: React.FC = () => {
                                 {task.has_explicit_time && (
                                   <AccessTimeIcon 
                                     fontSize="inherit" 
-                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : 'primary.main' }} 
+                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
                                   />
                                 )}
                                 {formatDueInfoWithNotes(task)}
@@ -2813,7 +2850,7 @@ const GoogleTasks: React.FC = () => {
                                               component="div"
                                               sx={{ 
                                                 fontFamily: 'Poppins',
-                                                color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
+                                                color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 fontSize: '0.75rem', // Slightly larger for better readability
@@ -2824,7 +2861,11 @@ const GoogleTasks: React.FC = () => {
                                               {task.has_explicit_time && (
                                                 <AccessTimeIcon 
                                                   fontSize="inherit" 
-                                                  sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : 'primary.main' }} 
+                                                  sx={{ 
+                                                    mr: 0.5, 
+                                                    fontSize: '0.875rem', 
+                                                    color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' 
+                                                  }} 
                                                 />
                                               )}
                                               {formatDueInfoWithNotes(task)}
