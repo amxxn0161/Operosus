@@ -342,6 +342,13 @@ const GoogleTasks: React.FC = () => {
         let taskTitle = newTaskTitle.trim();
         let taskNotes = newTaskNotes.trim();
         
+        // Debug logging
+        console.log('Original new task notes before cleaning:', taskNotes);
+        
+        // Clean any existing time entries that might be in the notes
+        const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
+        console.log('New task notes after cleaning:', cleanedNotes);
+        
         const taskData: { 
           title: string; 
           notes?: string; 
@@ -353,20 +360,53 @@ const GoogleTasks: React.FC = () => {
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
-          time_in_notes: true, // Add this parameter for the backend
+          // Always set time_in_notes to false and manage it manually
+          time_in_notes: false,
           has_explicit_time: showNewTaskTimePicker && newTaskDueTime !== null // Use the toggle state
         };
+        
+        // Check if we have time information
+        const hasTimeInfo = (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) || 
+                           (showNewTaskTimePicker && newTaskDueTime !== null);
+        
+        console.log('Has time info for new task:', hasTimeInfo, {
+          estimatedMinutes: newTaskEstimatedMinutes,
+          dueTime: newTaskDueTime,
+          showTimePicker: showNewTaskTimePicker
+        });
+        
+        // Prepare notes with our own manually added time information
+        let finalNotes = cleanedNotes || '';
+        
+        // Manually add estimated time text if we have estimated minutes
+        if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
+          // Format the time display based on minutes
+          let timeText;
+          if (newTaskEstimatedMinutes >= 60) {
+            const hours = Math.floor(newTaskEstimatedMinutes / 60);
+            const minutes = newTaskEstimatedMinutes % 60;
+            
+            if (minutes === 0) {
+              timeText = `${hours}h`;
+            } else {
+              timeText = `${hours}h ${minutes}m`;
+            }
+          } else {
+            timeText = `${newTaskEstimatedMinutes}m`;
+          }
+          
+          // Add to notes
+          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
+          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes for new task`);
+        }
+        
+        // Add the manual notes with our time information
+        taskData.notes = finalNotes;
         
         // Add estimated minutes if set
         if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
           taskData.estimated_minutes = newTaskEstimatedMinutes;
-        }
-        
-        // Clean notes of any existing time entries and add if not empty
-        if (taskNotes) {
-          // Remove any existing time entries from notes to prevent duplication
-          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
-          taskData.notes = cleanedNotes;
+          console.log(`Setting estimated_minutes to ${newTaskEstimatedMinutes} for new task`);
         }
         
         // Add the ISO date string if date is set
@@ -1109,11 +1149,15 @@ const GoogleTasks: React.FC = () => {
     // Remove all "Due Time: XX:XX" entries (including any following line breaks)
     let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
     
-    // Remove all "Estimated Time: X minutes" entries with various formats
-    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+ minutes?(\r?\n|\r)?/g, '');
-    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+m(\r?\n|\r)?/g, '');
-    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+h \d+m(\r?\n|\r)?/g, '');
-    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+h(\r?\n|\r)?/g, '');
+    // Super aggressive pattern to remove ALL "Estimated Time:" entries, regardless of format
+    // This uses a case-insensitive match to catch any variations in capitalization
+    cleanedNotes = cleanedNotes.replace(/Estimated Time:.*?(\r?\n|\r|$)/gi, '');
+    
+    // Also check for possible variations with spaces/typos
+    cleanedNotes = cleanedNotes.replace(/Estimate(d)?\s+Time:.*?(\r?\n|\r|$)/gi, '');
+    
+    // Clean up any double line breaks that might have been created
+    cleanedNotes = cleanedNotes.replace(/\n\s*\n/g, '\n');
     
     return cleanedNotes.trim();
   };
@@ -1126,8 +1170,15 @@ const GoogleTasks: React.FC = () => {
         const title = editTaskTitle.trim();
         let notes = editTaskNotes.trim();
         
+        // Debug logging
+        console.log('Original notes before cleaning:', notes);
+        
         // Clean all time entries (both due time and estimated time) from notes
+        // This aggressively removes any existing estimated time entries to prevent duplication
         const cleanedNotes = cleanNotesOfTimeEntries(notes);
+        
+        // Debug logging
+        console.log('Notes after cleaning all time entries:', cleanedNotes);
         
         const taskData: { 
           title: string; 
@@ -1141,20 +1192,57 @@ const GoogleTasks: React.FC = () => {
         } = { 
           title,
           timezone: getUserTimezone(),
-          time_in_notes: true,
+          // Always set time_in_notes to false for updates to prevent backend from adding duplicates
+          time_in_notes: false,
           has_explicit_time: showEditTaskTimePicker && editTaskDueTime !== null
         };
         
-        // Add cleaned notes if not empty
-        if (cleanedNotes) {
-          taskData.notes = cleanedNotes;
-        } else {
-          taskData.notes = ''; // Send empty string to clear notes
+        // Check if we have time information
+        const hasTimeInfo = (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) || 
+                           (showEditTaskTimePicker && editTaskDueTime !== null);
+        
+        console.log('Has time info:', hasTimeInfo, {
+          estimatedMinutes: editTaskEstimatedMinutes,
+          dueTime: editTaskDueTime,
+          showTimePicker: showEditTaskTimePicker
+        });
+        
+        // Prepare notes with our own manually added time information
+        let finalNotes = cleanedNotes || '';
+        
+        // Manually add estimated time text if we have estimated minutes
+        if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
+          // Format the time display based on minutes
+          let timeText;
+          if (editTaskEstimatedMinutes >= 60) {
+            const hours = Math.floor(editTaskEstimatedMinutes / 60);
+            const minutes = editTaskEstimatedMinutes % 60;
+            
+            if (minutes === 0) {
+              timeText = `${hours}h`;
+            } else {
+              timeText = `${hours}h ${minutes}m`;
+            }
+          } else {
+            timeText = `${editTaskEstimatedMinutes}m`;
+          }
+          
+          // Add to notes
+          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
+          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes`);
         }
         
-        // Add estimated minutes if set
+        // Add the manual notes with our time information
+        taskData.notes = finalNotes;
+        
+        // Add estimated minutes if set - this will update the server-side value
         if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
           taskData.estimated_minutes = editTaskEstimatedMinutes;
+          console.log(`Setting estimated_minutes to ${editTaskEstimatedMinutes}`);
+        } else {
+          // If estimated time is cleared or not set, explicitly delete the property
+          delete taskData.estimated_minutes;
+          console.log('Deleting estimated_minutes property');
         }
         
         // Add due date if it exists
