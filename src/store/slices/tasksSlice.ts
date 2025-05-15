@@ -394,7 +394,7 @@ export const toggleTaskStar = createAsyncThunk(
 
 // Move task between lists
 export const moveTaskBetweenLists = createAsyncThunk(
-  'tasks/moveTask',
+  'tasks/moveTaskBetweenLists',
   async ({ 
     sourceTaskListId, 
     targetTaskListId, 
@@ -402,89 +402,60 @@ export const moveTaskBetweenLists = createAsyncThunk(
   }: { 
     sourceTaskListId: string; 
     targetTaskListId: string; 
-    taskId: string 
-  }, { getState, rejectWithValue, dispatch }) => {
+    taskId: string; 
+  }, { rejectWithValue, getState }) => {
     try {
-      // Log the operation
       console.log(`moveTaskBetweenLists: Moving task ${taskId} from ${sourceTaskListId} to ${targetTaskListId}`);
       
-      // Get current task data from state
+      // Get the current state to find the task being moved
       const state = getState() as { tasks: TasksState };
-      const sourceListIndex = state.tasks.taskLists.findIndex(
-        list => list.id === sourceTaskListId
-      );
+      const sourceList = state.tasks.taskLists.find(list => list.id === sourceTaskListId);
       
-      if (sourceListIndex === -1) {
-        console.error(`Source task list not found: ${sourceTaskListId}`);
+      if (!sourceList) {
+        console.error('Source task list not found for moving task');
         return rejectWithValue('Source task list not found');
       }
       
-      // Look first among incomplete tasks which are displayed in the UI
-      const incompleteTasks = state.tasks.taskLists[sourceListIndex].tasks.filter(
-        task => task.status !== 'completed'
-      );
-      let taskIndex = incompleteTasks.findIndex(task => task.id === taskId);
-      
-      // If not found among incomplete tasks, check all tasks
-      if (taskIndex === -1) {
-        taskIndex = state.tasks.taskLists[sourceListIndex].tasks.findIndex(
-          task => task.id === taskId
-        );
+      // Find the task in the source list
+      const taskToMove = sourceList.tasks.find(task => task.id === taskId);
+      if (!taskToMove) {
+        console.error('Task not found in source list for moving');
+        return rejectWithValue('Task not found in source list');
       }
       
-      if (taskIndex === -1) {
-        console.error(`Task not found in source list: ${taskId}`);
-        return rejectWithValue('Task not found');
-      }
-      
-      const currentTask = state.tasks.taskLists[sourceListIndex].tasks[taskIndex];
-      console.log(`Found task to move: "${currentTask.title}"`);
-      
-      // Extract ALL task data for the move
+      // Prepare complete task data for the move operation
       const taskData = {
-        title: currentTask.title,
-        status: currentTask.status,
-        notes: currentTask.notes,
-        due: currentTask.due,
-        estimated_minutes: currentTask.estimated_minutes,
-        starred: currentTask.starred || false,
-        actual_minutes: currentTask.actual_minutes
+        title: taskToMove.title,
+        status: taskToMove.status,
+        notes: taskToMove.notes || '',
+        due: taskToMove.due,
+        estimated_minutes: taskToMove.estimated_minutes,
+        starred: Boolean(taskToMove.starred || taskToMove.is_starred)
       };
       
-      // First, invalidate cache to ensure we don't get stale data after move
-      dispatch(invalidateCache());
+      console.log('Moving task with complete data:', taskData);
       
-      // Perform the move
-      console.log(`Calling moveGoogleTask API with data:`, taskData);
-      const movedTask = await moveGoogleTask(
-        sourceTaskListId,
-        targetTaskListId,
-        taskId,
-        taskData
-      );
+      // Call the service function with the task data
+      const newTask = await moveGoogleTask(sourceTaskListId, targetTaskListId, taskId, taskData);
       
-      if (!movedTask) {
-        console.error('moveGoogleTask returned null');
-        return rejectWithValue('Failed to move task');
+      if (!newTask) {
+        console.error('Failed to move task between lists');
+        return rejectWithValue('Failed to move task between lists');
       }
       
-      console.log(`Task moved successfully, new task ID: ${movedTask.id}`);
-      
-      // Return data for state update
+      // Return both the moved task and relevant IDs for state updates
       return {
         sourceTaskListId,
         targetTaskListId,
         oldTaskId: taskId,
         newTask: {
-          ...movedTask,
-          starred: currentTask.starred || false,
-          estimated_minutes: currentTask.estimated_minutes,
-          actual_minutes: currentTask.actual_minutes
-        } as EnhancedGoogleTask
+          ...newTask,
+          starred: newTask.is_starred || false
+        }
       };
     } catch (error) {
-      console.error('Error moving Google Task:', error);
-      return rejectWithValue('Failed to move task');
+      console.error('Error moving task between lists:', error);
+      return rejectWithValue('Error moving task between lists');
     }
   }
 );
@@ -835,14 +806,14 @@ const tasksSlice = createSlice({
     setCacheDuration: (state, action: PayloadAction<number>) => {
       state.cacheDuration = action.payload;
     },
-    setViewMode: (state, action: PayloadAction<'day' | 'week' | 'month' | 'all'>) => {
-      state.viewMode = action.payload;
+    setViewMode: (state, action: PayloadAction<{ viewMode: 'day' | 'week' | 'month' | 'all' }>) => {
+      state.viewMode = action.payload.viewMode;
     },
-    setTaskListVisibility: (state, action: PayloadAction<{taskListId: string; isVisible: boolean}>) => {
+    setTaskListVisibility: (state, action: PayloadAction<{ taskListId: string; isVisible?: boolean }>) => {
       const { taskListId, isVisible } = action.payload;
       const listIndex = state.taskLists.findIndex(list => list.id === taskListId);
       if (listIndex !== -1) {
-        state.taskLists[listIndex].isVisible = isVisible;
+        state.taskLists[listIndex].isVisible = isVisible !== undefined ? isVisible : !state.taskLists[listIndex].isVisible;
       }
     },
     filterTaskList: (state, action: PayloadAction<{ taskListId: string, filterOption: TaskListFilterOption }>) => {
@@ -891,6 +862,7 @@ const tasksSlice = createSlice({
       state.lastFetched = null;
       state.cachedStartDate = null;
       state.cachedEndDate = null;
+      console.log('Task cache invalidated, next fetch will bypass cache');
     }
   },
   extraReducers: (builder) => {
@@ -1024,51 +996,62 @@ const tasksSlice = createSlice({
       
       // Handle moveTask thunk
       .addCase(moveTaskBetweenLists.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        
         const { sourceTaskListId, targetTaskListId, oldTaskId, newTask } = action.payload;
         
-        // Remove from source list - make sure it's completely removed
+        // 1. Find the source list and remove the old task from it
         const sourceListIndex = state.taskLists.findIndex(list => list.id === sourceTaskListId);
         if (sourceListIndex !== -1) {
+          // Remove the old task from the source list
           state.taskLists[sourceListIndex].tasks = state.taskLists[sourceListIndex].tasks.filter(
             task => task.id !== oldTaskId
           );
+          console.log(`Removed task ${oldTaskId} from source list ${sourceTaskListId}`);
+        } else {
+          console.error(`Source task list ${sourceTaskListId} not found for removing old task`);
         }
         
-        // Add to target list if it's not already there
+        // 2. Find the target list and add the new task to it
         const targetListIndex = state.taskLists.findIndex(list => list.id === targetTaskListId);
         if (targetListIndex !== -1) {
-          // Check if the task already exists in the target list to avoid duplicates
-          const existingTaskIndex = state.taskLists[targetListIndex].tasks.findIndex(
-            task => task.id === newTask.id
+          // Make sure we're not adding a duplicate by checking task ID
+          if (!state.taskLists[targetListIndex].tasks.some(task => task.id === newTask.id)) {
+            // Add the new task to the target list
+            state.taskLists[targetListIndex].tasks.push(newTask);
+            console.log(`Added new task ${newTask.id} to target list ${targetTaskListId}`);
+          } else {
+            console.warn(`Task ${newTask.id} already exists in target list ${targetTaskListId}, skipping add`);
+          }
+        } else {
+          console.error(`Target task list ${targetTaskListId} not found for adding new task`);
+        }
+        
+        // 3. Update starred tasks list if the task was starred
+        if (newTask.starred || newTask.is_starred) {
+          // First remove any old version of this task from starred tasks
+          state.starredTasks = state.starredTasks.filter(task => 
+            !(task.id === oldTaskId && task.task_list_id === sourceTaskListId)
           );
           
-          if (existingTaskIndex === -1) {
-            state.taskLists[targetListIndex].tasks.push(newTask);
-          } else {
-            // Update the existing task
-            state.taskLists[targetListIndex].tasks[existingTaskIndex] = newTask;
-          }
+          // Then add the new version
+          state.starredTasks.push({
+            ...newTask,
+            task_list_id: targetTaskListId,
+            starred: true
+          });
+        } else {
+          // Remove from starred tasks if it was previously starred but isn't anymore
+          state.starredTasks = state.starredTasks.filter(task => 
+            !(task.id === oldTaskId && task.task_list_id === sourceTaskListId)
+          );
         }
-        
-        // Update starred tasks if necessary - ensure old task is completely removed
-        state.starredTasks = state.starredTasks.filter(task => task.id !== oldTaskId);
-        
-        if (newTask.starred) {
-          // Check if the new task already exists in starred tasks
-          const starredIndex = state.starredTasks.findIndex(task => task.id === newTask.id);
-          if (starredIndex === -1) {
-            state.starredTasks.push(newTask);
-          } else {
-            // Update the existing starred task
-            state.starredTasks[starredIndex] = newTask;
-          }
-        }
-        
-        // Update the lastFetched timestamp to indicate we've just updated the data
-        state.lastFetched = Date.now();
       })
       .addCase(moveTaskBetweenLists.rejected, (state, action) => {
-        state.error = action.payload as string;
+        state.loading = false;
+        state.error = action.payload as string || 'Failed to move task between lists';
+        console.error('Task move failed:', state.error);
       })
       
       // Handle createTaskList thunk

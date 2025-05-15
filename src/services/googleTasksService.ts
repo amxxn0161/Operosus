@@ -13,9 +13,11 @@ export interface GoogleTask {
   updated?: string;
   selfLink?: string;
   is_starred?: boolean;
+  starred?: boolean; // Alternative property used in some contexts
   task_list_id?: string;
   task_list_title?: string;
   has_explicit_time?: boolean;
+  estimated_minutes?: number; // Add this property for time estimation
   gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
   has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
 }
@@ -183,12 +185,6 @@ export const moveGoogleTask = async (
   }
 ): Promise<GoogleTask | null> => {
   try {
-    // Check if we have the task data needed to create a copy
-    if (!taskData || !taskData.title) {
-      console.error('Cannot move task: missing task data');
-      return null;
-    }
-    
     // Sanitize the task ID
     const sanitizedTaskId = sanitizeTaskId(taskId);
     if (!sanitizedTaskId) {
@@ -200,158 +196,106 @@ export const moveGoogleTask = async (
       originalTaskId: taskId,
       sanitizedTaskId,
       sourceTaskListId,
-      targetTaskListId,
-      taskData
+      targetTaskListId
     });
     
+    // If we don't have explicit task data, get it from the API
+    let dataToUse = taskData;
+    if (!dataToUse) {
+      try {
+        // Get task details from API if not provided
+        const taskResponse = await apiRequest<{ status: string; task: GoogleTask }>(`/api/google/tasklists/${sourceTaskListId}/tasks/${sanitizedTaskId}`, {
+          method: 'GET'
+        });
+        
+        if (taskResponse.status === 'success' && taskResponse.task) {
+          console.log('Retrieved task data for move:', taskResponse.task.title);
+          dataToUse = {
+            title: taskResponse.task.title,
+            status: taskResponse.task.status,
+            notes: taskResponse.task.notes,
+            due: taskResponse.task.due,
+            estimated_minutes: taskResponse.task.estimated_minutes,
+            starred: taskResponse.task.is_starred
+          };
+        } else {
+          console.error('Failed to retrieve task data for move');
+          return null;
+        }
+      } catch (fetchError) {
+        console.error('Error fetching task data for move:', fetchError);
+        return null;
+      }
+    }
+    
+    if (!dataToUse || !dataToUse.title) {
+      console.error('Cannot move task: missing required task data');
+      return null;
+    }
+    
     // Step 1: Create a new task with the same data in the target list
+    // Use all available task data to ensure a complete copy
     const createBody = {
-      title: taskData.title,
-      status: taskData.status,
-      notes: taskData.notes || '',
-      due: taskData.due,
-      estimated_minutes: taskData.estimated_minutes
+      title: dataToUse.title,
+      status: dataToUse.status,
+      notes: dataToUse.notes || '',
+      due: dataToUse.due,
+      estimated_minutes: dataToUse.estimated_minutes
     };
     
     console.log('Creating task in target list with data:', createBody);
     
     let newTask: GoogleTask | null = null;
-    let taskCreated = false;
-    let creationAttempts = 0;
-    const MAX_ATTEMPTS = 2;
+    let deleteSucceeded = false;
     
-    // Try creating the task up to MAX_ATTEMPTS times
-    while (!taskCreated && creationAttempts < MAX_ATTEMPTS) {
-      creationAttempts++;
-      
-      try {
-        console.log(`Creating task attempt ${creationAttempts}/${MAX_ATTEMPTS}`);
-        const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(
-          `/api/google/tasklists/${targetTaskListId}/tasks`, 
-          {
-            method: 'POST',
-            body: createBody
-          }
-        );
-        
-        console.log('Response from create task API:', newTaskResponse);
-        
-        // Check for both response formats for the new task
-        if (newTaskResponse.status === 'success') {
-          if (newTaskResponse.task) {
-            newTask = newTaskResponse.task;
-            taskCreated = true;
-            console.log('Task created successfully (direct format):', newTask);
-          } else if (newTaskResponse.data && newTaskResponse.data.task) {
-            newTask = newTaskResponse.data.task;
-            taskCreated = true;
-            console.log('Task created successfully (nested format):', newTask);
-          } else {
-            console.warn('Task creation successful but unexpected response format:', newTaskResponse);
-          }
-        } else {
-          console.error(`Failed to create task in target list (attempt ${creationAttempts}/${MAX_ATTEMPTS}):`, newTaskResponse);
-          
-          // Add a small delay before retry
-          if (creationAttempts < MAX_ATTEMPTS) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      } catch (createError) {
-        console.error(`Error creating task in target list (attempt ${creationAttempts}/${MAX_ATTEMPTS}):`, createError);
-        
-        // Add a small delay before retry
-        if (creationAttempts < MAX_ATTEMPTS) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    }
-    
-    // If we couldn't create the task after all attempts, fail the operation
-    if (!newTask) {
-      console.error('All attempts to create task in target list failed');
-      return null;
-    }
-    
-    // Step 2: Apply star status if needed
-    if (taskData.starred && newTask) {
-      let starApplied = false;
-      let starAttempts = 0;
-      const MAX_STAR_ATTEMPTS = 2;
-      
-      while (!starApplied && starAttempts < MAX_STAR_ATTEMPTS) {
-        starAttempts++;
-        
-        try {
-          console.log(`Setting star status on new task (attempt ${starAttempts}/${MAX_STAR_ATTEMPTS})`);
-          const starResponse = await toggleTaskStar(targetTaskListId, newTask.id);
-          
-          if (starResponse && starResponse.is_starred) {
-            console.log('Star status applied successfully');
-            starApplied = true;
-          } else {
-            console.warn(`Failed to apply star status (attempt ${starAttempts}/${MAX_STAR_ATTEMPTS})`);
-            
-            // Add a small delay before retry
-            if (starAttempts < MAX_STAR_ATTEMPTS) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-        } catch (starError) {
-          console.warn(`Error applying star status (attempt ${starAttempts}/${MAX_STAR_ATTEMPTS}):`, starError);
-          
-          // Add a small delay before retry
-          if (starAttempts < MAX_STAR_ATTEMPTS) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      
-      if (!starApplied) {
-        console.warn('Could not apply star status after all attempts, continuing with task move');
-      }
-    }
-    
-    // Verify the task was created successfully by fetching the task list
     try {
-      console.log('Verifying task was created in target list');
-      const verifyResponse = await apiRequest<{ status: string; data: { taskList: GoogleTaskList } }>(
-        `/api/google/tasklists/${targetTaskListId}?showCompleted=true&showHidden=true`,
-        { method: 'GET' }
+      // Create new task in destination list
+      const newTaskResponse = await apiRequest<{ status: string; task?: GoogleTask; data?: { task: GoogleTask } }>(
+        `/api/google/tasklists/${targetTaskListId}/tasks`, 
+        {
+          method: 'POST',
+          body: createBody
+        }
       );
       
-      if (verifyResponse.status === 'success' && verifyResponse.data && verifyResponse.data.taskList) {
-        const taskList = verifyResponse.data.taskList;
-        const taskExists = taskList.tasks.some(t => 
-          t.id === newTask?.id || 
-          (t.title === taskData.title && (!t.due && !taskData.due || t.due === taskData.due))
-        );
-        
-        if (taskExists) {
-          console.log('Task verified to exist in target list');
+      console.log('Response from create task API:', newTaskResponse);
+      
+      // Check for both response formats for the new task
+      if (newTaskResponse.status === 'success') {
+        if (newTaskResponse.task) {
+          newTask = newTaskResponse.task;
+          console.log('Task created successfully (direct format):', newTask);
+        } else if (newTaskResponse.data && newTaskResponse.data.task) {
+          newTask = newTaskResponse.data.task;
+          console.log('Task created successfully (nested format):', newTask);
         } else {
-          console.warn('Task creation appeared to succeed but task not found in target list');
-          // Continue anyway, as the task might still have been created
+          console.warn('Task creation successful but unexpected response format:', newTaskResponse);
+          return null;
         }
       } else {
-        console.warn('Could not verify task creation due to API response format');
+        console.error('Failed to create task in target list:', newTaskResponse);
+        return null;
       }
-    } catch (verifyError) {
-      console.warn('Error verifying task creation:', verifyError);
-      // Continue anyway, as the verification step is just an extra check
-    }
-    
-    // Step 3: Delete the original task ONLY if the new task was created successfully
-    if (newTask) {
-      let deleteSuccess = false;
-      let deleteAttempts = 0;
-      const MAX_DELETE_ATTEMPTS = 2;
       
-      while (!deleteSuccess && deleteAttempts < MAX_DELETE_ATTEMPTS) {
-        deleteAttempts++;
-        
+      // Step 2: Apply star status if needed - BEFORE deleting original task
+      if (dataToUse.starred && newTask) {
         try {
-          console.log(`Deleting original task ${sanitizedTaskId} from list ${sourceTaskListId} (attempt ${deleteAttempts}/${MAX_DELETE_ATTEMPTS})`);
+          console.log('Setting star status on new task');
+          await apiRequest<any>(`/api/google/tasklists/${targetTaskListId}/tasks/${newTask.id}/star`, {
+            method: 'POST'
+          });
+          // Add the starred status to our new task object for return value
+          newTask.is_starred = true;
+        } catch (starError) {
+          console.warn('Created task but failed to star it:', starError);
+          // Continue even if starring fails - the task was still created
+        }
+      }
+      
+      // Step 3: Only delete the original task if we CONFIRMED the new task was created
+      if (newTask && newTask.id) {
+        try {
+          console.log(`Deleting original task ${sanitizedTaskId} from list ${sourceTaskListId}`);
           const deleteResponse = await apiRequest<{ status: string }>(
             `/api/google/tasklists/${sourceTaskListId}/tasks/${sanitizedTaskId}`, 
             { method: 'DELETE' }
@@ -359,33 +303,24 @@ export const moveGoogleTask = async (
           
           if (deleteResponse.status === 'success') {
             console.log('Original task deleted successfully');
-            deleteSuccess = true;
+            deleteSucceeded = true;
           } else {
-            console.warn(`Failed to delete original task (attempt ${deleteAttempts}/${MAX_DELETE_ATTEMPTS}):`, deleteResponse);
-            
-            // Add a small delay before retry
-            if (deleteAttempts < MAX_DELETE_ATTEMPTS) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+            console.warn('Created new task, but failed to delete original task:', deleteResponse);
+            // Continue with the move even if deletion fails - we can clean up duplicates later
           }
         } catch (deleteError) {
-          console.error(`Error deleting original task (attempt ${deleteAttempts}/${MAX_DELETE_ATTEMPTS}):`, deleteError);
-          
-          // Add a small delay before retry
-          if (deleteAttempts < MAX_DELETE_ATTEMPTS) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
+          console.error('Error deleting original task:', deleteError);
+          // Continue with the move even if deletion fails - the new task is still valid
         }
+        
+        // Return the new task, whether or not we succeeded in deleting the original
+        return newTask;
+      } else {
+        console.error('New task object is invalid after creation');
+        return null;
       }
-      
-      if (!deleteSuccess) {
-        console.warn('Could not delete original task after all attempts. Task will appear in both lists.');
-      }
-      
-      // Return the new task regardless of whether deletion succeeded
-      return newTask;
-    } else {
-      console.error('New task was not created successfully, aborting move operation');
+    } catch (error) {
+      console.error('Error in moveGoogleTask process:', error);
       return null;
     }
   } catch (error) {

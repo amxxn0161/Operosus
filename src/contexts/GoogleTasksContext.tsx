@@ -158,91 +158,7 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
       
       console.log(`Found task to move: "${task.title}"`);
       
-      // IMPORTANT: We'll try the manual approach FIRST as it's more reliable
-      // Try to manually create task in target list and delete from source
-      try {
-        // Prepare task data with essential properties
-        const taskData = {
-          title: task.title,
-          notes: task.notes || '',
-          due: task.due,
-          estimated_minutes: task.estimated_minutes,
-          parent: task.parent,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          // Add other essential properties
-          status: task.status
-        };
-        
-        console.log('Creating task in destination list with data:', taskData);
-        
-        // Step 1: Create task in target list
-        const createResponse = await dispatch(createTaskAction({ 
-          taskListId: targetTaskListId, 
-          taskData 
-        }));
-        
-        // Step 2: Verify the task was created successfully
-        if (createTaskAction.fulfilled.match(createResponse) && createResponse.payload && createResponse.payload.task) {
-          console.log('Successfully created new task in destination list:', createResponse.payload.task);
-          
-          // Step 3: Apply star status if needed
-          if (task.starred) {
-            try {
-              console.log('Setting star status on new task');
-              await dispatch(toggleTaskStarAction({ 
-                taskListId: targetTaskListId, 
-                taskId: createResponse.payload.task.id 
-              }));
-            } catch (starError) {
-              console.warn('Created task but failed to star it:', starError);
-              // Continue even if starring fails
-            }
-          }
-          
-          // Step 4: Only delete the original after verifying new one exists
-          try {
-            console.log('Deleting original task from source list:', { taskListId: sourceTaskListId, taskId });
-            
-            // Double-check the destination list has the task before deleting
-            await refreshTaskLists({ forceRefresh: true });
-            
-            // Get the updated task lists
-            const destList = taskLists.find(list => list.id === targetTaskListId);
-            const newTaskExists = destList?.tasks.some(t => 
-              t.title === taskData.title && 
-              (!t.due && !taskData.due || t.due === taskData.due)
-            );
-            
-            if (newTaskExists) {
-              // Delete the original task
-              await dispatch(deleteTaskAction({ 
-                taskListId: sourceTaskListId, 
-                taskId 
-              }));
-              console.log('Successfully deleted original task');
-            } else {
-              console.error('Created task not found in destination list after refresh. Aborting deletion of original task.');
-              // Don't delete the original if we can't verify the new one exists
-            }
-          } catch (deleteError) {
-            console.error('Error deleting original task:', deleteError);
-            // Task was created but deletion failed
-            // This is still a success since the task was moved
-          }
-          
-          // Final refresh to ensure consistent state
-          await refreshTaskLists({ forceRefresh: true });
-          
-          return createResponse.payload.task;
-        } else {
-          console.error('Failed to create task in destination list, aborting move operation');
-        }
-      } catch (manualMoveError) {
-        console.error('Manual move approach failed:', manualMoveError);
-      }
-      
-      // Fallback to standard Redux action if the manual approach fails
-      console.log('Falling back to standard moveTaskBetweenLists action');
+      // Dispatch the action with full task data
       const resultAction = await dispatch(
         moveTaskBetweenLists({ 
           sourceTaskListId, 
@@ -252,12 +168,10 @@ export const GoogleTasksProvider: React.FC<GoogleTasksProviderProps> = ({ childr
       );
       
       if (moveTaskBetweenLists.fulfilled.match(resultAction)) {
-        // Force refresh to ensure consistent state
-        await refreshTaskLists({ forceRefresh: true });
         return resultAction.payload.newTask;
       }
       
-      console.error('All move approaches failed');
+      console.error('moveTaskBetweenLists action did not fulfill successfully');
       return null;
     } catch (err) {
       console.error('Error moving Google Task:', err);
