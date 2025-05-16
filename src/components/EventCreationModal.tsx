@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -32,7 +32,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import LinkIcon from '@mui/icons-material/Link';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import { CalendarEvent } from '../services/calendarService';
 import { useCalendar } from '../contexts/CalendarContext';
 import { useGoogleTasks } from '../contexts/GoogleTasksContext';
@@ -62,6 +62,52 @@ interface EventCreationModalProps {
   selectedDate: Date;
   selectedTime?: { hour: number; minute: number };
 }
+
+// Helper function to check if a date is overdue (in the past, excluding today)
+const isOverdue = (dateString?: string | null): boolean => {
+  if (!dateString) return false;
+  
+  try {
+    const dueDate = parseISO(dateString);
+    if (!isValid(dueDate)) return false;
+    
+    // Get today's date at start of day for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get the due date at start of day
+    const dueDateStart = new Date(dueDate);
+    dueDateStart.setHours(0, 0, 0, 0);
+    
+    // Check if the due date is before today (truly overdue)
+    return dueDateStart < today;
+  } catch (e) {
+    return false;
+  }
+};
+
+// Helper function to check if a date is due today
+const isDueToday = (dateString?: string | null): boolean => {
+  if (!dateString) return false;
+  
+  try {
+    const dueDate = parseISO(dateString);
+    if (!isValid(dueDate)) return false;
+    
+    // Get today's date at start of day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get due date at start of day
+    const dueDateStart = new Date(dueDate);
+    dueDateStart.setHours(0, 0, 0, 0);
+    
+    // Check if due date is today
+    return dueDateStart.getTime() === today.getTime();
+  } catch (e) {
+    return false;
+  }
+};
 
 const EventCreationModal: React.FC<EventCreationModalProps> = ({
   open,
@@ -944,8 +990,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                           secondary={
                             task.due ? 
                               <Box component="span" sx={{ 
-                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
-                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                                color: isOverdue(task.due) 
+                                  ? 'error.main' 
+                                  : isDueToday(task.due)
+                                  ? 'warning.main'
+                                  : 'text.secondary',
+                                fontWeight: (isOverdue(task.due) || isDueToday(task.due)) ? 500 : 400,
                               }}>
                                 {new Date(task.due).toLocaleDateString('en-US', {
                                   month: 'short',
@@ -959,7 +1009,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     hour12: true
                                   })
                                 }
-                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                                {isOverdue(task.due) 
+                                  ? ' (Overdue)' 
+                                  : isDueToday(task.due) 
+                                  ? ' (Due)' 
+                                  : ''}
                               </Box>
                             : null
                           }
@@ -1179,8 +1233,12 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                           secondary={
                             task.due ? 
                               <Box component="span" sx={{ 
-                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
-                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                                color: isOverdue(task.due) 
+                                  ? 'error.main' 
+                                  : isDueToday(task.due)
+                                  ? 'warning.main'
+                                  : 'text.secondary',
+                                fontWeight: (isOverdue(task.due) || isDueToday(task.due)) ? 500 : 400,
                               }}>
                                 {new Date(task.due).toLocaleDateString('en-US', {
                                   month: 'short',
@@ -1194,7 +1252,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
                                     hour12: true
                                   })
                                 }
-                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                                {isOverdue(task.due) 
+                                  ? ' (Overdue)' 
+                                  : isDueToday(task.due) 
+                                  ? ' (Due)' 
+                                  : ''}
                               </Box>
                             : null
                           }
