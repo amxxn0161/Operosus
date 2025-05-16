@@ -86,7 +86,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 // import AIAssistant from '../components/AIAssistant';
 // import { useAIAssistant } from '../contexts/AIAssistantContext';
 import { useAppDispatch } from '../store/hooks';
-import { invalidateCache } from '../store/slices/tasksSlice';
+import { invalidateCache, optimisticUpdateLists } from '../store/slices/tasksSlice';
 
 // Import the proper AIAssistant component and context
 import { useAIAssistant } from '../contexts/AIAssistantContext';
@@ -381,27 +381,8 @@ const GoogleTasks: React.FC = () => {
         // Prepare notes with our own manually added time information
         let finalNotes = cleanedNotes || '';
         
-        // Manually add estimated time text if we have estimated minutes
-        if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
-          // Format the time display based on minutes
-          let timeText;
-          if (newTaskEstimatedMinutes >= 60) {
-            const hours = Math.floor(newTaskEstimatedMinutes / 60);
-            const minutes = newTaskEstimatedMinutes % 60;
-            
-            if (minutes === 0) {
-              timeText = `${hours}h`;
-            } else {
-              timeText = `${hours}h ${minutes}m`;
-            }
-          } else {
-            timeText = `${newTaskEstimatedMinutes}m`;
-          }
-          
-          // Add to notes
-          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
-          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes for new task`);
-        }
+        // Don't manually add estimated time to notes since it's stored in estimated_minutes field
+        // Instead, we'll just use the estimated_minutes field directly
         
         // Add the manual notes with our time information
         taskData.notes = finalNotes;
@@ -434,11 +415,37 @@ const GoogleTasks: React.FC = () => {
           taskData.due = dueString;
         }
         
+        // We'll apply the same localStorage approach for task creation
+        // We'll store the estimated time so it can be displayed immediately
+        const updateEstimatedTimeForNewTask = () => {
+          // We'll handle the localStorage update in the result handler since we need the newly created task ID
+        };
+        
         setIsRefreshing(true);
         const createdTask = await createTask(newTaskListId, taskData);
         setIsRefreshing(false);
         
         if (createdTask) {
+          // Store estimated time in localStorage for immediate display
+          if (taskData.estimated_minutes) {
+            try {
+              localStorage.setItem(`task_${createdTask.id}_estimated_minutes`, String(taskData.estimated_minutes));
+              
+              // Format for display
+              let displayTime = '';
+              if (taskData.estimated_minutes >= 60) {
+                const hours = Math.floor(taskData.estimated_minutes / 60);
+                const minutes = taskData.estimated_minutes % 60;
+                displayTime = minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+              } else {
+                displayTime = `${taskData.estimated_minutes}m`;
+              }
+              localStorage.setItem(`task_${createdTask.id}_estimated_display`, displayTime);
+            } catch (e) {
+              console.error('Failed to store estimated time in localStorage', e);
+            }
+          }
+          
           // Reset fields
           setNewTaskTitle('');
           setNewTaskNotes('');
@@ -451,8 +458,12 @@ const GoogleTasks: React.FC = () => {
           // Show success message
           showSnackbar('Task created successfully', 'success');
           
-          // Refresh the list
-          await refreshTaskLists();
+          // Refresh in the background to ensure data consistency
+          refreshTaskLists();
+        } else {
+          showSnackbar('Failed to create task', 'error');
+          // Refresh to clean up the optimistic update
+          refreshTaskLists();
         }
       } catch (error) {
         console.error('Error creating task:', error);
@@ -1276,27 +1287,8 @@ const GoogleTasks: React.FC = () => {
         // Prepare notes with our own manually added time information
         let finalNotes = cleanedNotes || '';
         
-        // Manually add estimated time text if we have estimated minutes
-        if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
-          // Format the time display based on minutes
-          let timeText;
-          if (editTaskEstimatedMinutes >= 60) {
-            const hours = Math.floor(editTaskEstimatedMinutes / 60);
-            const minutes = editTaskEstimatedMinutes % 60;
-            
-            if (minutes === 0) {
-              timeText = `${hours}h`;
-            } else {
-              timeText = `${hours}h ${minutes}m`;
-            }
-          } else {
-            timeText = `${editTaskEstimatedMinutes}m`;
-          }
-          
-          // Add to notes
-          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
-          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes`);
-        }
+        // Don't manually add estimated time to notes since it's stored in estimated_minutes field
+        // Instead, we'll just use the estimated_minutes field directly
         
         // Add the manual notes with our time information
         taskData.notes = finalNotes;
@@ -1337,6 +1329,44 @@ const GoogleTasks: React.FC = () => {
           delete taskData.due;
         }
         
+        // We'll use an inline function to update the UI directly instead of optimistic updates
+        const updateEstimatedTimeUIDirectly = () => {
+          // Access the estimated time directly from the state
+          const estimatedMinutes = editTaskEstimatedMinutes;
+          const taskId = editingTask.taskId;
+          
+          // Store the value we're setting in localStorage for immediate UI rendering
+          if (estimatedMinutes !== null && estimatedMinutes > 0) {
+            try {
+              localStorage.setItem(`task_${taskId}_estimated_minutes`, String(estimatedMinutes));
+              
+              // Format for display
+              let displayTime = '';
+              if (estimatedMinutes >= 60) {
+                const hours = Math.floor(estimatedMinutes / 60);
+                const minutes = estimatedMinutes % 60;
+                displayTime = minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+              } else {
+                displayTime = `${estimatedMinutes}m`;
+              }
+              localStorage.setItem(`task_${taskId}_estimated_display`, displayTime);
+            } catch (e) {
+              console.error('Failed to store estimated time in localStorage', e);
+            }
+          } else {
+            // Clear it
+            try {
+              localStorage.removeItem(`task_${taskId}_estimated_minutes`);
+              localStorage.removeItem(`task_${taskId}_estimated_display`);
+            } catch (e) {
+              console.error('Failed to clear estimated time from localStorage', e);
+            }
+          }
+        };
+        
+        // Call the function to update estimated time UI
+        updateEstimatedTimeUIDirectly();
+        
         setIsRefreshing(true);
         const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
         setIsRefreshing(false);
@@ -1344,8 +1374,14 @@ const GoogleTasks: React.FC = () => {
         if (result) {
           setEditTaskDialogOpen(false);
           showSnackbar('Task updated successfully', 'success');
+          
+          // Still refresh lists in the background to ensure data consistency
+          refreshTaskLists();
         } else {
           showSnackbar('Failed to update task', 'error');
+          
+          // Refresh to revert optimistic update on failure
+          refreshTaskLists();
         }
       } catch (err) {
         showSnackbar('Error updating task', 'error');
@@ -2931,6 +2967,42 @@ const GoogleTasks: React.FC = () => {
                                               }}
                                             >
                                               {task.notes}
+                                            </Typography>
+                                          )}
+                                          
+                                          {/* Show estimated time if available - with localStorage check for immediate updates */}
+                                          {(task.estimated_minutes || localStorage.getItem(`task_${task.id}_estimated_minutes`)) && (
+                                            <Typography 
+                                              variant="caption" 
+                                              component="div"
+                                              className="estimated-time-container"
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 500,
+                                                mt: 0.5
+                                              }}
+                                            >
+                                              <AccessTimeIcon 
+                                                fontSize="inherit" 
+                                                sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                              />
+                                              <span className="estimated-time">
+                                                {(() => {
+                                                  const localValue = localStorage.getItem(`task_${task.id}_estimated_display`);
+                                                  if (localValue) {
+                                                    return `Estimated: ${localValue}`;
+                                                  } else if (task.estimated_minutes) {
+                                                    return task.estimated_minutes >= 60
+                                                      ? `Estimated: ${Math.floor(task.estimated_minutes / 60)}h${task.estimated_minutes % 60 ? ` ${task.estimated_minutes % 60}m` : ''}`
+                                                      : `Estimated: ${task.estimated_minutes}m`;
+                                                  }
+                                                  return '';
+                                                })()}
+                                              </span>
                                             </Typography>
                                           )}
                                         </>

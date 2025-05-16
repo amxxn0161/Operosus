@@ -863,6 +863,13 @@ const tasksSlice = createSlice({
       state.cachedStartDate = null;
       state.cachedEndDate = null;
       console.log('Task cache invalidated, next fetch will bypass cache');
+    },
+    optimisticUpdateLists: (state, action: PayloadAction<(lists: EnhancedGoogleTaskList[]) => EnhancedGoogleTaskList[]>) => {
+      // Apply the transform function to our task lists
+      state.taskLists = action.payload(state.taskLists);
+      
+      // Update starred tasks
+      state.starredTasks = extractStarredTasks(state.taskLists);
     }
   },
   extraReducers: (builder) => {
@@ -1215,7 +1222,8 @@ export const {
   setViewMode, 
   setTaskListVisibility,
   filterTaskList,
-  invalidateCache
+  invalidateCache,
+  optimisticUpdateLists
 } = tasksSlice.actions;
 
 export default tasksSlice.reducer; 
