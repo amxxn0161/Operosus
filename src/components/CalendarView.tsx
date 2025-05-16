@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Paper, 
   Box, 
@@ -15,7 +15,11 @@ import {
   styled,
   Chip,
   Divider,
-  Badge
+  Badge,
+  Popover,
+  List,
+  ListItem,
+  ListItemText
 } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -24,6 +28,7 @@ import TodayIcon from '@mui/icons-material/Today';
 import SyncIcon from '@mui/icons-material/Sync';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import CloseIcon from '@mui/icons-material/Close';
 import { useCalendar } from '../contexts/CalendarContext';
 import { CalendarEvent, getCalendarEventById } from '../services/calendarService';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isWithinInterval, addDays } from 'date-fns';
@@ -31,6 +36,7 @@ import EventCreationModal from './EventCreationModal';
 import EventDetailsPopup from './EventDetailsPopup';
 import TaskDetailsPopup from './TaskDetailsPopup';
 import TaskListPopup from './TaskListPopup';
+import CalendarTaskItem from './CalendarTaskItem';
 import { 
   AccessTime as AccessTimeIcon, 
   People as PeopleIcon,
@@ -44,6 +50,8 @@ import {
   Edit as EditIcon,
   AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
+import { useGoogleTasks } from '../contexts/GoogleTasksContext';
+import { sanitizeTaskId } from '../services/googleTasksService';
 
 // Styled components for the calendar
 const EventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => ({
@@ -73,18 +81,16 @@ const MonthEventCard = styled(Box)<{ bgcolor: string }>(({ theme, bgcolor }) => 
   transition: 'all 0.2s ease',
   display: 'flex',
   alignItems: 'center',
+  border: '1px solid rgba(255,255,255,0.3)',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.05)', // Enhanced shadow
   '&:hover': {
     filter: 'brightness(0.95)',
-    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-    transform: 'scale(1.01)',
-    zIndex: 100
-  },
-  '&:active, &:focus': {
-    zIndex: 100
+    boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)', // Deeper shadow on hover
+    transform: 'translateY(-1px)' // Slight lift effect
   }
 }));
 
-// Update the WeekEventCard styled component to remove hover effects that affect z-index
+// Update the WeekEventCard styled component to ensure consistent styling for both day and week views
 const WeekEventCard = styled(Box, {
   shouldForwardProp: (prop) => 
     prop !== 'bgcolor' && 
@@ -99,9 +105,9 @@ const WeekEventCard = styled(Box, {
   width: string;
   left: string;
 }>(({ theme, bgcolor, top, height, width, left }) => ({
-  backgroundColor: bgcolor,
-  borderRadius: theme.shape.borderRadius,
-  padding: '4px 6px', // Maintain padding
+  backgroundColor: 'white', // White background for Outlook style
+  borderRadius: '4px', // Slightly increased from 3px
+  padding: '5px 8px',
   cursor: 'pointer',
   overflow: 'hidden',
   position: 'absolute',
@@ -109,17 +115,22 @@ const WeekEventCard = styled(Box, {
   height: `${height}px`,
   width: width,
   left: left,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-  transition: 'box-shadow 0.2s ease, transform 0.2s ease', // Remove z-index from transition
-  transformOrigin: 'center center',
-  zIndex: 1, // Base z-index
+  boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)', // Enhanced shadow for depth
+  transition: 'box-shadow 0.2s ease, filter 0.2s ease, transform 0.1s ease',
+  zIndex: 1,
   display: 'flex',
   flexDirection: 'column',
-  border: '1px solid rgba(0,0,0,0.05)',
+  justifyContent: 'center',
+  borderLeft: `4px solid ${bgcolor}`,
+  borderTop: '1px solid rgba(0,0,0,0.07)',
+  borderRight: '1px solid rgba(0,0,0,0.07)',
+  borderBottom: '1px solid rgba(0,0,0,0.07)',
+  minHeight: height < 50 ? 'auto' : '30px',
+  color: '#333', // Dark text color
   '&:hover': {
-    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-    filter: 'brightness(1.03)'
-    // Removed transform and z-index changes
+    boxShadow: '0 4px 8px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)', // Deeper shadow on hover
+    filter: 'brightness(1.02)',
+    transform: 'translateY(-1px)' // Slight lift effect on hover
   }
 }));
 
@@ -281,13 +292,15 @@ interface CalendarViewProps {
   onEventClick?: (event: CalendarEvent) => void;
   onAddEvent?: () => void;
   containerWidth?: number;
+  hideHeader?: boolean; // Add this prop to optionally hide the header
 }
 
 // Update the component to use containerWidth
 const CalendarView: React.FC<CalendarViewProps> = ({ 
   onEventClick, 
   onAddEvent,
-  containerWidth = 0
+  containerWidth = 0,
+  hideHeader = false // Default to showing the header
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -309,6 +322,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     refreshCalendarData,
     removeEvent
   } = useCalendar();
+  
+  // Get the deleteTask function from GoogleTasksContext at the component level
+  const { deleteTask } = useGoogleTasks();
   
   // Loading state is only from calendar
   const isLoading = calendarLoading;
@@ -338,6 +354,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // State for task list popup (multiple tasks)
   const [tasksForDay, setTasksForDay] = useState<CalendarEvent[]>([]);
   const [taskListPopupAnchorEl, setTaskListPopupAnchorEl] = useState<HTMLElement | null>(null);
+  
+  // State for day events popup
+  const [dayEventsForPopup, setDayEventsForPopup] = useState<CalendarEvent[]>([]);
+  const [dayDateForPopup, setDayDateForPopup] = useState<Date | null>(null);
+  const [dayEventsPopupAnchorEl, setDayEventsPopupAnchorEl] = useState<HTMLElement | null>(null);
+  
+  // Add a state variable to track if navigation is being performed manually or through interaction
+  // Add this near the other state variables (around line 350)
+  const [isManualNavigation, setIsManualNavigation] = useState(false);
+  
+  // Add a new state variable for showing out-of-range events
+  // Add this near the other state variables around line 350
+  const [showOutOfRangeEvents, setShowOutOfRangeEvents] = useState(false);
   
   // Debug logging
   useEffect(() => {
@@ -578,6 +607,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to today
   const goToToday = () => {
     console.log('Navigating to today');
+    setIsManualNavigation(true);
     const today = new Date();
     setSelectedDate(today);
   };
@@ -585,6 +615,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to previous period
   const goToPrevious = () => {
     console.log('Navigating to previous period');
+    setIsManualNavigation(true);
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() - 1);
@@ -599,6 +630,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Function to navigate to next period
   const goToNext = () => {
     console.log('Navigating to next period');
+    setIsManualNavigation(true);
     const newDate = new Date(selectedDate);
     if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() + 1);
@@ -611,7 +643,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   // Function to handle view mode change
-  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | 'all' | null) => {
+  const handleViewModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'day' | 'week' | 'month' | null) => {
     if (newMode !== null && newMode !== viewMode) {
       console.log(`Changing view mode from ${viewMode} to ${newMode}`);
       setViewMode(newMode);
@@ -732,7 +764,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     return (hours * 60 + minutes) * (HOUR_HEIGHT / 60);
   };
 
-  // Update the calculateEventPositions function for better handling of overlaps
+  // Improved function to calculate event positions for a list-like display without overlaps
   const calculateEventPositions = (events: CalendarEvent[]): {
     event: CalendarEvent;
     column: number;
@@ -741,10 +773,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     left: string;
     zIndex?: number;
     isNested?: boolean;
+    verticalAdjustment?: number;
   }[] => {
     if (events.length === 0) return [];
     
-    // Define event type priorities (higher number = higher priority)
+    // Define event type priorities for z-index layering
     const eventTypePriority: Record<string, number> = {
       'standup': 5,
       'meeting': 4,
@@ -757,266 +790,109 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       'default': 2
     };
     
-    // Step 1: Sort events by start time, then by priority type
+    // Sort events by start time first
     const sortedEvents = [...events].sort((a, b) => {
-      // First sort by start time
       const aStart = new Date(a.start).getTime();
       const bStart = new Date(b.start).getTime();
-      if (aStart !== bStart) return aStart - bStart;
       
-      // If same start time, sort by event type priority
-      const aType = a.title ? extractEventType(a.title.toLowerCase()) : 'default';
-      const bType = b.title ? extractEventType(b.title.toLowerCase()) : 'default';
-      const aPriority = eventTypePriority[aType] || 2;
-      const bPriority = eventTypePriority[bType] || 2;
+      // If start times are equal, sort by end time (longer events first)
+      if (aStart === bStart) {
+        const aEnd = new Date(a.end).getTime();
+        const bEnd = new Date(b.end).getTime();
+        return bEnd - aEnd; // Longer events first
+      }
       
-      return bPriority - aPriority; // Higher priority comes first
+      return aStart - bStart; // Earlier events first
     });
     
-    // Step 2: Group events that overlap with each other
-    interface EventGroup {
-      events: CalendarEvent[];
-      startTime: number;
-      endTime: number;
+    // Create an array to track column assignments for events
+    interface ColumnTrack {
+      end: number; // End time of the last event in this column
+      events: CalendarEvent[]; // Events in this column
     }
+
+    const columns: ColumnTrack[] = [];
     
-    const eventGroups: EventGroup[] = [];
+    // Map to store column assignments for each event by ID
+    const eventColumns = new Map<string, number>();
+    // Map to store the total number of columns needed for each time slot
+    const timeSlotColumns = new Map<string, number>();
     
-    sortedEvents.forEach((event) => {
-      const eventStart = new Date(event.start).getTime();
-      const eventEnd = new Date(event.end).getTime();
+    // First pass: assign columns to events
+    sortedEvents.forEach(event => {
+      const startTime = new Date(event.start).getTime();
+      const endTime = new Date(event.end).getTime();
       
-      // Find an existing group that this event overlaps with
-      let foundGroup = false;
-      for (const group of eventGroups) {
-        if ((eventStart >= group.startTime && eventStart < group.endTime) ||
-            (eventEnd > group.startTime && eventEnd <= group.endTime) ||
-            (eventStart <= group.startTime && eventEnd >= group.endTime)) {
-          
-          // Add event to this group
-          group.events.push(event);
-          // Update group time range
-          group.startTime = Math.min(group.startTime, eventStart);
-          group.endTime = Math.max(group.endTime, eventEnd);
-          foundGroup = true;
-          
-          // Check if this event connects two groups
-          for (let i = 0; i < eventGroups.length; i++) {
-            if (eventGroups[i] === group) continue; // Skip the current group
-            
-            const otherGroup = eventGroups[i];
-            if ((group.startTime <= otherGroup.endTime && group.endTime >= otherGroup.startTime)) {
-              // Groups overlap, merge them
-              group.events = [...group.events, ...otherGroup.events.filter(e => !group.events.includes(e))];
-              group.startTime = Math.min(group.startTime, otherGroup.startTime);
-              group.endTime = Math.max(group.endTime, otherGroup.endTime);
-              
-              // Remove the other group
-              eventGroups.splice(i, 1);
-              i--; // Adjust index since we removed an element
-            }
-          }
-          
+      // Try to find a column where this event doesn't overlap
+      let columnIndex = 0;
+      let placed = false;
+      
+      // Check each existing column
+      for (let i = 0; i < columns.length; i++) {
+        // If this column's last event ends before our event starts
+        if (columns[i].end <= startTime) {
+          columns[i].end = endTime; // Update the column's end time
+          columns[i].events.push(event); // Add event to this column
+          eventColumns.set(event.id, i); // Store column assignment
+          placed = true;
+          columnIndex = i;
           break;
         }
       }
       
-      // If no overlapping group found, create a new one
-      if (!foundGroup) {
-        eventGroups.push({
-          events: [event],
-          startTime: eventStart,
-          endTime: eventEnd
+      // If we couldn't place the event in an existing column, create a new one
+      if (!placed) {
+        columns.push({
+          end: endTime,
+          events: [event]
         });
+        eventColumns.set(event.id, columns.length - 1);
+        columnIndex = columns.length - 1;
+      }
+      
+      // Record the max column needed for this time slot
+      // We'll use the start time as the key for the time slot
+      const timeSlotKey = startTime.toString();
+      const currentMax = timeSlotColumns.get(timeSlotKey) || 0;
+      // Update if this event's column is higher
+      if (columnIndex + 1 > currentMax) {
+        timeSlotColumns.set(timeSlotKey, columnIndex + 1);
       }
     });
     
-    // Step 3: Position events within each group
-    const eventPositions: {
-      event: CalendarEvent;
-      column: number;
-      columnsInSlot: number;
-      width: string;
-      left: string;
-      zIndex?: number;
-      isNested?: boolean;
-    }[] = [];
-    
-    eventGroups.forEach((group) => {
-      // For single events in a group, use full width
-      if (group.events.length === 1) {
-        const event = group.events[0];
-        const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
-        const typePriority = eventTypePriority[eventType] || 2;
-        
-        eventPositions.push({
-          event,
-          column: 0,
-          columnsInSlot: 1,
-          width: '95%',
-          left: '2.5%',
-          zIndex: typePriority
-        });
-        return;
-      }
+    // Second pass: create the final event positions with proper widths
+    return sortedEvents.map(event => {
+      const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
+      const typePriority = eventTypePriority[eventType] || 2;
       
-      // For multiple events, check if we have a focus time event containing other events
-      // Separate "Focus time" events from other events
-      const focusEvents = group.events.filter(e => 
-        e.title?.toLowerCase().includes('focus') || 
-        extractEventType(e.title || '').toLowerCase() === 'focus'
-      );
+      const column = eventColumns.get(event.id) || 0;
+      const startTime = new Date(event.start).getTime();
+      const timeSlotKey = startTime.toString();
+      const columnsInSlot = timeSlotColumns.get(timeSlotKey) || 1;
       
-      const nonFocusEvents = group.events.filter(e => 
-        !focusEvents.includes(e)
-      );
+      // Calculate width and left position based on column assignment
+      const width = columnsInSlot > 1 ? `${94 / columnsInSlot}%` : '94%';
+      const left = columnsInSlot > 1 ? `${(column * (94 / columnsInSlot)) + 3}%` : '3%';
       
-      // Check if we have the focus time + contained event pattern
-      const containedEvents: CalendarEvent[] = [];
-      
-      if (focusEvents.length > 0 && nonFocusEvents.length > 0) {
-        focusEvents.forEach(focusEvent => {
-          const focusStart = new Date(focusEvent.start).getTime();
-          const focusEnd = new Date(focusEvent.end).getTime();
-          
-          // Find events fully contained within this focus event
-          const containedInFocus = nonFocusEvents.filter(e => {
-            const eStart = new Date(e.start).getTime();
-            const eEnd = new Date(e.end).getTime();
-            return eStart >= focusStart && eEnd <= focusEnd;
-          });
-          
-          // If we have fully contained events, handle them specially
-          if (containedInFocus.length > 0) {
-            // Add the focus event with lowest z-index
-            eventPositions.push({
-              event: focusEvent,
-              column: 0,
-              columnsInSlot: 1,
-              width: '95%', 
-              left: '2.5%',
-              zIndex: 1 // Lowest z-index for background
-            });
-            
-            // Position the contained events with special styling
-            containedInFocus.forEach((event, index) => {
-              const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
-              const typePriority = eventTypePriority[eventType] || 2;
-              
-              // Special sizing for contained events - make them more distinct
-              eventPositions.push({
-                event,
-                column: index,
-                columnsInSlot: containedInFocus.length,
-                width: '85%',
-                left: '7.5%',
-                zIndex: 20 + index, // Higher z-index to appear above focus time
-                isNested: true // Mark as nested for special styling
-              });
-              
-              // Mark these events as processed
-              containedEvents.push(event);
-            });
-          } else {
-            // If focus events don't contain other events, just add them as usual
-            eventPositions.push({
-              event: focusEvent,
-              column: 0,
-              columnsInSlot: 1,
-              width: '95%',
-              left: '2.5%',
-              zIndex: 1 // Low z-index to be in the background
-            });
-          }
-        });
-      } else if (focusEvents.length > 0) {
-        // If all events are focus events, handle them normally
-        focusEvents.forEach(event => {
-          eventPositions.push({
-            event,
-            column: 0,
-            columnsInSlot: 1,
-            width: '95%',
-            left: '2.5%',
-            zIndex: 1
-          });
-        });
-      }
-      
-      // Process remaining non-focus events that aren't contained in focus events
-      const remainingEvents = nonFocusEvents.filter(e => !containedEvents.includes(e));
-      
-      // Position standup events (they should be more visible)
-      const standupEvents = remainingEvents.filter(e => 
-        e.title?.toLowerCase().includes('stand') || 
-        extractEventType(e.title || '').toLowerCase() === 'standup'
-      );
-      
-      const regularEvents = remainingEvents.filter(e => 
-        !standupEvents.includes(e)
-      );
-      
-      // Position standup events in a special way
-      standupEvents.forEach((event, index) => {
-        const totalEvents = standupEvents.length;
-        const width = '75%';
-        const left = '12.5%';
-        
-        eventPositions.push({
-          event,
-          column: index,
-          columnsInSlot: totalEvents,
-          width,
-          left,
-          zIndex: 10 + index // High z-index to be on top
-        });
-      });
-      
-      // Distribute regular events with a staggered offset for better visibility
-      if (regularEvents.length > 0) {
-        const totalEvents = regularEvents.length;
-        
-        regularEvents.forEach((event, index) => {
-          const eventType = event.title ? extractEventType(event.title.toLowerCase()) : 'default';
-          const typePriority = eventTypePriority[eventType] || 2;
-          
-          let width: string, left: string;
-          
-          // Different positioning strategies based on number of concurrent events
-          if (totalEvents === 2) {
-            // For 2 events, use nice side-by-side layout with slight overlap
-            width = '65%';
-            left = index === 0 ? '5%' : '30%';
-          } else if (totalEvents === 3) {
-            // For 3 events, use a staggered layout
-            width = '60%';
-            left = `${5 + index * 15}%`;
-          } else {
-            // For 4+ events, use a more condensed layout
-            width = `${Math.min(60, 90 / totalEvents)}%`;
-            left = `${5 + index * (90 / totalEvents)}%`;
-          }
-          
-          eventPositions.push({
-            event,
-            column: index,
-            columnsInSlot: totalEvents,
-            width,
-            left,
-            zIndex: typePriority + index // Base z-index on type priority plus position
-          });
-        });
-      }
+      return {
+        event,
+        column,
+        columnsInSlot,
+        width,
+        left,
+        zIndex: typePriority,
+        isNested: columnsInSlot > 1,
+        verticalAdjustment: 0 // No vertical adjustment needed now that we're using columns
+      };
     });
-    
-    return eventPositions;
   };
 
   // Constants for time grid
-  const CALENDAR_ITEM_HEIGHT = 30;
-  const HOUR_HEIGHT = 60; // Height in pixels for one hour
-  const GRID_GAP = 8;
-  const DEFAULT_EVENT_WIDTH = 80;
+  const CALENDAR_ITEM_HEIGHT = 35; // Increased from 30
+  const HOUR_HEIGHT = 75; // Increased from 60 - Height in pixels for one hour
+  const GRID_GAP = 10; // Increased from 8
+  const DEFAULT_EVENT_WIDTH = 85; // Increased from 80
+  const TASK_ROW_HEIGHT = 70; // Define task row height
   
   // Use different time ranges for mobile and desktop
   const DAY_START_HOUR = isMobile ? 1 : 8; // Start at 8 AM for desktop, 1 AM for mobile
@@ -1036,8 +912,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
     // Calculate border styling for declined events
     const declinedStyle = isDeclined ? {
-      backgroundColor: 'white',
-      border: `${eventColor}`,
+      backgroundColor: 'white', 
       opacity: 0.9
     } : {};
 
@@ -1051,8 +926,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           overflow: 'hidden',
           width: '100%',
           justifyContent: 'center',
-          borderLeft: `4px solid ${eventColor}`,
-          borderRadius: '4px',
+          backgroundColor: 'white', // White background for Outlook style
           ...declinedStyle
         }}>
           <Box sx={{ 
@@ -1063,20 +937,24 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             <TaskAltIconMui 
               sx={{ 
                 fontSize: '0.9rem', 
-                color: textColor,
+                color: eventColor, // Use event color for icon
                 mr: 0.5 
               }} 
             />
             <Typography 
               variant="subtitle2" 
               sx={{
-                color: textColor,
-                fontWeight: 'bold', 
-                whiteSpace: 'nowrap',
+                color: '#333', // Dark text for Outlook style
+                fontWeight: 'medium', 
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 fontSize: '0.8rem',
-                lineHeight: 1.2
+                lineHeight: 1.2,
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+                whiteSpace: 'normal',
+                maxWidth: 'calc(100% - 16px)'
               }}
             >
               {event.title}
@@ -1087,7 +965,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               variant="caption" 
               sx={{ 
                 fontSize: '0.7rem',
-                color: textColor,
+                color: '#666', // Medium gray for description
                 pl: 2.5, // Align with the icon
                 mt: 0.2,
                 fontStyle: 'italic',
@@ -1115,6 +993,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           overflow: 'hidden',
           width: '100%',
           justifyContent: 'center',
+          backgroundColor: 'white', // White background for Outlook style
           ...declinedStyle
         }}>
           <Typography 
@@ -1122,14 +1001,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             sx={{
               color: '#5F6368', // Standard gray text for OOO events
               fontWeight: 'bold', 
-              whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standardized font size
+              fontSize: '0.8rem',
               lineHeight: 1.2,
               pl: 0.5,
               textAlign: 'center',
-              textDecoration: isDeclined ? 'line-through' : 'none'
+              textDecoration: isDeclined ? 'line-through' : 'none',
+              display: '-webkit-box',
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: 'vertical',
+              whiteSpace: 'normal'
             }}
           >
             Out of office
@@ -1143,7 +1025,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 textAlign: 'center',
                 fontStyle: 'italic',
                 mt: 0.5,
-                textDecoration: isDeclined ? 'line-through' : 'none'
+                textDecoration: isDeclined ? 'line-through' : 'none',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical'
               }}
             >
               {event.description}
@@ -1153,8 +1040,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
       );
     }
     
-    // For very small events, skip the time display
-    if (height < 30) {
+    // For very small events (30px or less), show just the title
+    if (height <= 30) {
       return (
         <Box sx={{ 
           height: '100%', 
@@ -1167,112 +1054,95 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           <Typography 
             variant="subtitle2" 
             sx={{ 
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              fontWeight: 'medium', // Standardized font weight
-              whiteSpace: 'nowrap',
+              color: '#333', // Dark text for Outlook style
+              fontWeight: 'medium', 
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standardized font size
+              fontSize: '0.8rem',
               lineHeight: 1.2,
               pl: 0.5,
               width: '100%',
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
+              textDecoration: isDeclined ? 'line-through' : 'none',
+              whiteSpace: 'nowrap'
             }}
           >
             {event.title}
-            {hasAttachments && (
-              <AttachFileIcon 
-                sx={{ 
-                  fontSize: '0.7rem', 
-                  ml: 0.5,
-                  verticalAlign: 'middle',
-                  opacity: 0.7
-                }} 
-              />
-            )}
           </Typography>
         </Box>
       );
     }
-    
-    // For normal sized events, show the title and time
+
+    // For standard events, use a clean Outlook-style format
     return (
       <Box sx={{ 
-        height: '100%',
-        display: 'flex',
+        height: '100%', 
+        display: 'flex', 
         flexDirection: 'column',
+        justifyContent: 'center',
         overflow: 'hidden',
         width: '100%',
         ...declinedStyle
       }}>
-        {/* Title and time in a horizontal layout */}
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          width: '100%',
-          mb: 0.2
-        }}>
-          <Typography 
-            variant="subtitle2" 
-            sx={{
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              fontWeight: 'medium', // Standardized font weight
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              fontSize: '0.8rem', // Standardized font size
-              lineHeight: 1.2,
-              pl: 0.5,
-              flexGrow: 1,
-              mr: 1, // Add margin to separate from time
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
-            }}
-          >
-            {event.title}
-            {hasAttachments && (
-              <AttachFileIcon 
-                sx={{ 
-                  fontSize: '0.7rem', 
-                  ml: 0.5,
-                  verticalAlign: 'middle',
-                  opacity: 0.7
-                }} 
-              />
-            )}
-          </Typography>
-          
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              fontSize: '0.7rem', // Slightly increased for better readability
-              fontWeight: 'medium',
-              whiteSpace: 'nowrap',
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              flexShrink: 0,
-              pr: 0.5,
-              textDecoration: isDeclined ? 'line-through' : 'none', // Keep strikethrough for declined events
-              display: (event.eventType === 'task' && !event.hasExplicitTime) ? 'none' : 'block' // Hide time for tasks without explicit time
-            }}
-          >
-            {formatTime(event.start)}-{formatTime(event.end)}
-          </Typography>
-        </Box>
+        {/* Title as main text */}
+        <Typography 
+          variant="subtitle2" 
+          sx={{
+            color: '#333', // Dark text for title (Outlook style)
+            fontWeight: 'medium', 
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            fontSize: '0.85rem',
+            lineHeight: 1.2,
+            pl: 0.5,
+            textDecoration: isDeclined ? 'line-through' : 'none',
+            whiteSpace: 'nowrap',
+            mb: height > 45 ? 0.3 : 0
+          }}
+        >
+          {event.title}
+          {hasAttachments && (
+            <AttachFileIcon 
+              sx={{ 
+                fontSize: '0.7rem', 
+                ml: 0.5,
+                verticalAlign: 'middle',
+                opacity: 0.7
+              }} 
+            />
+          )}
+        </Typography>
         
-        {/* Only show location if there's enough height */}
-        {height > 45 && event.location && (
+        {/* Only show time for events tall enough */}
+        {height > 45 && !event.isAllDay && (
           <Typography 
             variant="caption" 
             sx={{ 
-              fontSize: '0.7rem', // Slightly increased for better readability
-              whiteSpace: 'nowrap',
+              fontSize: '0.75rem',
+              color: eventColor, // Use event color for time (Outlook style)
+              fontWeight: 'medium',
+              opacity: 0.95,
+              pl: 0.5,
+              textDecoration: isDeclined ? 'line-through' : 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {formatTime(event.start)} - {formatTime(event.end)}
+          </Typography>
+        )}
+        
+        {/* Location if there's enough space */}
+        {height > 60 && event.location && (
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              fontSize: '0.75rem',
+              color: '#666', // Medium gray for location (Outlook style)
+              opacity: 0.9,
+              pl: 0.5,
+              textDecoration: isDeclined ? 'line-through' : 'none',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              color: isDeclined ? eventColor : textColor, // Use event color for declined events text
-              mt: 0.2,
-              pl: 0.5,
-              textDecoration: isDeclined ? 'line-through' : 'none' // Keep strikethrough for declined events
+              whiteSpace: 'nowrap'
             }}
           >
             📍 {event.location}
@@ -1376,24 +1246,69 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     }
     
     try {
-      console.log(`Deleting specific event with ID: ${event.id}`);
+      console.log(`Deleting item with ID: ${event.id}, type: ${event.eventType}`);
       
-      const success = await removeEvent(event.id);
+      let success = false;
+      
+      // Check if this is a task (from Google Tasks) or a regular calendar event
+      if (event.eventType === 'task' && event.taskListId) {
+        // For tasks, use the Google Tasks API
+        console.log(`Deleting task from list ${event.taskListId}`);
+        
+        // Important: Use extracted task ID for Google Tasks
+        // Calendar events representing tasks may have a different ID format than what Google Tasks API expects
+        // The original task ID might be embedded in the event ID or in a different format
+        
+        // Extract the actual task ID from the event
+        let taskId = event.id;
+        
+        // If the event ID contains a prefix or suffix (e.g., "task-123" or "list-123-task-456"),
+        // we need to extract the actual task ID
+        if (taskId.includes('task-')) {
+          // Try to extract just the task ID portion
+          const taskIdMatch = taskId.match(/task[-_]([^-_]+)/);
+          if (taskIdMatch && taskIdMatch[1]) {
+            taskId = taskIdMatch[1];
+          }
+        }
+        
+        // Sanitize the task ID to ensure it's in the format Google Tasks API expects
+        const sanitizedTaskId = sanitizeTaskId(taskId);
+        
+        console.log(`Task ID processing:`, {
+          original: event.id,
+          extracted: taskId,
+          sanitized: sanitizedTaskId
+        });
+        
+        if (sanitizedTaskId) {
+          success = await deleteTask(event.taskListId, sanitizedTaskId);
+        } else {
+          console.error('Invalid task ID after sanitization');
+          success = false;
+        }
+      } else {
+        // For regular calendar events, use the calendar event API
+        console.log(`Deleting calendar event`);
+        success = await removeEvent(event.id);
+      }
       
       if (success) {
-        console.log(`Successfully deleted event with ID: ${event.id}`);
+        console.log(`Successfully deleted item with ID: ${event.id}`);
         // Close popup and refresh data
         setSelectedEvent(null);
+        setSelectedTask(null);
         setActiveEventId(null);
         setPopupAnchorEl(null);
+        setTaskPopupAnchorEl(null);
         
         // Refresh events to make sure we're up to date
         refreshCalendarData();
       } else {
-        console.error(`Failed to delete event with ID: ${event.id}`);
+        console.error(`Failed to delete item with ID: ${event.id}`);
       }
     } catch (error) {
-      console.error(`Error deleting event with ID: ${event.id}:`, error);
+      console.error(`Error deleting item with ID: ${event.id}:`, error);
     }
   };
 
@@ -1426,44 +1341,79 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const separateTasksAndEvents = (events: CalendarEvent[]): {
       tasks: CalendarEvent[];
       regularEvents: CalendarEvent[];
+      outOfRangeEvents: CalendarEvent[];
     } => {
       const tasks: CalendarEvent[] = [];
       const regularEvents: CalendarEvent[] = [];
+      const outOfRangeEvents: CalendarEvent[] = [];
       
       events.forEach(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        const startHour = start.getHours();
+        const endHour = end.getHours();
+        const endMinutes = end.getMinutes();
+        
         if (event.eventType === 'task') {
           tasks.push(event);
+        } else if (
+          // Event starts before visible hours
+          (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+          // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+          (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+        ) {
+          outOfRangeEvents.push(event);
         } else {
           regularEvents.push(event);
         }
       });
       
-      return { tasks, regularEvents };
+      return { tasks, regularEvents, outOfRangeEvents };
     };
     
     // Separate tasks from regular events
-    const { tasks, regularEvents } = separateTasksAndEvents(dayEvents);
+    const { tasks, regularEvents, outOfRangeEvents } = separateTasksAndEvents(dayEvents);
     
     // Log for debugging
     console.log(`Current hour: ${currentHour}, isVisible: ${isCurrentTimeVisible}, position: ${currentTimePosition}`);
     
     const eventPositions = calculateEventPositions(regularEvents);
     
-    // Define height for the task row
-    const TASK_ROW_HEIGHT = 60;
-    
     return (
       <Box sx={{ p: 2, position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ 
+          fontWeight: 'medium', 
+          color: '#333',
+          mb: 1.5, // Add more space below the title
+          fontSize: '1.25rem', // Slightly larger font
+          display: 'flex',
+          alignItems: 'center',
+          '&::after': {
+            content: '""',
+            display: 'block',
+            ml: 2,
+            flexGrow: 1,
+            height: '1px',
+            backgroundColor: 'rgba(0,0,0,0.08)' // Subtle line extending from title
+          }
+        }}>
           {selectedDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </Typography>
+        
+        {/* Out of range events section - only shown when filter is enabled */}
+        {showOutOfRangeEvents && outOfRangeEvents.length > 0 && (
+          <OutOfRangeEventsSection 
+            events={outOfRangeEvents} 
+            onEventClick={handleEventClick}
+          />
+        )}
         
         <Divider sx={{ my: 2 }} />
         
         {/* Time grid with current time indicator */}
-        <Box sx={{ position: 'relative', mt: 2, ml: 6 }}>
+        <Box sx={{ position: 'relative', mt: 2, ml: 8 }}> {/* Increased left margin from 6 to 8 */}
           {/* Time labels column with Tasks label */}
-          <Box sx={{ position: 'absolute', left: -60, top: 0, width: 50 }}>
+          <Box sx={{ position: 'absolute', left: -70, top: 0, width: 60 }}> {/* Increased width from 50 to 60 */}
             {/* Task row label */}
             <Box sx={{
               height: TASK_ROW_HEIGHT,
@@ -1472,7 +1422,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               justifyContent: 'flex-end',
               pr: 1
             }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.85rem', fontWeight: 'medium' }}>
                 Tasks
               </Typography>
             </Box>
@@ -1489,7 +1439,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   pt: 1
                 }}
               >
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
                   {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
                 </Typography>
               </Box>
@@ -1511,7 +1461,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   cursor: 'pointer',
                   height: '100%',
                   width: '100%',
-                  p: 1,
+                  p: 1.5, // Increased padding
                   '&:hover': {
                     backgroundColor: 'rgba(1, 108, 158, 0.05)'
                   }
@@ -1522,15 +1472,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   sx={{ 
                     display: 'flex',
                     alignItems: 'center',
-                    p: 1,
+                    p: 1.5, // Increased padding
                     bgcolor: '#F29702',
                     borderRadius: '4px',
                     color: 'white',
-                    height: '100%'
+                    height: '100%',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)', // Enhanced shadow for depth
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)', // Deeper shadow on hover
+                      filter: 'brightness(1.03)',
+                      transform: 'translateY(-1px)' // Slight lift effect on hover
+                    }
                   }}
                 >
-                  <TaskAltIconMui sx={{ fontSize: '1rem', mr: 1 }} />
-                  <Typography variant="body2">
+                  <TaskAltIconMui sx={{ fontSize: '1.1rem', mr: 1.5 }} /> {/* Increased size */}
+                  <Typography variant="body2" sx={{ fontSize: '0.9rem', fontWeight: 'medium' }}>
                     {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} pending
                   </Typography>
                 </Box>
@@ -1541,9 +1498,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: 'text.secondary'
+                color: 'text.secondary',
+                borderRadius: '4px',
+                border: '1px dashed rgba(0,0,0,0.1)',
+                backgroundColor: 'rgba(0,0,0,0.01)'
               }}>
-                <Typography variant="caption">No tasks</Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.85rem' }}>No tasks</Typography>
               </Box>
             )}
           </Box>
@@ -1582,14 +1542,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             {isCurrentTimeVisible && (
               <CurrentTimeIndicator 
                 sx={{ 
-                  top: currentTimePosition
+                  top: currentTimePosition,
+                  height: '3px' // Increased from default 2px
                 }}
               />
             )}
             
             {/* No events message */}
             {regularEvents.length === 0 ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, zIndex: 1 }}>
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                height: 200, 
+                zIndex: 1,
+                borderRadius: '4px',
+                border: '1px dashed rgba(0,0,0,0.1)',
+                backgroundColor: 'rgba(0,0,0,0.01)',
+                my: 2
+              }}>
                 <Typography variant="body1" color="text.secondary">
                   No events scheduled for this day
                 </Typography>
@@ -1597,14 +1568,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             ) : (
               <Box sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
                 {/* Regular events */}
-                {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
+                {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested, verticalAdjustment }, index) => {
                   const start = new Date(event.start);
                   const end = new Date(event.end);
                   
                   // Calculate position and size
                   const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                   const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-                  const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
+                  const height = Math.max(endPx - startPx, 30); // Minimum height of 30px (increased from 25px)
                   
                   const eventColor = getEventColor(event);
                   const textColor = getEventTextColor(eventColor);
@@ -1617,30 +1588,44 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     (attendee.self === true && attendee.responseStatus === 'declined')
                   );
                 
+                  // Add vertical adjustment to prevent overlapping events
+                  const topAdjustment = verticalAdjustment || 0;
+
                   return (
                     <WeekEventCard
                       key={event.id}
                       bgcolor={eventColor}
-                      top={startPx}
+                      top={startPx + topAdjustment}
                       height={height}
                       width={width}
                       left={left}
                       onClick={(e) => handleEventClick(event, e)}
                       sx={{
                         zIndex: isActive ? 100 : (zIndex || 1),
-                        border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
-                        borderRadius: '4px',
+                        borderTop: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        borderRight: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        borderBottom: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                        backgroundColor: 'white', // Always white background 
                         boxShadow: isActive 
-                          ? '0 3px 8px rgba(0,0,0,0.2)' 
-                          : '0 1px 2px rgba(0,0,0,0.1)',
-                        backgroundColor: isDeclined ? 'white' : eventColor,
+                          ? '0 6px 12px rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.15)' 
+                          : '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
+                        p: '6px 10px', // Ensure this padding is applied consistently
                         '&:hover': {
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                          filter: 'brightness(1.03)'
-                        }
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.22), 0 2px 4px rgba(0,0,0,0.15)',
+                          filter: 'brightness(1.05)',
+                          transform: 'translateY(-1px)' // Add lift effect
+                        },
+                        // Add min-height to ensure adequate space for title
+                        minHeight: height < 50 ? 'auto' : '45px'
                       }}
                     >
-                      {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
+                      {renderEventContent(
+                        event, 
+                        eventColor,
+                        isDeclined ? '#666' : '#333', // For Outlook style, text color depends on the background being white 
+                        height, 
+                        isNested || columnsInSlot > 1
+                      )}
                     </WeekEventCard>
                   );
                 })}
@@ -1669,19 +1654,34 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     const separateTasksAndEvents = (events: CalendarEvent[]): {
       tasks: CalendarEvent[];
       regularEvents: CalendarEvent[];
+      outOfRangeEvents: CalendarEvent[];
     } => {
       const tasks: CalendarEvent[] = [];
       const regularEvents: CalendarEvent[] = [];
+      const outOfRangeEvents: CalendarEvent[] = [];
       
       events.forEach(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        const startHour = start.getHours();
+        const endHour = end.getHours();
+        const endMinutes = end.getMinutes();
+        
         if (event.eventType === 'task') {
           tasks.push(event);
+        } else if (
+          // Event starts before visible hours
+          (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+          // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+          (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+        ) {
+          outOfRangeEvents.push(event);
         } else {
           regularEvents.push(event);
         }
       });
       
-      return { tasks, regularEvents };
+      return { tasks, regularEvents, outOfRangeEvents };
     };
     
     // Log for debugging
@@ -1690,8 +1690,27 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     // Define height for the task row
     const TASK_ROW_HEIGHT = 60;
     
+    // Fix this line to use the updated function return that includes outOfRangeEvents
+    const { tasks: weekTasks, regularEvents: weekRegularEvents, outOfRangeEvents: weekOutOfRangeEvents } = 
+      separateTasksAndEvents(getEventsForDateRange(weekDays[0], new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000)));
+    
     return (
-      <Grid container sx={{ position: 'relative', minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT }}>
+      <Grid container sx={{ 
+        position: 'relative', 
+        minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT + 50 + TASK_ROW_HEIGHT,
+        width: '100%',
+        maxWidth: '100%'
+      }}>
+        {/* Out of range events section - only shown when filter is enabled */}
+        {showOutOfRangeEvents && weekOutOfRangeEvents.length > 0 && (
+          <Grid item xs={12} sx={{ p: 2, pb: 0 }}>
+            <OutOfRangeEventsSection 
+              events={weekOutOfRangeEvents} 
+              onEventClick={handleEventClick}
+            />
+          </Grid>
+        )}
+        
         {/* Time labels column */}
         <Grid item xs={1} sx={{ 
           borderRight: 1, 
@@ -1701,7 +1720,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
           backgroundColor: 'background.paper',
           zIndex: 2,
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          minWidth: '60px', // Adjusted for better spacing
+          width: '60px'
         }}>
           {/* Empty header space to align with day headers */}
           <Box sx={{ 
@@ -1722,7 +1743,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             pr: 1
           }}>
             <Typography variant="caption" color="text.secondary" sx={{ 
-              fontSize: '0.7rem',
+              fontSize: '0.8rem', // Increased from 0.7rem
               fontWeight: 'medium' 
             }}>
               Tasks
@@ -1744,7 +1765,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                 pt: 1
               }}
             >
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                 {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
               </Typography>
             </Box>
@@ -1752,10 +1773,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         </Grid>
         
         {/* Day columns */}
-        <Grid item xs={11}>
-          <Grid container>
+        <Grid item xs={11} sx={{ width: 'calc(100% - 60px)', maxWidth: 'calc(100% - 60px)' }}>
+          <Grid container sx={{ width: '100%' }}>
             {/* Days header */}
-            <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9' }}>
+            <Grid container sx={{ height: '50px', backgroundColor: '#f9f9f9', width: '100%' }}>
               {weekDays.map((date, index) => {
                 const isToday = date.getDate() === today.getDate() && 
                               date.getMonth() === today.getMonth() && 
@@ -1775,7 +1796,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'center',
-                      alignItems: 'center'
+                      alignItems: 'center',
+                      minWidth: 0 // Allow grid to shrink below minimum width
                     }}
                   >
                     <Box sx={{ 
@@ -1788,7 +1810,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         sx={{ 
                           fontFamily: 'inherit',
                           color: 'text.secondary',
-                          fontSize: '0.75rem'
+                          fontSize: '0.8rem' // Increased from 0.75rem
                         }}
                       >
                         {date.toLocaleDateString('en-US', { weekday: 'short' })}
@@ -1797,8 +1819,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       {/* Date number with conditional blue circle for today */}
                       {isToday ? (
                         <Box sx={{
-                          width: '22px',
-                          height: '22px',
+                          width: '24px', // Increased from 22px
+                          height: '24px', // Increased from 22px
                           borderRadius: '50%',
                           backgroundColor: '#1056F5',
                           display: 'flex',
@@ -1810,7 +1832,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                             sx={{ 
                               fontWeight: 'medium',
                               color: 'white',
-                              fontSize: '0.85rem'
+                              fontSize: '0.9rem' // Increased from 0.85rem
                             }}
                           >
                             {date.getDate()}
@@ -1822,7 +1844,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           sx={{ 
                             fontWeight: 'medium',
                             color: 'text.primary',
-                            fontSize: '0.85rem'
+                            fontSize: '0.9rem' // Increased from 0.85rem
                           }}
                         >
                           {date.getDate()}
@@ -1864,19 +1886,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           top: '50%',
                           left: '50%',
                           transform: 'translate(-50%, -50%)',
-                          width: '90%',
-                          height: 40,
+                          width: '92%', // Increased from 90%
+                          height: 45, // Increased from 40
                           backgroundColor: '#F29702',
                           borderRadius: '4px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           cursor: 'pointer',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.15)', // Increased shadow
                           border: '1px solid rgba(255,255,255,0.3)',
                           '&:hover': {
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                            filter: 'brightness(1.03)'
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.2)', // Enhanced shadow on hover
+                            filter: 'brightness(1.05)'
                           }
                         }}
                         onClick={(e) => handleTaskGroupClick(tasks, e)}
@@ -1884,7 +1906,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', px: 1 }}>
                           <TaskAltIconMui 
                             sx={{ 
-                              fontSize: '0.8rem', 
+                              fontSize: '0.9rem', // Increased from 0.8rem
                               color: 'white',
                               mr: 0.5 
                             }} 
@@ -1892,7 +1914,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           <Typography 
                             variant="caption" 
                             sx={{ 
-                              fontSize: '0.8rem', 
+                              fontSize: '0.85rem', // Increased from 0.8rem
                               fontWeight: 'medium',
                               color: 'white',
                               whiteSpace: 'nowrap',
@@ -1974,14 +1996,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     )}
                     
                     {/* Regular Events */}
-                    {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested }, index) => {
+                    {eventPositions.map(({ event, column, columnsInSlot, width, left, zIndex, isNested, verticalAdjustment }, index) => {
                       const start = new Date(event.start);
                       const end = new Date(event.end);
                       
                       // Calculate position and size
                       const startPx = timeToPixels(start) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
                       const endPx = timeToPixels(end) - timeToPixels(new Date(new Date().setHours(DAY_START_HOUR, 0, 0, 0)));
-                      const height = Math.max(endPx - startPx, 25); // Minimum height of 25px
+                      const height = Math.max(endPx - startPx, 30); // Minimum height of 30px (increased from 25px)
                       
                       const eventColor = getEventColor(event);
                       const textColor = getEventTextColor(eventColor);
@@ -1994,30 +2016,44 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         (attendee.self === true && attendee.responseStatus === 'declined')
                       );
                     
+                      // Add vertical adjustment to prevent overlapping events
+                      const topAdjustment = verticalAdjustment || 0;
+
                       return (
                         <WeekEventCard
                           key={event.id}
                           bgcolor={eventColor}
-                          top={startPx}
+                          top={startPx + topAdjustment}
                           height={height}
                           width={width}
                           left={left}
                           onClick={(e) => handleEventClick(event, e)}
                           sx={{
                             zIndex: isActive ? 100 : (zIndex || 1),
-                            border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
-                            borderRadius: '4px',
+                            borderTop: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                            borderRight: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                            borderBottom: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(0,0,0,0.07)',
+                            backgroundColor: 'white', // Always white background 
                             boxShadow: isActive 
-                              ? '0 3px 8px rgba(0,0,0,0.2)' 
-                              : '0 1px 2px rgba(0,0,0,0.1)',
-                            backgroundColor: isDeclined ? 'white' : eventColor,
+                              ? '0 6px 12px rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.15)' 
+                              : '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
+                            p: '6px 10px', // Ensure this padding is applied consistently
                             '&:hover': {
-                              boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                              filter: 'brightness(1.03)'
-                            }
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.22), 0 2px 4px rgba(0,0,0,0.15)',
+                              filter: 'brightness(1.05)',
+                              transform: 'translateY(-1px)' // Add lift effect
+                            },
+                            // Add min-height to ensure adequate space for title
+                            minHeight: height < 50 ? 'auto' : '45px'
                           }}
                         >
-                          {renderEventContent(event, eventColor, textColor, height, isNested || columnsInSlot > 1)}
+                          {renderEventContent(
+                            event, 
+                            eventColor,
+                            isDeclined ? '#666' : '#333', // For Outlook style, text color depends on the background being white 
+                            height, 
+                            isNested || columnsInSlot > 1
+                          )}
                         </WeekEventCard>
                       );
                     })}
@@ -2168,6 +2204,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   }}
                   onClick={() => {
                     console.log('Clicked on day:', day.date.toDateString());
+                    // Set flag for manual navigation
+                    setIsManualNavigation(true);
                     // First update view mode, then set the date
                     setViewMode('day');
                     setTimeout(() => {
@@ -2256,15 +2294,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                           display: 'flex',
                           alignItems: 'center',
                           mb: 0.5,
-                          px: 0.5,
-                          py: 0.25,
-                          borderRadius: 0.5,
+                          px: 1.5, // Increased from 1
+                          py: 0.5,  // Increased from 0.25
+                          borderRadius: 1,
                           backgroundColor: isDeclined ? 'transparent' : eventColor,
-                          border: isDeclined ? `1px dashed ${eventColor}` : 'none',
+                          border: isDeclined ? `1px dashed ${eventColor}` : '1px solid rgba(255,255,255,0.3)',
                           overflow: 'hidden',
                           whiteSpace: 'nowrap',
                           textOverflow: 'ellipsis',
-                          color: isDeclined ? 'text.primary' : getEventTextColor(eventColor)
+                          color: isDeclined ? 'text.primary' : getEventTextColor(eventColor),
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          minHeight: '22px', // Increased from 20px
+                          maxWidth: '97%',   // Increased from 95%
+                          '&:hover': {
+                            filter: 'brightness(0.95)',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                          }
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2272,10 +2317,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         }}
                       >
                         <Typography variant="caption" sx={{ 
-                          fontSize: '0.7rem',
-                          textDecoration: isDeclined ? 'line-through' : 'none'
+                          fontSize: '0.75rem', // Increased from 0.7rem
+                          fontWeight: 'medium', // Added medium font weight
+                          textDecoration: isDeclined ? 'line-through' : 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          width: '100%'
                         }}>
-                          {format(new Date(event.start), 'h:mm a')} {event.title}
+                          {!event.isAllDay && format(new Date(event.start), 'h:mm')} {event.title}
                         </Typography>
                       </Box>
                     );
@@ -2287,9 +2336,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                       variant="caption" 
                       sx={{ 
                         fontSize: '0.7rem', 
-                        color: 'text.secondary',
-                        mt: 'auto'
+                        color: 'primary.main',
+                        mt: 'auto',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        backgroundColor: 'rgba(16, 86, 245, 0.1)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignSelf: 'flex-start',
+                        '&:hover': {
+                          backgroundColor: 'rgba(16, 86, 245, 0.15)',
+                        }
                       }}
+                      onClick={(e) => handleMoreEventsClick(day.date, day.events, e)}
                     >
                       +{day.events.length - MAX_EVENTS_PER_DAY} more
                     </Typography>
@@ -2316,20 +2376,36 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   // Add effect to refresh data when view mode changes
   useEffect(() => {
     console.log(`View mode changed to: ${viewMode}`);
-    setTimeout(() => {
-      console.log('Refreshing data after view mode change');
-      refreshCalendarData();
-    }, 10);
+    
+    // Only refresh data if it's not a manual navigation
+    if (!isManualNavigation) {
+      setTimeout(() => {
+        console.log('Refreshing data after view mode change');
+        refreshCalendarData();
+      }, 10);
+    } else {
+      console.log('Skipping refresh due to manual navigation');
+      // Reset the flag for next time
+      setIsManualNavigation(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
   
   // Add effect to refresh data when selected date changes
   useEffect(() => {
     console.log(`Selected date changed to: ${selectedDate.toDateString()}`);
-    setTimeout(() => {
-      console.log('Refreshing data after date change');
-      refreshCalendarData();
-    }, 10);
+    
+    // Only refresh data if it's not a manual navigation
+    if (!isManualNavigation) {
+      setTimeout(() => {
+        console.log('Refreshing data after date change');
+        refreshCalendarData();
+      }, 10);
+    } else {
+      console.log('Skipping refresh due to manual navigation');
+      // Reset the flag after this effect runs
+      setIsManualNavigation(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
@@ -2932,6 +3008,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                   }}
                   onClick={() => {
                     console.log('Clicked on day:', day.date.toDateString());
+                    // Set flag for manual navigation
+                    setIsManualNavigation(true);
                     // First update view mode, then set the date
                     setViewMode('day');
                     setTimeout(() => {
@@ -3000,47 +3078,490 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     );
   };
 
+  // Handle clicking on "+ more" in month view to show all events for a day
+  const handleMoreEventsClick = (date: Date, events: CalendarEvent[], e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent day cell click handler
+    setDayEventsForPopup(events);
+    setDayDateForPopup(date);
+    setDayEventsPopupAnchorEl(e.currentTarget as HTMLElement);
+  };
+
+  // Close day events popup
+  const handleCloseDayEventsPopup = () => {
+    setDayEventsPopupAnchorEl(null);
+    setDayEventsForPopup([]);
+    setDayDateForPopup(null);
+  };
+
+  // Handle navigating to day view from popup
+  const handleGoToDayView = () => {
+    if (dayDateForPopup) {
+      // Set the manual navigation flag to true
+      setIsManualNavigation(true);
+      
+      setViewMode('day');
+      // Use a slightly longer timeout to ensure view mode change completes first
+      setTimeout(() => {
+        setSelectedDate(dayDateForPopup);
+      }, 50);
+      handleCloseDayEventsPopup();
+    }
+  };
+
+  // Day Events Popup component
+  const DayEventsPopup: React.FC<{
+    events: CalendarEvent[];
+    date: Date | null;
+    anchorEl: HTMLElement | null;
+    onClose: () => void;
+    onEventClick: (event: CalendarEvent, e: React.MouseEvent) => void;
+    onGoToDayView: () => void;
+  }> = ({ events, date, anchorEl, onClose, onEventClick, onGoToDayView }) => {
+    
+    // Format the date
+    const formatPopupDate = () => {
+      if (!date) return '';
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long',
+        month: 'long', 
+        day: 'numeric',
+        year: 'numeric'
+      });
+    };
+
+    // Group events by type
+    const groupedEvents = React.useMemo(() => {
+      const groups: Record<string, CalendarEvent[]> = {
+        'Focus Time': [],
+        'Meetings': [],
+        'Other': []
+      };
+      
+      events.forEach(event => {
+        if (event.title?.toLowerCase().includes('focus')) {
+          groups['Focus Time'].push(event);
+        } else if (event.eventType === 'task') {
+          // Skip tasks - they have their own popup
+        } else {
+          groups['Meetings'].push(event);
+        }
+      });
+
+      // Remove empty groups
+      return Object.fromEntries(
+        Object.entries(groups).filter(([_, groupEvents]) => groupEvents.length > 0)
+      );
+    }, [events]);
+
+    return (
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={onClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+        PaperProps={{
+          sx: { 
+            width: 400,
+            maxWidth: '95vw',
+            borderRadius: 2,
+            height: 'auto',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+        className="day-events-popup"
+      >
+        {/* Header */}
+        <Box 
+          sx={{ 
+            p: 2, 
+            display: 'flex', 
+            alignItems: 'center',
+            bgcolor: '#1056F5', // Blue color for events
+            color: 'white',
+            flexShrink: 0 // Prevent header from shrinking
+          }}
+        >
+          <EventIcon sx={{ mr: 1 }} />
+          <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold', fontFamily: 'Poppins' }}>
+            Events for {formatPopupDate()}
+          </Typography>
+          <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+
+        {/* Events List - This is the scrollable area */}
+        <Box 
+          sx={{ 
+            flexGrow: 1, 
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            '&::-webkit-scrollbar': {
+              width: '8px',
+              height: '8px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: 'rgba(0,0,0,0.05)',
+            },
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
+          }}
+          className="events-section"
+        >
+          {Object.entries(groupedEvents).map(([groupName, groupEvents]) => (
+            <Box key={groupName} sx={{ mb: 2 }}>
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
+                  px: 2, 
+                  py: 1, 
+                  bgcolor: groupName === 'Focus Time' 
+                    ? 'rgba(224, 67, 48, 0.1)' // Light red for focus time
+                    : 'rgba(16, 86, 245, 0.1)', // Light blue for meetings
+                  fontWeight: 'bold',
+                  color: groupName === 'Focus Time' 
+                    ? '#E04330' // Red for focus time
+                    : '#1056F5' // Blue for meetings
+                }}
+              >
+                {groupName} ({groupEvents.length})
+              </Typography>
+              <List dense disablePadding>
+                {groupEvents.map(event => {
+                  const eventColor = getEventColor(event);
+                  const isDeclined = event.attendees?.some(attendee => 
+                    (attendee.self === true && attendee.responseStatus === 'declined')
+                  );
+                  return (
+                    <ListItem 
+                      key={event.id} 
+                      button 
+                      onClick={(e) => onEventClick(event, e)}
+                      sx={{ 
+                        pl: 2,
+                        borderLeft: `4px solid ${eventColor}`,
+                        marginLeft: '8px',
+                        marginRight: '8px',
+                        marginBottom: '4px',
+                        borderRadius: '4px',
+                        '&:hover': { 
+                          bgcolor: 'rgba(0, 0, 0, 0.04)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        }
+                      }}
+                    >
+                      <ListItemText 
+                        primary={
+                          <Typography
+                            variant="body2"
+                            fontWeight="medium"
+                            sx={{ 
+                              textDecoration: isDeclined ? 'line-through' : 'none',
+                              color: isDeclined ? 'text.disabled' : 'text.primary'
+                            }}
+                          >
+                            {event.title}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            {event.isAllDay 
+                              ? 'All day'
+                              : `${formatTime(event.start)} - ${formatTime(event.end)}`}
+                          </Typography>
+                        }
+                      />
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Footer */}
+        <Box sx={{ 
+          p: 2, 
+          borderTop: 1, 
+          borderColor: 'divider', 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          flexShrink: 0 // Prevent footer from shrinking
+        }}>
+          <Button 
+            variant="outlined"
+            onClick={onClose}
+            sx={{ mr: 1 }}
+          >
+            Close
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={onGoToDayView}
+            sx={{ bgcolor: '#1056F5', '&:hover': { bgcolor: '#0A3BB3' } }}
+          >
+            View Full Day
+          </Button>
+        </Box>
+      </Popover>
+    );
+  };
+
+  // Add a new component for displaying out-of-range events - add this after the renderEventContent function
+  const OutOfRangeEventsSection: React.FC<{
+    events: CalendarEvent[];
+    onEventClick: (event: CalendarEvent, e: React.MouseEvent) => void;
+  }> = ({ events, onEventClick }) => {
+    if (events.length === 0) return null;
+
+    return (
+      <Box sx={{ 
+        borderRadius: '4px',
+        border: '1px solid rgba(0,0,0,0.09)',
+        backgroundColor: 'rgba(236, 236, 255, 0.2)',
+        p: 1.5,
+        mb: 2,
+        mt: 1,
+        boxShadow: 'inset 0 0 5px rgba(0,0,0,0.05)'
+      }}>
+        <Typography variant="subtitle2" sx={{ 
+          mb: 1, 
+          color: 'text.secondary', 
+          fontSize: '0.85rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5
+        }}>
+          <AccessTimeIcon sx={{ fontSize: '1rem' }} />
+          {events.length} {events.length === 1 ? 'event' : 'events'} outside visible hours ({DAY_START_HOUR}:00 - {DAY_END_HOUR}:00)
+        </Typography>
+        
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {events.map(event => {
+            const startTime = new Date(event.start);
+            const endTime = new Date(event.end);
+            const eventColor = getEventColor(event);
+            const textColor = getEventTextColor(eventColor);
+            const isEarlyMorning = startTime.getHours() < DAY_START_HOUR;
+            const isLateEvening = startTime.getHours() >= DAY_END_HOUR;
+            
+            // Show when the event occurs
+            const timeIndicator = isEarlyMorning 
+              ? "Early Morning" 
+              : isLateEvening 
+                ? "Evening/Night" 
+                : "Extended Hours";
+                
+            return (
+              <Box 
+                key={event.id}
+                sx={{ 
+                  display: 'flex',
+                  p: 1,
+                  borderRadius: '4px',
+                  backgroundColor: 'white',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                  cursor: 'pointer',
+                  borderLeft: `4px solid ${eventColor}`,
+                  '&:hover': {
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                    transform: 'translateY(-1px)',
+                    transition: 'all 0.2s ease'
+                  }
+                }}
+                onClick={(e) => onEventClick(event, e)}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, color: '#333' }}>
+                      {event.title}
+                    </Typography>
+                    <Chip 
+                      label={timeIndicator} 
+                      size="small" 
+                      sx={{ 
+                        height: '22px', 
+                        fontSize: '0.7rem',
+                        fontWeight: 'medium',
+                        backgroundColor: isEarlyMorning 
+                          ? '#E3F2FD' // Light blue for morning
+                          : isLateEvening 
+                            ? '#EDE7F6' // Light purple for evening
+                            : '#E8F5E9', // Light green for other
+                        color: isEarlyMorning 
+                          ? '#1565C0' // Blue for morning
+                          : isLateEvening 
+                            ? '#5E35B1' // Purple for evening
+                            : '#2E7D32', // Green for other
+                        ml: 1,
+                        border: '1px solid',
+                        borderColor: isEarlyMorning 
+                          ? 'rgba(21, 101, 192, 0.2)' 
+                          : isLateEvening 
+                            ? 'rgba(94, 53, 177, 0.2)' 
+                            : 'rgba(46, 125, 50, 0.2)',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }} 
+                    />
+                  </Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.8rem', mt: 0.5 }}>
+                    {formatTime(startTime)} - {formatTime(endTime)}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    );
+  };
+
+  // Add the countOutOfRangeEvents function to calculate total out-of-range events
+  // Add this after the calculateCurrentTimePosition function around line 2350
+  const countOutOfRangeEvents = (): number => {
+    if (viewMode === 'day') {
+      const dayEvents = getEventsForDay(selectedDate);
+      const { outOfRangeEvents } = separateTasksAndEventsWithOutOfRange(dayEvents);
+      return outOfRangeEvents.length;
+    } else if (viewMode === 'week') {
+      const weekDays = generateWeekDays();
+      let count = 0;
+      
+      weekDays.forEach(day => {
+        const dayEvents = getEventsForDay(day);
+        const { outOfRangeEvents } = separateTasksAndEventsWithOutOfRange(dayEvents);
+        count += outOfRangeEvents.length;
+      });
+      
+      return count;
+    }
+    
+    return 0;
+  };
+
+  // Rename the enhanced separateTasksAndEvents function that includes outOfRangeEvents to avoid conflicts
+  // Update the existing function to have a consistent name wherever it's used
+  const separateTasksAndEventsWithOutOfRange = (events: CalendarEvent[]): {
+    tasks: CalendarEvent[];
+    regularEvents: CalendarEvent[];
+    outOfRangeEvents: CalendarEvent[];
+  } => {
+    const tasks: CalendarEvent[] = [];
+    const regularEvents: CalendarEvent[] = [];
+    const outOfRangeEvents: CalendarEvent[] = [];
+    
+    events.forEach(event => {
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+      const startHour = start.getHours();
+      const endHour = end.getHours();
+      const endMinutes = end.getMinutes();
+      
+      if (event.eventType === 'task') {
+        tasks.push(event);
+      } else if (
+        // Event starts before visible hours
+        (startHour < DAY_START_HOUR && endHour <= DAY_START_HOUR) ||
+        // Event starts after visible hours (after 7pm or exactly at 7pm with minutes)
+        (startHour >= 19 || (startHour === 19 && endMinutes > 0))
+      ) {
+        outOfRangeEvents.push(event);
+      } else {
+        regularEvents.push(event);
+      }
+    });
+    
+    return { tasks, regularEvents, outOfRangeEvents };
+  };
+
   // Modify the return statement to use the mobile views when isMobile is true
   return (
     <Paper 
       elevation={1} 
       sx={{ 
         p: 0,
-        borderRadius: 2,
+        borderRadius: hideHeader ? 0 : 2, // Remove border radius when header is hidden (desktop mode)
         overflow: 'hidden',
-        height: '100%', // Ensure the paper takes full height of its container
+        height: '100%', 
+        width: '100%',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        maxWidth: '100%',
+        boxShadow: hideHeader ? 'none' : 1, // Remove shadow in desktop mode
+        border: 'none'
       }}
     >
-      {/* Calendar header */}
-      <Box sx={{ 
-        p: isMobile ? 1.5 : 2, 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        borderBottom: 1,
-        borderColor: 'divider',
-        backgroundColor: 'rgba(198, 232, 242, 0.3)'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Typography 
-            variant={isMobile ? "body1" : "h6"} 
-            sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: 'black' }}
-          >
-            Calendar
-          </Typography>
-        </Box>
-        
-        <Box sx={{ display: 'flex' }}>
-              <IconButton 
-            onClick={refreshCalendarData} 
-            size={isMobile ? "small" : "medium"}
-            sx={{ mr: 0.5 }}
-          >
-            <RefreshIcon />
-              </IconButton>
+      {/* Calendar header - Only show if hideHeader is false */}
+      {!hideHeader && (
+        <Box sx={{ 
+          p: isMobile ? 1.5 : 2, 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          borderBottom: 1,
+          borderColor: 'divider',
+          backgroundColor: 'rgba(198, 232, 242, 0.3)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography 
+              variant={isMobile ? "body1" : "h6"} 
+              sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: 'black' }}
+            >
+              Calendar
+            </Typography>
+          </Box>
           
+          <Box sx={{ display: 'flex' }}>
+            <Tooltip title={`${showOutOfRangeEvents ? 'Hide' : 'Show'} events outside visible hours`}>
+              <Badge 
+                badgeContent={countOutOfRangeEvents()} 
+                color="primary"
+                sx={{ 
+                  '& .MuiBadge-badge': {
+                    fontSize: '0.65rem',
+                    minWidth: '18px',
+                    height: '18px',
+                    fontWeight: 'bold',
+                    display: countOutOfRangeEvents() > 0 ? 'flex' : 'none'
+                  }
+                }}
+              >
+                <IconButton 
+                  onClick={() => setShowOutOfRangeEvents(!showOutOfRangeEvents)}
+                  size={isMobile ? "small" : "medium"}
+                  sx={{ 
+                    mr: 0.5,
+                    color: showOutOfRangeEvents ? 'primary.main' : 'action.active',
+                    bgcolor: showOutOfRangeEvents ? 'rgba(16, 86, 245, 0.1)' : 'transparent',
+                  }}
+                >
+                  <AccessTimeIcon />
+                </IconButton>
+              </Badge>
+            </Tooltip>
+            
+            <IconButton 
+              onClick={refreshCalendarData} 
+              size={isMobile ? "small" : "medium"}
+              sx={{ mr: 0.5 }}
+            >
+              <RefreshIcon />
+            </IconButton>
+            
             <IconButton 
               onClick={(e) => {
                 if (onAddEvent) onAddEvent();
@@ -3051,8 +3572,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
             >
               <AddCircleOutlineIcon />
             </IconButton>
+          </Box>
         </Box>
-      </Box>
+      )}
       
       {/* Date navigation */}
       <Box sx={{ 
@@ -3148,10 +3670,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
               </>
             ) : (
               <>
-                <ToggleButton value="day">DAY</ToggleButton>
-                <ToggleButton value="week">WEEK</ToggleButton>
-                <ToggleButton value="month">MONTH</ToggleButton>
-                <ToggleButton value="all">ALL</ToggleButton>
+                <ToggleButton value="day" sx={{ px: 3 }}>DAY</ToggleButton>
+                <ToggleButton value="week" sx={{ px: 3 }}>WEEK</ToggleButton>
+                <ToggleButton value="month" sx={{ px: 3 }}>MONTH</ToggleButton>
               </>
             )}
           </ToggleButtonGroup>
@@ -3163,8 +3684,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         sx={{ 
           flexGrow: 1, 
           overflow: 'auto',
-          height: 'calc(100% - 130px)', // Ensure the content area has a defined height
-          minHeight: useMobileView ? '350px' : '400px' // Set a minimum height so it's always scrollable
+          height: hideHeader ? 'calc(100% - 56px)' : 'calc(100% - 130px)', // Adjust height based on whether header is shown
+          minHeight: useMobileView ? '350px' : '400px', // Set a minimum height so it's always scrollable
+          width: '100%', // Ensure it takes full width
+          '& .MuiGrid-container': {
+            width: '100%',
+            maxWidth: '100%'
+          },
+          '& .MuiGrid-item': {
+            maxWidth: '100%'
+          }
         }}
       >
         {error ? (
@@ -3241,7 +3770,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         event={selectedTask}
         anchorEl={taskPopupAnchorEl}
         onClose={handleCloseTaskPopup}
-        onEdit={handleEditEvent}
         onDelete={handleDeleteEvent}
       />
       
@@ -3251,6 +3779,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({
         anchorEl={taskListPopupAnchorEl}
         onClose={handleCloseTaskListPopup}
         onTaskClick={handleTaskFromListClick}
+      />
+      
+      {/* Day Events Popup */}
+      <DayEventsPopup
+        events={dayEventsForPopup}
+        date={dayDateForPopup}
+        anchorEl={dayEventsPopupAnchorEl}
+        onClose={handleCloseDayEventsPopup}
+        onEventClick={handleEventClick}
+        onGoToDayView={handleGoToDayView}
       />
     </Paper>
   );

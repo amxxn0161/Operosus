@@ -5,6 +5,8 @@ import {
   connectGoogleCalendar,
   isGoogleCalendarConnected,
   createCalendarEvent,
+  createFocusTimeWithTasks,
+  createEventWithTasks,
   updateCalendarEvent,
   deleteCalendarEvent,
   addAttendeesToEvent,
@@ -88,7 +90,9 @@ interface CalendarContextType {
   fetchEvents: () => Promise<void>;
   setSelectedDate: (date: Date) => void;
   setViewMode: (mode: 'day' | 'week' | 'month' | 'all') => void;
-  addEvent: (event: Omit<CalendarEvent, 'id'>, addGoogleMeet?: boolean) => Promise<CalendarEvent>;
+  addEvent: (event: Omit<CalendarEvent, 'id'>, addGoogleMeet?: boolean, customEndpoint?: string) => Promise<CalendarEvent>;
+  createFocusTimeWithTasks: (focusTimeData: any) => Promise<CalendarEvent>;
+  createEventWithTasks: (eventData: any) => Promise<CalendarEvent>;
   updateEvent: (eventId: string, event: Partial<Omit<CalendarEvent, 'id'>>) => Promise<CalendarEvent>;
   removeEvent: (eventId: string, responseScope?: 'single' | 'all') => Promise<boolean>;
   refreshCalendarData: () => Promise<void>;
@@ -392,11 +396,11 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Add a new event - now using Redux
-  const addEvent = async (event: Omit<CalendarEvent, 'id'>, addGoogleMeet: boolean = false): Promise<CalendarEvent> => {
+  const addEvent = async (event: Omit<CalendarEvent, 'id'>, addGoogleMeet: boolean = false, customEndpoint?: string): Promise<CalendarEvent> => {
     setError(null);
     
     try {
-      const resultAction = await dispatch(addCalendarEvent({ event, addGoogleMeet }));
+      const resultAction = await dispatch(addCalendarEvent({ event, addGoogleMeet, customEndpoint }));
       
       if (addCalendarEvent.fulfilled.match(resultAction)) {
         return resultAction.payload;
@@ -547,6 +551,55 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Add lastCallTime property to the function
   refreshCalendarData.lastCallTime = 0;
 
+  // Add a method to create focus time events with tasks
+  const createFocusTimeWithTasksHandler = async (focusTimeData: any): Promise<CalendarEvent> => {
+    setError(null);
+    
+    try {
+      // Call the service directly rather than using Redux
+      const newEvent = await createFocusTimeWithTasks(focusTimeData);
+      
+      // Add the created event to our local state
+      if (newEvent) {
+        // Add to Redux store manually since we're bypassing the Redux action
+        dispatch({
+          type: 'calendar/addEvent/fulfilled',
+          payload: newEvent
+        });
+      }
+      
+      return newEvent;
+    } catch (error) {
+      console.error('Error creating focus time event with tasks:', error);
+      setError('Failed to create focus time event with tasks');
+      throw error;
+    }
+  };
+
+  // Add a method to create regular events with tasks
+  const createEventWithTasksHandler = async (eventData: any): Promise<CalendarEvent> => {
+    setError(null);
+    
+    try {
+      // Call the service directly
+      const newEvent = await createEventWithTasks(eventData);
+      
+      // Add the created event to Redux store
+      if (newEvent) {
+        dispatch({
+          type: 'calendar/addEvent/fulfilled',
+          payload: newEvent
+        });
+      }
+      
+      return newEvent;
+    } catch (error) {
+      console.error('Error creating event with tasks:', error);
+      setError('Failed to create event with tasks');
+      throw error;
+    }
+  };
+
   const value: CalendarContextType = {
     events,
     selectedDate,
@@ -559,6 +612,8 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSelectedDate: setSelectedDateHandler,
     setViewMode: setViewModeHandler,
     addEvent,
+    createFocusTimeWithTasks: createFocusTimeWithTasksHandler,
+    createEventWithTasks: createEventWithTasksHandler,
     updateEvent: updateEventHandler,
     removeEvent,
     refreshCalendarData,

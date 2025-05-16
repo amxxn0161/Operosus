@@ -31,8 +31,10 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import InsightsIcon from '@mui/icons-material/Insights';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
+import OpoSmallImage from '../assets/Oposmall.png';
 
 const Header: React.FC = () => {
   const { isAuthenticated, logout, user } = useAuth();
@@ -216,7 +218,8 @@ const Header: React.FC = () => {
             bgcolor: location.pathname.includes('/journal') || 
                      location.pathname.includes('/entry') ||
                      location.pathname.includes('/all-entries') ||
-                     location.pathname.includes('/insights') ? 
+                     location.pathname.includes('/insights') ||
+                     location.pathname.includes('/admin-journal') ? 
                      'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
@@ -225,7 +228,8 @@ const Header: React.FC = () => {
             color: location.pathname.includes('/journal') || 
                   location.pathname.includes('/entry') ||
                   location.pathname.includes('/all-entries') ||
-                  location.pathname.includes('/insights') ? 
+                  location.pathname.includes('/insights') ||
+                  location.pathname.includes('/admin-journal') ? 
                   'primary.main' : 'text.secondary',
             fontSize: { xs: 20, sm: 22 } 
           }} />
@@ -235,12 +239,14 @@ const Header: React.FC = () => {
               fontWeight: location.pathname.includes('/journal') || 
                     location.pathname.includes('/entry') ||
                     location.pathname.includes('/all-entries') ||
-                    location.pathname.includes('/insights') ? 
+                    location.pathname.includes('/insights') ||
+                    location.pathname.includes('/admin-journal') ? 
                     'bold' : 'normal',
               color: location.pathname.includes('/journal') || 
                     location.pathname.includes('/entry') ||
                     location.pathname.includes('/all-entries') ||
-                    location.pathname.includes('/insights') ? 
+                    location.pathname.includes('/insights') ||
+                    location.pathname.includes('/admin-journal') ? 
                     'primary.main' : 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
@@ -320,6 +326,37 @@ const Header: React.FC = () => {
                 }}
               />
             </ListItemButton>
+            
+            {/* Admin Journal Button - moved inside journal submenu */}
+            {isAdmin && (
+              <ListItemButton 
+                onClick={() => handleNavigation('/admin-journal')}
+                selected={isActive('/admin-journal')}
+                sx={{ 
+                  py: 1.5, 
+                  pl: 7,
+                  mx: 1,
+                  borderRadius: '12px',
+                  bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+                }}
+              >
+                <AdminPanelSettingsIcon 
+                  sx={{ 
+                    mr: 1, 
+                    color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary',
+                    fontSize: { xs: 16, sm: 18 } 
+                  }} 
+                />
+                <ListItemText 
+                  primary="Journal Admin" 
+                  primaryTypographyProps={{
+                    fontWeight: isActive('/admin-journal') ? 'bold' : 'normal',
+                    color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
+                    fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                  }}
+                />
+              </ListItemButton>
+            )}
           </List>
         </Collapse>
         
@@ -335,10 +372,31 @@ const Header: React.FC = () => {
         >
           <AssignmentIcon sx={{ mr: 2, color: isActive('/tasks') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
           <ListItemText 
-            primary="Google Tasks" 
+            primary="Tasks" 
             primaryTypographyProps={{
               fontWeight: isActive('/tasks') ? 'bold' : 'normal',
               color: isActive('/tasks') ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
+            }}
+          />
+        </ListItemButton>
+        
+        <ListItemButton 
+          onClick={() => handleNavigation('/dashboard')}
+          selected={false}
+          sx={{ 
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
+            bgcolor: 'transparent'
+          }}
+        >
+          <CalendarMonthIcon sx={{ mr: 2, color: 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <ListItemText 
+            primary="Calendar" 
+            primaryTypographyProps={{
+              fontWeight: 'normal',
+              color: 'text.primary',
               fontSize: { xs: '0.95rem', sm: '1rem' }
             }}
           />
@@ -354,9 +412,20 @@ const Header: React.FC = () => {
             bgcolor: isActive('/ai-assistant') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
           }}
         >
-          <SmartToyIcon sx={{ mr: 2, color: isActive('/ai-assistant') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
+          <Box 
+            component="img"
+            src={OpoSmallImage}
+            alt="Opo"
+            sx={{ 
+              width: 22,
+              height: 'auto',
+              mr: 2,
+              filter: isActive('/ai-assistant') ? 'none' : 'grayscale(0.5)',
+              opacity: isActive('/ai-assistant') ? 1 : 0.7
+            }} 
+          />
           <ListItemText 
-            primary="AI Assistant" 
+            primary="Opo AI" 
             primaryTypographyProps={{
               fontWeight: isActive('/ai-assistant') ? 'bold' : 'normal',
               color: isActive('/ai-assistant') ? 'primary.main' : 'text.primary',
@@ -364,30 +433,6 @@ const Header: React.FC = () => {
             }}
           />
         </ListItemButton>
-        
-        {/* Admin Journal Button - only shown for admins */}
-        {isAdmin && (
-          <ListItemButton 
-            onClick={() => handleNavigation('/admin-journal')}
-            selected={isActive('/admin-journal')}
-            sx={{ 
-              py: 1.8,
-              mx: 1,
-              borderRadius: '12px',
-              bgcolor: isActive('/admin-journal') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
-            }}
-          >
-            <AdminPanelSettingsIcon sx={{ mr: 2, color: isActive('/admin-journal') ? 'primary.main' : 'text.secondary', fontSize: { xs: 20, sm: 22 } }} />
-            <ListItemText 
-              primary="Admin Journal" 
-              primaryTypographyProps={{
-                fontWeight: isActive('/admin-journal') ? 'bold' : 'normal',
-                color: isActive('/admin-journal') ? 'primary.main' : 'text.primary',
-                fontSize: { xs: '0.95rem', sm: '1rem' }
-              }}
-            />
-          </ListItemButton>
-        )}
       </List>
 
       <Divider sx={{ my: 2 }} />
@@ -428,9 +473,14 @@ const Header: React.FC = () => {
     </Box>
   );
 
-  // Auto-open the journal submenu if we're on journal-insights page
+  // Auto-open the journal submenu if we're on journal-related pages
   useEffect(() => {
-    if (isActive('/journal-insights') && !journalSubmenuOpen) {
+    if ((isActive('/journal-insights') || 
+         isActive('/journal') || 
+         isActive('/all-entries') || 
+         isActive('/insights') || 
+         isActive('/admin-journal')) && 
+         !journalSubmenuOpen) {
       setJournalSubmenuOpen(true);
     }
   }, [location.pathname, journalSubmenuOpen, isActive]);
@@ -493,19 +543,6 @@ const Header: React.FC = () => {
                   marginRight: isMobile ? '8px' : '12px' 
                 }} 
               />
-              <Typography
-                variant="h6"
-                sx={{
-                  fontFamily: 'Poppins',
-                  fontWeight: 'bold',
-                  color: '#1056F5',
-                  letterSpacing: '0.5px',
-                  textDecoration: 'none',
-                  fontSize: { xs: '1rem', sm: '1.25rem', md: '1.4rem' }
-                }}
-              >
-                {isMobile ? 'PP' : 'Productivity Pulse'}
-              </Typography>
             </Box>
           </Box>
 

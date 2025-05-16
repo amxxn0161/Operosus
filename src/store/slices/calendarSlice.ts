@@ -165,13 +165,15 @@ export const addCalendarEvent = createAsyncThunk(
   'calendar/addEvent',
   async ({ 
     event, 
-    addGoogleMeet = false 
+    addGoogleMeet = false,
+    customEndpoint
   }: { 
     event: Omit<CalendarEvent, 'id'>;
     addGoogleMeet?: boolean;
+    customEndpoint?: string;
   }, { rejectWithValue }) => {
     try {
-      const newEvent = await createCalendarEvent('primary', event, addGoogleMeet);
+      const newEvent = await createCalendarEvent('primary', event, addGoogleMeet, customEndpoint);
       return newEvent;
     } catch (error) {
       console.error('Error creating calendar event:', error);

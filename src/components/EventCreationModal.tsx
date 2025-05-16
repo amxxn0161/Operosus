@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -20,20 +20,40 @@ import {
   Chip,
   Paper,
   useMediaQuery,
-  useTheme
+  useTheme,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import LinkIcon from '@mui/icons-material/Link';
 import { format } from 'date-fns';
 import { CalendarEvent } from '../services/calendarService';
 import { useCalendar } from '../contexts/CalendarContext';
+import { useGoogleTasks } from '../contexts/GoogleTasksContext';
 
 // Add interface for attendee type
 interface Attendee {
   email: string;
   optional?: boolean;
   responseStatus?: 'needsAction' | 'declined' | 'tentative' | 'accepted';
+}
+
+// Add interface for task type
+interface Task {
+  id: string;
+  title: string;
+  completed: boolean;
+  notes?: string;
+  task_list_id?: string | null;
+  due?: string;
+  has_explicit_time?: boolean;
+  status?: string;
 }
 
 interface EventCreationModalProps {
@@ -49,7 +69,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   selectedDate,
   selectedTime
 }) => {
-  const { addEvent } = useCalendar();
+  const { addEvent, createFocusTimeWithTasks, createEventWithTasks } = useCalendar();
+  const { deleteTask, taskLists, refreshTaskLists } = useGoogleTasks();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -99,6 +120,21 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   const [newAttendeeOptional, setNewAttendeeOptional] = useState(false);
   const [attendeeError, setAttendeeError] = useState<string | null>(null);
   
+  // Tasks state for focus time events
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [taskError, setTaskError] = useState<string | null>(null);
+  
+  // New state for task due date and time
+  const [newTaskDueDate, setNewTaskDueDate] = useState<string>('');
+  const [newTaskDueTime, setNewTaskDueTime] = useState<string>('');
+  const [showTaskTimePicker, setShowTaskTimePicker] = useState<boolean>(false);
+  
+  // New state for task selection dialog
+  const [taskDialogOpen, setTaskDialogOpen] = useState<boolean>(false);
+  const [taskDialogTab, setTaskDialogTab] = useState<string>('');
+  const [selectedTasks, setSelectedTasks] = useState<{[key: string]: boolean}>({});
+  
   // Form validation
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,6 +171,11 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       if (end < start) {
         newErrors.endDate = 'End date/time must be after start date/time';
       }
+    }
+    
+    // Check if at least one task is added for focus time events
+    if (eventType === 'focusTime' && tasks.length === 0) {
+      newErrors.tasks = 'At least one task is required for focus time events';
     }
     
     setErrors(newErrors);
@@ -178,6 +219,135 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setAttendees(attendees.filter(attendee => attendee.email !== email));
   };
 
+  // Function to add a task
+  const addTask = () => {
+    // Reset error
+    setTaskError(null);
+    
+    if (!newTaskTitle.trim()) {
+      setTaskError('Task title cannot be empty');
+      return;
+    }
+    
+    // Add new task with optional due date and time
+    const newTask: Task = {
+      id: Date.now().toString(), // Simple unique ID
+      title: newTaskTitle.trim(),
+      completed: false
+    };
+    
+    // Add due date and time if provided
+    if (newTaskDueDate) {
+      if (showTaskTimePicker && newTaskDueTime) {
+        // If both date and time are provided
+        const dueDateTime = `${newTaskDueDate}T${newTaskDueTime}:00`;
+        newTask.due = dueDateTime;
+        newTask.has_explicit_time = true;
+      } else {
+        // If only date is provided (set to midnight)
+        newTask.due = `${newTaskDueDate}T00:00:00`;
+        newTask.has_explicit_time = false;
+      }
+    }
+    
+    setTasks([...tasks, newTask]);
+    
+    // Reset input fields
+    setNewTaskTitle('');
+    setNewTaskDueDate('');
+    setNewTaskDueTime('');
+    setShowTaskTimePicker(false);
+  };
+  
+  // Function to remove a task
+  const removeTask = async (id: string) => {
+    // Find the task to be removed
+    const taskToRemove = tasks.find(task => task.id === id);
+    
+    // Remove the task from local state first
+    setTasks(tasks.filter(task => task.id !== id));
+    
+    // If the task has a task_list_id, it exists in Google Tasks API
+    // and should be deleted from there too
+    if (taskToRemove?.task_list_id) {
+      try {
+        // Call the Google Tasks API to delete the task
+        const success = await deleteTask(taskToRemove.task_list_id, taskToRemove.id);
+        
+        if (success) {
+          console.log(`Task ${id} successfully deleted from Google Tasks API`);
+        } else {
+          console.error(`Failed to delete task ${id} from Google Tasks API`);
+        }
+      } catch (error) {
+        console.error('Error deleting task from API:', error);
+      }
+    }
+  };
+
+  // Function to open task selection dialog
+  const handleOpenTaskDialog = () => {
+    setTaskDialogOpen(true);
+    
+    // Set default task list tab to the first task list if available
+    if (taskLists.length > 0 && !taskDialogTab) {
+      setTaskDialogTab(taskLists[0].id);
+    }
+  };
+  
+  // Handle task dialog close
+  const handleTaskDialogClose = () => {
+    setTaskDialogOpen(false);
+  };
+  
+  // Set the active tab in the task dialog
+  const handleTaskTabChange = (taskListId: string) => {
+    setTaskDialogTab(taskListId);
+  };
+  
+  // Toggle task selection in the dialog
+  const handleTaskToggle = (taskListId: string, taskId: string, taskTitle: string) => {
+    const taskKey = `${taskListId}:${taskId}`;
+    setSelectedTasks(prev => ({
+      ...prev,
+      [taskKey]: !prev[taskKey]
+    }));
+  };
+  
+  // Save selected tasks and add them to the event
+  const handleSaveSelectedTasks = () => {
+    // Get all selected tasks
+    const newSelectedTasks: Task[] = Object.entries(selectedTasks)
+      .filter(([_, isSelected]) => isSelected)
+      .map(([key]) => {
+        const [taskListId, taskId] = key.split(':');
+        
+        // Find the task in the task lists
+        const taskList = taskLists.find(list => list.id === taskListId);
+        const task = taskList?.tasks.find(t => t.id === taskId);
+        
+        if (task) {
+          return {
+            id: taskId,
+            title: task.title,
+            completed: false,
+            task_list_id: taskListId,
+            due: task.due,
+            has_explicit_time: task.has_explicit_time,
+            status: task.status
+          } as Task;
+        }
+        return null;
+      })
+      .filter((task): task is Task => task !== null);
+
+    // Add selected tasks to current tasks
+    setTasks([...tasks, ...newSelectedTasks]);
+    
+    // Close the dialog
+    setTaskDialogOpen(false);
+  };
+
   const handleSubmit = async () => {
     // Clear any previous API errors
     setApiError(null);
@@ -215,6 +385,19 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       // Add attendees if there are any - ensure it's always an array
       newEvent.attendees = attendees.length > 0 ? [...attendees] : [];
       
+      // Check if there are tasks to add regardless of event type
+      const hasTasks = tasks.length > 0;
+      
+      // Format tasks for API
+      const formattedTasks = hasTasks ? tasks.map(task => ({
+        title: task.title,
+        notes: task.notes || "", // Include notes if available
+        task_list_id: task.task_list_id || null, // Use task list ID if available
+        due: task.due || null, // Include due date if available
+        has_explicit_time: task.has_explicit_time || false, // Include explicit time flag
+        status: task.status || "needsAction" // Include status
+      })) : [];
+      
       // Handle special event types
       if (eventType === 'outOfOffice') {
         // Force Out of Office events to be all-day
@@ -233,7 +416,8 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           newEvent.outOfOfficeProperties.declineMessage = description;
         }
         
-        // Remove transparency property - it's set automatically by the backend
+        // Out of Office events don't support tasks
+        await addEvent(newEvent, false);
       } else if (eventType === 'focusTime') {
         // Set the eventType field to focusTime
         newEvent.eventType = 'focusTime';
@@ -251,21 +435,42 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
           newEvent.focusTimeProperties.autoDeclineMode = "declineOnlyNewConflictingInvitations";
         }
         
-        // Add decline message if description exists
+        // Add declineMessage if description exists, otherwise use default
         if (description) {
           newEvent.focusTimeProperties.declineMessage = description;
-        } else if (autoDeclineMeetings) {
-          // Add a default decline message if auto-decline is enabled but no description
+        } else {
           newEvent.focusTimeProperties.declineMessage = "Declined because I am in focus time.";
         }
         
-        // Ensure we're using dateTime format for Focus Time events
-        const startDateTime = new Date(`${startDate}T${isAllDay ? '00:00:00' : startTime}`);
-        const endDateTime = new Date(`${endDate}T${isAllDay ? '23:59:59' : endTime}`);
-        
-        // Override the start and end format
-        newEvent.start = startDateTime.toISOString();
-        newEvent.end = endDateTime.toISOString();
+        // If this is a focus time event with tasks, use the dedicated endpoint
+        if (hasTasks) {
+          // Create payload for the focus-time-with-tasks endpoint - matching the Laravel controller requirements
+          const focusTimeWithTasksPayload = {
+            summary: title,
+            description: description || "",
+            location: location || "",
+            colorId: "", // Default empty string
+            attendees: [],
+            start: {
+              dateTime: startDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            end: {
+              dateTime: endDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            focusTimeProperties: newEvent.focusTimeProperties, // Include focus time settings
+            tasks: formattedTasks  // This is the required tasks array
+          };
+          
+          console.log('Creating focus time event with tasks:', JSON.stringify(focusTimeWithTasksPayload, null, 2));
+          
+          // Use the dedicated method for focus time with tasks
+          await createFocusTimeWithTasks(focusTimeWithTasksPayload);
+        } else {
+          // For focus time events without tasks, we'll use the regular event endpoint
+          await addEvent(newEvent, false);
+        }
       } else if (eventType === 'workingLocation') {
         // Set the eventType field to workingLocation
         newEvent.eventType = 'workingLocation';
@@ -279,39 +484,48 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
         if (location) {
           newEvent.workingLocationProperties.customLocation = location;
         }
+        
+        // Working Location events don't support tasks
+        await addEvent(newEvent, false);
       } else {
         // For regular events, just set the colorId
+        if (eventType !== 'default') {
         newEvent.colorId = eventType;
       }
       
-      console.log('Creating new event with properties:', JSON.stringify(newEvent, null, 2));
-      
-      // Add event using context function (which handles API call)
-      try {
-        // Pass the addGoogleMeet parameter to tell the backend to create a Google Meet link
-        await addEvent(newEvent, addGoogleMeet);
-        // Close modal and reset form
-        handleClose();
-      } catch (apiError: any) {
-        console.error('API Error creating event:', apiError);
-        // Get more detailed error message
-        let errorMessage = 'Failed to create event. Please try again.';
-        
-        if (apiError.message) {
-          errorMessage = apiError.message;
-        }
-        
-        // Special handling for 500 errors
-        if (apiError.status === 500 || errorMessage.includes('500')) {
-          if (eventType === 'outOfOffice') {
-            errorMessage = 'Server error creating Out of Office event. The Google Calendar API may be unavailable or the event format is incorrect.';
+        // If there are tasks, use the dedicated events-with-tasks endpoint
+        if (hasTasks) {
+          // Create payload for the events-with-tasks endpoint
+          const eventWithTasksPayload = {
+            summary: title,
+            description: description || "",
+            location: location || "",
+            colorId: newEvent.colorId || "",
+            attendees: newEvent.attendees,
+            start: {
+              dateTime: startDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            end: {
+              dateTime: endDateTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            tasks: formattedTasks // Include tasks array
+          };
+          
+          console.log('Creating regular event with tasks:', JSON.stringify(eventWithTasksPayload, null, 2));
+          
+          // Use the dedicated method for events with tasks
+          await createEventWithTasks(eventWithTasksPayload);
           } else {
-            errorMessage = 'Server error creating event. The calendar API may be temporarily unavailable.';
+          // For regular events without tasks, use standard endpoint
+          // Setup Google Meet if requested
+          await addEvent(newEvent, addGoogleMeet);
           }
         }
         
-        setApiError(errorMessage);
-      }
+      // Close modal and reset form
+      handleClose();
     } catch (error) {
       console.error('Error creating event:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to create event. Please try again.');
@@ -326,48 +540,80 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
     setDescription('');
     setLocation('');
     setEventType('default');
+    
+    // Reset time values to defaults based on selected date
+    const initialStart = getInitialStartTime();
+    const initialEnd = getInitialEndTime(initialStart);
+    setStartDate(format(initialStart, 'yyyy-MM-dd'));
+    setStartTime(format(initialStart, 'HH:mm'));
+    setEndDate(format(initialEnd, 'yyyy-MM-dd'));
+    setEndTime(format(initialEnd, 'HH:mm'));
+    
+    // Reset other form options
     setIsAllDay(false);
     setDoNotDisturb(true);
     setAutoDeclineMeetings(true);
     setAddGoogleMeet(false);
-    setErrors({});
-    setApiError(null);
+    
+    // Reset attendees
     setAttendees([]);
     setNewAttendeeEmail('');
     setNewAttendeeOptional(false);
     setAttendeeError(null);
     
-    // Call onClose prop
+    // Reset tasks
+    setTasks([]);
+    setNewTaskTitle('');
+    setTaskError(null);
+    
+    // Reset form validation and API state
+    setErrors({});
+    setIsSubmitting(false);
+    setApiError(null);
+    
+    // Close the modal
     onClose();
   };
 
   // Handle automatic all-day selection for Out of Office
   const handleEventTypeChange = (newType: string) => {
+    // Set new type
     setEventType(newType);
     
-    // When selecting Out of Office
+    // Adjust form based on event type
     if (newType === 'outOfOffice') {
-      // Automatically check the All Day box
+      // Out of Office events are always all-day in Google Calendar
       setIsAllDay(true);
       
-      // Auto-fill the title with "Out of Office"
-      setTitle('Out of Office');
+      // Reset attendees for OOO events
+      setAttendees([]);
+    } else if (newType === 'workingLocation') {
+      // Working Location events are always all-day
+      setIsAllDay(true);
       
-      // If no description is set, provide a default decline message
-      if (!description) {
-        setDescription('I am out of office');
-      }
-    }
-    // When selecting Focus Time
-    else if (newType === 'focusTime') {
-      // Auto-fill the title if empty
-      if (!title) {
-        setTitle('Focus Time');
-      }
-      
-      // Set default values for Focus Time options
+      // Reset attendees for Working Location events
+      setAttendees([]);
+    } else if (newType === 'focusTime') {
+      // Focus time events usually have Do Not Disturb and Auto-decline enabled
       setDoNotDisturb(true);
       setAutoDeclineMeetings(true);
+      
+      // Reset attendees for Focus Time events
+      setAttendees([]);
+      
+      // Reset tasks for non-focus time events
+      if (tasks.length > 0) {
+        setTasks([]);
+      }
+    } else {
+      // Reset Focus Time specific options
+      setDoNotDisturb(false);
+      setAutoDeclineMeetings(false);
+      
+      // Reset tasks for non-focus time events
+      if (tasks.length > 0) {
+        setTasks([]);
+      }
     }
   };
   
@@ -403,444 +649,589 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={handleClose}
-      maxWidth="sm"
-      fullWidth
-      fullScreen={isMobile}
-      PaperProps={{
-        sx: {
-          borderRadius: isMobile ? 0 : 2,
-          overflow: 'visible',
-          maxHeight: isMobile ? '100vh' : '95vh' // Full height on mobile
-        }
-      }}
-    >
-      <DialogTitle sx={{ 
-        p: isMobile ? 1.5 : 2, 
-        backgroundColor: 'rgba(198, 232, 242, 0.3)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-        position: 'relative',
-        zIndex: 1
-      }}>
-        <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#071C73' }}>
-          Add Event
-        </Typography>
-        <IconButton onClick={handleClose} size="small">
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      
-      <DialogContent sx={{ 
-        p: isMobile ? 2 : 3, 
-        pt: isMobile ? 2 : 3,
-        mt: 0.5,
-        position: 'relative',
-        zIndex: 0,
-        overflowY: 'auto', // Enable vertical scrolling if needed
-        '& .MuiFormHelperText-root': {
-          marginTop: '4px', // Reduce the margin above helper text
-          position: 'static' // Ensure helper text doesn't float
-        }
-      }}>
-        {apiError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {apiError}
-          </Alert>
-        )}
+    <>
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: { 
+            borderRadius: 1.5,
+            overflow: 'hidden'
+          }
+        }}
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">
+              {eventType === 'focusTime' ? 'Add Focus Time' : 'Add Event'}
+            </Typography>
+            <IconButton onClick={handleClose} edge="end">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
         
-        <Box component="form" sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: isMobile ? 2 : 3 // Smaller gap on mobile
-        }}>
-          <TextField
-            label="Event Title"
-            fullWidth
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            error={!!errors.title}
-            helperText={errors.title}
-            variant="outlined"
-            autoFocus
-            required
-            InputLabelProps={{ 
-              shrink: true,
-              required: true
-            }}
-            sx={{
-              '& .MuiFormLabel-asterisk': {
-                color: '#d32f2f' // Make asterisk red
-              },
-              '& .MuiInputLabel-root': {
-                position: 'relative',
-                transform: 'none',
-                marginBottom: '8px'
-              },
-              '& .MuiFormHelperText-root': {
-                marginLeft: 0 // Align error message with field
-              }
-            }}
-          />
-          
-          <Box sx={{ 
-            display: 'flex', 
-            gap: isMobile ? 1 : 2, 
-            alignItems: 'flex-start',
-            flexWrap: 'wrap', // Allow wrapping on small screens
-            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
-          }}>
-            <FormControlLabel
-              control={
-                <Checkbox 
-                  checked={isAllDay} 
-                  onChange={(e) => setIsAllDay(e.target.checked)} 
-                  disabled={eventType === 'outOfOffice'} // Disable checkbox for Out of Office
-                />
-              }
-              label="All Day"
-              sx={{ ml: 0 }}
-            />
-            
-            <FormControl sx={{ minWidth: isMobile ? '100%' : 150, flexGrow: 1 }}>
-              <InputLabel>Event Type</InputLabel>
+        <DialogContent dividers>
+          <Box sx={{ p: isMobile ? 1 : 2 }}>
+            {/* Event Type Selector */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="event-type-label">Event Type</InputLabel>
               <Select
+                labelId="event-type-label"
+                id="event-type"
                 value={eventType}
                 label="Event Type"
                 onChange={(e) => handleEventTypeChange(e.target.value)}
+                required
               >
-                <MenuItem value="default">Default</MenuItem>
-                <MenuItem value="outOfOffice">Out of Office</MenuItem>
+                <MenuItem value="default">Calendar Event</MenuItem>
                 <MenuItem value="focusTime">Focus Time</MenuItem>
-                <MenuItem value="workingLocation">Working Location</MenuItem>
+                <MenuItem value="outOfOffice">Out of Office</MenuItem>
               </Select>
             </FormControl>
-          </Box>
-          
-          <Box sx={{ 
-            display: 'flex', 
-            gap: isMobile ? 1 : 2,
-            flexWrap: 'wrap', // Allow wrapping on small screens
-            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
-          }}>
+            
+            {/* Title input */}
             <TextField
-              label="Start Date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              error={!!errors.startDate}
-              helperText={errors.startDate}
-              InputLabelProps={{ 
-                shrink: true,
-                required: true
-              }}
-              sx={{
-                flexGrow: 1,
-                minWidth: isMobile ? '100%' : '200px',
-                '& .MuiFormLabel-asterisk': {
-                  color: '#d32f2f'
-                },
-                '& .MuiFormHelperText-root': {
-                  marginLeft: 0
-                }
-              }}
+              fullWidth
+              label="Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              error={!!errors.title}
+              helperText={errors.title}
               required
+              sx={{ mb: 2 }}
             />
             
-            {!isAllDay && (
-              <TextField
-                label="Start Time"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                error={!!errors.startTime}
-                helperText={errors.startTime}
-                InputLabelProps={{ 
-                  shrink: true,
-                  required: true
-                }}
-                sx={{
-                  flexGrow: 1,
-                  minWidth: isMobile ? '100%' : '150px',
-                  '& .MuiFormLabel-asterisk': {
-                    color: '#d32f2f'
-                  },
-                  '& .MuiFormHelperText-root': {
-                    marginLeft: 0
-                  }
-                }}
-                required
-              />
-            )}
-          </Box>
-          
-          <Box sx={{ 
-            display: 'flex', 
-            gap: isMobile ? 1 : 2,
-            flexWrap: 'wrap',
-            flexDirection: isMobile ? 'column' : 'row' // Stack vertically on mobile
-          }}>
+            {/* Description input */}
             <TextField
-              label="End Date"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              error={!!errors.endDate}
-              helperText={errors.endDate}
-              InputLabelProps={{ 
-                shrink: true,
-                required: true
-              }}
-              sx={{
-                flexGrow: 1,
-                minWidth: isMobile ? '100%' : '200px',
-                '& .MuiFormLabel-asterisk': {
-                  color: '#d32f2f'
-                },
-                '& .MuiFormHelperText-root': {
-                  marginLeft: 0
-                }
-              }}
-              required
+              fullWidth
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              multiline
+              rows={2}
+              sx={{ mb: 2 }}
             />
             
-            {!isAllDay && (
-              <TextField
-                label="End Time"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                error={!!errors.endTime}
-                helperText={errors.endTime}
-                InputLabelProps={{ 
-                  shrink: true,
-                  required: true
-                }}
-                sx={{
-                  flexGrow: 1,
-                  minWidth: isMobile ? '100%' : '150px',
-                  '& .MuiFormLabel-asterisk': {
-                    color: '#d32f2f'
-                  },
-                  '& .MuiFormHelperText-root': {
-                    marginLeft: 0
-                  }
-                }}
-                required
+            {/* Date and time inputs */}
+            <Box sx={{ display: 'flex', mb: 2, flexDirection: isMobile ? 'column' : 'row', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={isAllDay}
+                    onChange={(e) => setIsAllDay(e.target.checked)}
+                  />
+                }
+                label="All day"
+                sx={{ minWidth: '100px' }}
               />
-            )}
-          </Box>
-          
-          <TextField
-            label="Location"
-            fullWidth
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            variant="outlined"
-            InputLabelProps={{ shrink: true }}
-          />
-          
-          <TextField
-            label={eventType === 'outOfOffice' ? 'Auto-decline Message' : 'Description'}
-            fullWidth
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            variant="outlined"
-            multiline
-            rows={3}
-            InputLabelProps={{ shrink: true }}
-            placeholder={eventType === 'outOfOffice' ? 'I am out of office' : 'Add details about this event'}
-          />
-          
-          {/* Attendees section */}
-          {eventType !== 'outOfOffice' && eventType !== 'focusTime' && eventType !== 'workingLocation' && (
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
-                Attendees
-              </Typography>
               
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                gap: 2
-              }}>
-                {/* Add attendee form */}
-                <Box sx={{ 
-                  display: 'flex', 
-                  gap: 2,
-                  alignItems: 'flex-start',
-                  flexWrap: 'wrap'
-                }}>
+              <Box sx={{ flex: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 1, mb: 1 }}>
                   <TextField
-                    label="Email"
-                    placeholder="Enter attendee email"
+                    fullWidth
+                    label="Start date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    error={!!errors.startDate}
+                    helperText={errors.startDate}
+                    required
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  {!isAllDay && (
+                    <TextField
+                      fullWidth
+                      label="Start time"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      error={!!errors.startTime}
+                      helperText={errors.startTime}
+                      required
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                </Box>
+                
+                <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="End date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    error={!!errors.endDate}
+                    helperText={errors.endDate}
+                    required
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  {!isAllDay && (
+                    <TextField
+                      fullWidth
+                      label="End time"
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      error={!!errors.endTime}
+                      helperText={errors.endTime}
+                      required
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                </Box>
+              </Box>
+            </Box>
+            
+            {/* Location input */}
+            {eventType !== 'focusTime' && (
+              <TextField
+                fullWidth
+                label="Location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+            )}
+            
+            {/* Focus time specific options */}
+            {eventType === 'focusTime' && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Focus Time Options
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={doNotDisturb}
+                      onChange={(e) => setDoNotDisturb(e.target.checked)}
+                    />
+                  }
+                  label="Set status to 'Do not disturb'"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoDeclineMeetings}
+                      onChange={(e) => setAutoDeclineMeetings(e.target.checked)}
+                    />
+                  }
+                  label="Automatically decline meetings"
+                />
+              </Box>
+            )}
+            
+            {/* Google Meet option */}
+            {eventType !== 'focusTime' && eventType !== 'outOfOffice' && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={addGoogleMeet}
+                    onChange={(e) => setAddGoogleMeet(e.target.checked)}
+                  />
+                }
+                label="Add Google Meet video conferencing"
+                sx={{ mb: 2 }}
+              />
+            )}
+            
+            {/* Attendees section for regular events */}
+            {eventType !== 'focusTime' && eventType !== 'outOfOffice' && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Attendees
+                </Typography>
+                
+                {errors.attendees && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {errors.attendees}
+                  </Alert>
+                )}
+                
+                {/* Attendee list */}
+                {attendees.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                    {attendees.map((attendee) => (
+                      <Chip
+                        key={attendee.email}
+                        label={`${attendee.email}${attendee.optional ? ' (Optional)' : ''}`}
+                        onDelete={() => removeAttendee(attendee.email)}
+                        sx={{ marginBottom: 1 }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                
+                {/* Add attendee form */}
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Email address"
                     value={newAttendeeEmail}
                     onChange={(e) => setNewAttendeeEmail(e.target.value)}
                     error={!!attendeeError}
                     helperText={attendeeError}
-                    sx={{ flexGrow: 1 }}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox 
-                        checked={newAttendeeOptional} 
-                        onChange={(e) => setNewAttendeeOptional(e.target.checked)} 
-                      />
-                    }
-                    label="Optional"
-                  />
-                  <Button
-                    variant="outlined"
-                    startIcon={<PersonAddIcon />}
-                    onClick={addAttendee}
-                    sx={{ 
-                      minWidth: 'auto',
-                      height: '40px'
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addAttendee();
+                      }
                     }}
-                    disabled={!newAttendeeEmail.trim()}
+                    sx={{ mr: 1 }}
+                  />
+                  <Button 
+                    variant="outlined" 
+                    onClick={addAttendee}
+                    startIcon={<PersonAddIcon />}
                   >
                     Add
                   </Button>
                 </Box>
                 
-                {/* Google Meet option */}
                 <FormControlLabel
                   control={
-                    <Checkbox 
-                      checked={addGoogleMeet} 
-                      onChange={(e) => setAddGoogleMeet(e.target.checked)}
+                    <Checkbox
+                      checked={newAttendeeOptional}
+                      onChange={(e) => setNewAttendeeOptional(e.target.checked)}
                     />
                   }
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography variant="body2">Add Google Meet video conferencing</Typography>
-                    </Box>
-                  }
+                  label="Optional attendee"
+                />
+              </Box>
+            )}
+          
+            {renderEventTypeDescription()}
+          
+            {/* Add Tasks section for all event types */}
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Tasks
+              </Typography>
+              
+              {errors.tasks && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {errors.tasks}
+                </Alert>
+              )}
+              
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {eventType === 'focusTime' 
+                  ? 'Add at least one task that you plan to work on during this focus time.'
+                  : 'Optionally add tasks to this event.'}
+              </Typography>
+              
+              {/* Task list */}
+              {tasks.length > 0 && (
+                <Paper variant="outlined" sx={{ mb: 2, maxHeight: '150px', overflow: 'auto' }}>
+                  <List dense>
+                    {tasks.map((task) => (
+                      <ListItem
+                        key={task.id}
+                        secondaryAction={
+                          <IconButton edge="end" aria-label="delete" onClick={() => removeTask(task.id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        }
+                      >
+                        <ListItemIcon>
+                          <TaskAltIcon color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={task.title}
+                          secondary={
+                            task.due ? 
+                              <Box component="span" sx={{ 
+                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                              }}>
+                                {new Date(task.due).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                                {task.has_explicit_time && 
+                                  ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })
+                                }
+                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                              </Box>
+                            : null
+                          }
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.9rem'
+                            },
+                            '& .MuiListItemText-secondary': {
+                              fontSize: '0.8rem'
+                            }
+                          }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Paper>
+              )}
+              
+              {/* Task input area */}
+              <Box sx={{ mb: 3, p: 2, border: '1px solid rgba(0, 0, 0, 0.12)', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Add a task</Typography>
+                
+                {/* Task title input */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Task title"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  error={!!taskError}
+                  helperText={taskError}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTask();
+                    }
+                  }}
+                  sx={{ mb: 2 }}
                 />
                 
-                {/* Attendees list */}
-                {attendees.length > 0 && (
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      p: 2, 
-                      display: 'flex', 
-                      flexDirection: 'column',
-                      gap: 1,
-                      backgroundColor: 'rgba(1, 108, 158, 0.05)'
+                {/* Task due date input */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Due date (optional)"
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
+                    value={newTaskDueDate}
+                    onChange={(e) => {
+                      setNewTaskDueDate(e.target.value);
                     }}
+                  />
+                  
+                  {/* Option to add time */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={showTaskTimePicker}
+                        onChange={(e) => setShowTaskTimePicker(e.target.checked)}
+                        disabled={!newTaskDueDate}
+                      />
+                    }
+                    label="Add specific time"
+                  />
+                  
+                  {/* Show time picker if checkbox is checked */}
+                  {showTaskTimePicker && (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Due time"
+                      type="time"
+                      InputLabelProps={{ shrink: true }}
+                      value={newTaskDueTime}
+                      onChange={(e) => setNewTaskDueTime(e.target.value)}
+                    />
+                  )}
+                </Box>
+                
+                {/* Add button */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button 
+                    variant="outlined" 
+                    onClick={addTask}
+                    startIcon={<TaskAltIcon />}
+                    disabled={!newTaskTitle.trim()}
                   >
-                    {attendees.map((attendee) => (
-                      <Box 
-                        key={attendee.email}
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          p: 1,
-                          borderRadius: '4px',
-                          backgroundColor: 'white'
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography>{attendee.email}</Typography>
-                          {attendee.optional && (
-                            <Chip 
-                              label="Optional" 
-                              size="small"
-                              variant="outlined"
-                              sx={{ fontSize: '0.7rem' }}
-                            />
-                          )}
-                        </Box>
-                        <IconButton 
-                          size="small"
-                          onClick={() => removeAttendee(attendee.email)}
-                          sx={{ color: '#d32f2f' }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
-                  </Paper>
-                )}
+                    Add
+                  </Button>
+                </Box>
+              </Box>
+              
+              {/* Link existing tasks button */}
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <Button
+                  variant="text"
+                  startIcon={<LinkIcon />}
+                  sx={{ color: '#1056F5' }}
+                  onClick={handleOpenTaskDialog}
+                >
+                  Link existing tasks
+                </Button>
               </Box>
             </Box>
-          )}
-          
-          {/* Focus Time specific options */}
-          {eventType === 'focusTime' && (
-            <Box sx={{ mt: -1, mb: 1 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={doNotDisturb}
-                    onChange={(e) => setDoNotDisturb(e.target.checked)}
-                  />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="body2">Do Not Disturb</Typography>
-                    <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-                      Mute chat notifications
-                    </Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={autoDeclineMeetings}
-                    onChange={(e) => setAutoDeclineMeetings(e.target.checked)}
-                  />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="body2">Automatically decline meetings</Typography>
-                  </Box>
-                }
-              />
-            </Box>
-          )}
-          
-          {renderEventTypeDescription()}
-          
-          <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-            <Typography component="span" color="error" sx={{ fontWeight: 'bold' }}>*</Typography> Required fields
-          </Typography>
-        </Box>
-      </DialogContent>
+            
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+              <Typography component="span" color="error" sx={{ fontWeight: 'bold' }}>*</Typography> Required fields
+            </Typography>
+          </Box>
+        </DialogContent>
+        
+        <DialogActions sx={{ p: isMobile ? 1.5 : 2, justifyContent: 'flex-end', gap: 1 }}>
+          <Button
+            onClick={handleClose}
+            variant="outlined"
+            sx={{ borderRadius: 1, px: 3 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={isSubmitting}
+            sx={{ 
+              borderRadius: 1, 
+              bgcolor: '#016C9E', 
+              '&:hover': { bgcolor: '#015C8E' },
+              color: 'white',
+              fontWeight: 'bold',
+              px: 3
+            }}
+          >
+            {isSubmitting ? 'Saving...' : 'Add Event'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       
-      <DialogActions sx={{ p: isMobile ? 1.5 : 2, justifyContent: 'flex-end', gap: 1 }}>
-        <Button
-          onClick={handleClose}
-          variant="outlined"
-          sx={{ borderRadius: 1, px: 3 }}
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={isSubmitting}
-          sx={{ 
-            borderRadius: 1, 
-            bgcolor: '#016C9E', 
-            '&:hover': { bgcolor: '#015C8E' },
-            color: 'white',
-            fontWeight: 'bold',
-            px: 3
-          }}
-        >
-          {isSubmitting ? 'Saving...' : 'Add Event'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+      {/* Task Selection Dialog */}
+      <Dialog
+        open={taskDialogOpen}
+        onClose={handleTaskDialogClose}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: { 
+            borderRadius: 1.5,
+            maxHeight: '80vh'
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          Link tasks to event
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex' }}>
+          {/* Task Lists Navigation */}
+          <Box sx={{ width: '30%', borderRight: '1px solid rgba(0, 0, 0, 0.12)', pr: 1 }}>
+            <List dense>
+              {taskLists.map((taskList) => (
+                <ListItem 
+                  key={taskList.id} 
+                  button 
+                  selected={taskDialogTab === taskList.id}
+                  onClick={() => handleTaskTabChange(taskList.id)}
+                  sx={{
+                    borderRadius: 1,
+                    mb: 0.5,
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                      color: '#1A73E8'
+                    }
+                  }}
+                >
+                  <ListItemText 
+                    primary={taskList.title} 
+                    primaryTypographyProps={{ 
+                      noWrap: true,
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+          
+          {/* Tasks Selection */}
+          <Box sx={{ width: '70%', pl: 2, overflow: 'auto' }}>
+            {taskDialogTab ? (
+              <List dense>
+                {taskLists
+                  .find(list => list.id === taskDialogTab)
+                  ?.tasks
+                  .filter(task => task.status !== 'completed')
+                  .map((task) => {
+                    const taskKey = `${taskDialogTab}:${task.id}`;
+                    // Check if this task is already in the tasks array to prevent duplicates
+                    const isAlreadyAdded = tasks.some(t => t.id === task.id && t.task_list_id === taskDialogTab);
+                    
+                    return (
+                      <ListItem key={taskKey} dense>
+                        <ListItemIcon>
+                          <Checkbox
+                            edge="start"
+                            checked={!!selectedTasks[taskKey] || isAlreadyAdded}
+                            disabled={isAlreadyAdded}
+                            onChange={() => handleTaskToggle(taskDialogTab, task.id, task.title)}
+                            sx={{
+                              color: '#5f6368',
+                              '&.Mui-checked': {
+                                color: '#1A73E8'
+                              }
+                            }}
+                          />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={task.title}
+                          secondary={
+                            task.due ? 
+                              <Box component="span" sx={{ 
+                                color: new Date(task.due) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary',
+                                fontWeight: new Date(task.due) < new Date() && task.status !== 'completed' ? 500 : 400,
+                              }}>
+                                {new Date(task.due).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                                {task.has_explicit_time && 
+                                  ' • ' + new Date(task.due).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })
+                                }
+                                {new Date(task.due) < new Date() && task.status !== 'completed' && ' (Overdue)'}
+                              </Box>
+                            : null
+                          }
+                          sx={{
+                            '& .MuiListItemText-primary': {
+                              fontSize: '0.9rem'
+                            },
+                            '& .MuiListItemText-secondary': {
+                              fontSize: '0.8rem'
+                            }
+                          }}
+                        />
+                      </ListItem>
+                    );
+                  })}
+              </List>
+            ) : (
+              <Typography sx={{ p: 2, color: 'text.secondary' }}>
+                Select a task list to view tasks
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleTaskDialogClose}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveSelectedTasks} 
+            variant="contained"
+            color="primary"
+          >
+            Add Tasks
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 

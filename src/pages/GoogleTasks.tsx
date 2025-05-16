@@ -21,6 +21,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
+  ListItemSecondaryAction,
   Tooltip,
   Card,
   CardHeader,
@@ -33,7 +34,8 @@ import {
   Popover,
   Stack,
   InputAdornment,
-  Select
+  Select,
+  FormControlLabel
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided } from 'react-beautiful-dnd';
 import { 
@@ -68,7 +70,8 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   AddCircleOutline as AddCircleOutlineIcon,
-  MenuOpen as MenuOpenIcon
+  MenuOpen as MenuOpenIcon,
+  Email as EmailIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -143,10 +146,10 @@ const GoogleTasks: React.FC = () => {
   } = useGoogleTasks();
 
   // State for task operations
-  const [newTaskTitle, setNewTaskTitle] = useState<string>('');
-  const [newTaskNotes, setNewTaskNotes] = useState<string>('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskNotes, setNewTaskNotes] = useState('');
   const [newTaskListId, setNewTaskListId] = useState<string>('');
-  const [newTaskDialogOpen, setNewTaskDialogOpen] = useState<boolean>(false);
+  const [newTaskDialogOpen, setNewTaskDialogOpen] = useState(false);
   const [selectedTaskList, setSelectedTaskList] = useState<string | null>(null);
   const [taskAnchorEl, setTaskAnchorEl] = useState<null | HTMLElement>(null);
   const [taskListMenuAnchorEl, setTaskListMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -173,6 +176,7 @@ const GoogleTasks: React.FC = () => {
   // Due date related state
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | null>(null);
   const [newTaskDueTime, setNewTaskDueTime] = useState<string | null>(null);
+  const [showNewTaskTimePicker, setShowNewTaskTimePicker] = useState(false);
   const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLElement | null>(null);
   const datePickerOpen = Boolean(datePickerAnchorEl);
   const [timePickerAnchorEl, setTimePickerAnchorEl] = useState<HTMLElement | null>(null);
@@ -194,12 +198,13 @@ const GoogleTasks: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
 
   // Task editing state
-  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState<boolean>(false);
+  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<{ taskListId: string; taskId: string; title: string; notes?: string; due?: string | null; status: string } | null>(null);
-  const [editTaskTitle, setEditTaskTitle] = useState<string>('');
-  const [editTaskNotes, setEditTaskNotes] = useState<string>('');
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskNotes, setEditTaskNotes] = useState('');
   const [editTaskDueDate, setEditTaskDueDate] = useState<string | null>(null);
   const [editTaskDueTime, setEditTaskDueTime] = useState<string | null>(null);
+  const [showEditTaskTimePicker, setShowEditTaskTimePicker] = useState(false);
 
   // Add state for tracking expanded/collapsed completed sections
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
@@ -226,6 +231,9 @@ const GoogleTasks: React.FC = () => {
     time: string | null;
   }>>([]);
   const [isBreakingDown, setIsBreakingDown] = useState<boolean>(false);
+  const [requestedSubtaskCount, setRequestedSubtaskCount] = useState<number>(3);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
+  const [pendingSubtaskCount, setPendingSubtaskCount] = useState<number | null>(null);
   
   // Create a ref to track if we're extracting subtasks
   const extractingSubtasksRef = useRef<boolean>(false);
@@ -242,6 +250,9 @@ const GoogleTasks: React.FC = () => {
 
   // Add state for duration warning
   const [durationWarningOpen, setDurationWarningOpen] = useState<boolean>(false);
+
+  // Add a new state for tracking which specific list is being updated
+  const [updatingListId, setUpdatingListId] = useState<string | null>(null);
 
   // Initialize default task list ID when data loads
   useEffect(() => {
@@ -261,6 +272,7 @@ const GoogleTasks: React.FC = () => {
       await refreshTaskLists({ forceRefresh: true });
       showSnackbar('Tasks refreshed successfully', 'success');
     } catch (err) {
+      console.error('Error refreshing tasks:', err);
       showSnackbar('Failed to refresh tasks', 'error');
     } finally {
       setIsRefreshing(false);
@@ -319,6 +331,7 @@ const GoogleTasks: React.FC = () => {
     setNewTaskNotes('');
     setNewTaskDueDate(null);
     setNewTaskDueTime(null);
+    setShowNewTaskTimePicker(false);
     setNewTaskDialogOpen(true);
   };
 
@@ -328,13 +341,13 @@ const GoogleTasks: React.FC = () => {
       try {
         let taskTitle = newTaskTitle.trim();
         let taskNotes = newTaskNotes.trim();
-        let hasExplicitTimeSet = false;
         
-        // If time is set, we'll send it to the backend which will add it to notes
-        if (newTaskDueTime) {
-          hasExplicitTimeSet = true;
-          // No longer adding time to title - it will be in notes section
-        }
+        // Debug logging
+        console.log('Original new task notes before cleaning:', taskNotes);
+        
+        // Clean any existing time entries that might be in the notes
+        const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
+        console.log('New task notes after cleaning:', cleanedNotes);
         
         const taskData: { 
           title: string; 
@@ -347,19 +360,53 @@ const GoogleTasks: React.FC = () => {
         } = { 
           title: taskTitle,
           timezone: getUserTimezone(),
-          time_in_notes: true // Add this parameter for the backend
+          // Always set time_in_notes to false and manage it manually
+          time_in_notes: false,
+          has_explicit_time: showNewTaskTimePicker && newTaskDueTime !== null // Use the toggle state
         };
+        
+        // Check if we have time information
+        const hasTimeInfo = (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) || 
+                           (showNewTaskTimePicker && newTaskDueTime !== null);
+        
+        console.log('Has time info for new task:', hasTimeInfo, {
+          estimatedMinutes: newTaskEstimatedMinutes,
+          dueTime: newTaskDueTime,
+          showTimePicker: showNewTaskTimePicker
+        });
+        
+        // Prepare notes with our own manually added time information
+        let finalNotes = cleanedNotes || '';
+        
+        // Manually add estimated time text if we have estimated minutes
+        if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
+          // Format the time display based on minutes
+          let timeText;
+          if (newTaskEstimatedMinutes >= 60) {
+            const hours = Math.floor(newTaskEstimatedMinutes / 60);
+            const minutes = newTaskEstimatedMinutes % 60;
+            
+            if (minutes === 0) {
+              timeText = `${hours}h`;
+            } else {
+              timeText = `${hours}h ${minutes}m`;
+            }
+          } else {
+            timeText = `${newTaskEstimatedMinutes}m`;
+          }
+          
+          // Add to notes
+          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
+          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes for new task`);
+        }
+        
+        // Add the manual notes with our time information
+        taskData.notes = finalNotes;
         
         // Add estimated minutes if set
         if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
           taskData.estimated_minutes = newTaskEstimatedMinutes;
-        }
-        
-        // Clean notes of any existing time entries and add if not empty
-        if (taskNotes) {
-          // Remove any existing time entries from notes to prevent duplication
-          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
-          taskData.notes = cleanedNotes;
+          console.log(`Setting estimated_minutes to ${newTaskEstimatedMinutes} for new task`);
         }
         
         // Add the ISO date string if date is set
@@ -369,7 +416,7 @@ const GoogleTasks: React.FC = () => {
           let dueString = dueDate.toISOString();
           
           // If time is also set, replace the time part of the ISO string
-          if (hasExplicitTimeSet && newTaskDueTime) {
+          if (showNewTaskTimePicker && newTaskDueTime) {
             // Parse the time in 24h format
             const [hours, minutes] = newTaskDueTime.split(':');
             
@@ -379,12 +426,6 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
-            
-            // Set has_explicit_time to true when a specific time is chosen
-            taskData.has_explicit_time = true;
-          } else {
-            // Set has_explicit_time to false when only a date is chosen without specific time
-            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
@@ -564,22 +605,46 @@ const GoogleTasks: React.FC = () => {
   const handleCreateTaskList = async () => {
     if (newTaskListTitle.trim()) {
       try {
+        const originalIsRefreshing = isRefreshing;
+        setIsRefreshing(true);
+        console.log(`Creating task list: "${newTaskListTitle.trim()}"`);
+        
+        // First try with the regular function
         const result = await createTaskList(newTaskListTitle.trim());
-        if (result) {
+        
+        // Force refresh to ensure we have the latest data
+        await refreshTaskLists({ forceRefresh: true });
+        
+        // Now check if the list exists after refresh
+        const createdList = taskLists.find(list => list.title === newTaskListTitle.trim());
+        
+        if (result || createdList) {
+          // Close dialog and show success if we got a result OR if we found the list after refresh
           setNewTaskListDialogOpen(false);
           showSnackbar('Task list created', 'success');
         } else {
+          // Only show error if we didn't find the list after refresh
           showSnackbar('Failed to create task list', 'error');
         }
       } catch (err) {
-        showSnackbar('Error creating task list', 'error');
+        console.error('Error creating task list:', err);
+        
+        // Even on error, check if the list was created
+        await refreshTaskLists({ forceRefresh: true });
+        const createdList = taskLists.find(list => list.title === newTaskListTitle.trim());
+        
+        if (createdList) {
+          // List was created despite the error
+          setNewTaskListDialogOpen(false);
+          showSnackbar('Task list created', 'success');
+        } else {
+          showSnackbar('Error creating task list', 'error');
+        }
+      } finally {
+        setIsRefreshing(false);
       }
     }
   };
-
-  // Move a task within a task list (reorder)
-  // This function is now provided by the useGoogleTasks context
-  // Delete the existing implementation of reorderTask
 
   // Handle drag and drop of tasks
   const handleDragEnd = async (result: DropResult) => {
@@ -602,62 +667,117 @@ const GoogleTasks: React.FC = () => {
     const sourceTaskListId = source.droppableId;
     const destinationTaskListId = destination.droppableId;
     
-    // Find the task being moved
-    const sourceList = taskLists.find(list => list.id === sourceTaskListId);
-    if (!sourceList || sourceList.tasks.length <= source.index) {
-      console.error("Source task list or task not found", { 
-        sourceTaskListId, 
-        sourceIndex: source.index,
-        availableLists: taskLists.map(l => l.id)
-      });
-      return;
-    }
-    
-    const taskId = sourceList.tasks[source.index].id;
-    const sanitizedTaskId = sanitizeTaskId(taskId);
-    
-    if (!sanitizedTaskId) {
-      console.error(`Invalid task ID after sanitization: ${taskId}`);
-      showSnackbar('Error: Invalid task ID', 'error');
-      return;
-    }
-    
-    console.log('Task being moved (sanitized):', {
-      originalTaskId: taskId,
-      sanitizedTaskId
+    console.log('Drag operation:', {
+      sourceListId: sourceTaskListId,
+      sourceIndex: source.index,
+      destListId: destinationTaskListId,
+      destIndex: destination.index
     });
     
     // If moving between different lists
     if (sourceTaskListId !== destinationTaskListId) {
+      // Show loading indicator on the destination list
+      setUpdatingListId(destinationTaskListId);
+      showSnackbar('Moving task...', 'success');
+      
       try {
-        const result = await moveTask(sourceTaskListId, destinationTaskListId, sanitizedTaskId);
+        // Find the source task list
+        const sourceList = taskLists.find(list => list.id === sourceTaskListId);
+        if (!sourceList) {
+          console.error("Source task list not found", { 
+            sourceTaskListId, 
+            availableLists: taskLists.map(l => ({ id: l.id, title: l.title }))
+          });
+          showSnackbar('Error: Source list not found', 'error');
+          setUpdatingListId(null);
+          return;
+        }
+        
+        // Filter to only get incomplete tasks that are shown in the UI (consistent with what's being dragged)
+        const incompleteTasks = sourceList.tasks.filter(task => task.status !== 'completed');
+        
+        if (source.index >= incompleteTasks.length) {
+          console.error("Source task index out of bounds", { 
+            sourceIndex: source.index,
+            availableTasks: incompleteTasks.length
+          });
+          showSnackbar('Error: Task not found', 'error');
+          setUpdatingListId(null);
+          return;
+        }
+        
+        // Identify the exact task being moved using the source index from the drag operation
+        const taskToMove = incompleteTasks[source.index];
+        if (!taskToMove) {
+          console.error("Task not found at index", { sourceIndex: source.index });
+          showSnackbar('Error: Task not found', 'error');
+          setUpdatingListId(null);
+          return;
+        }
+        
+        console.log('Task being moved:', {
+          taskId: taskToMove.id,
+          taskTitle: taskToMove.title,
+          fromList: sourceTaskListId,
+          toList: destinationTaskListId
+        });
+        
+        // First invalidate the cache to ensure we're working with fresh data
+        dispatch(invalidateCache());
+        
+        // Call the moveTask function with the task ID
+        const result = await moveTask(sourceTaskListId, destinationTaskListId, taskToMove.id);
+        
         if (result) {
+          // Success case - force refresh task lists to ensure state is consistent
+          await refreshTaskLists({ forceRefresh: true });
           showSnackbar('Task moved successfully', 'success');
         } else {
+          // Move failed, still refresh to ensure consistent state
+          await refreshTaskLists({ forceRefresh: true });
           showSnackbar('Failed to move task', 'error');
         }
       } catch (err) {
         console.error("Error moving task between lists:", err);
+        // Always refresh on error to ensure state is consistent
+        await refreshTaskLists({ forceRefresh: true });
         showSnackbar('Error moving task', 'error');
+      } finally {
+        setUpdatingListId(null);
+        setIsRefreshing(false);
       }
     } 
     // Reordering within the same list
     else {
       try {
+        // For reordering within same list, show loading indicator on that list
+        setUpdatingListId(destinationTaskListId);
+        
         // Get the destination list (same as source list in this case)
         const destList = taskLists.find(list => list.id === destinationTaskListId);
         if (!destList) {
           console.error("Destination task list not found", { destinationTaskListId });
+          setUpdatingListId(null);
           return;
         }
         
         // Filter to get only incomplete tasks as those are the ones being reordered in UI
         const incompleteTasks = destList.tasks.filter(task => task.status !== 'completed');
         
+        // Get the task being moved
+        const taskToMove = incompleteTasks[source.index];
+        if (!taskToMove) {
+          console.error("Task not found at index for reordering", { sourceIndex: source.index });
+          setUpdatingListId(null);
+          return;
+        }
+        
+        const taskId = taskToMove.id;
+        
         // Log the task being moved
-        console.log("Task being moved:", {
+        console.log("Task being reordered:", {
           taskId,
-          taskTitle: incompleteTasks.find(t => t.id === taskId)?.title || "Unknown task"
+          taskTitle: taskToMove.title
         });
         
         // Determine the previous task ID based on the destination index
@@ -669,7 +789,7 @@ const GoogleTasks: React.FC = () => {
         if (isMovingToTop) {
           // When moving to the top, we use the special moveToTop parameter
           // previousTaskId will remain null
-          console.log(`Moving task ${sanitizedTaskId} to the top position using moveToTop parameter`);
+          console.log(`Moving task ${taskId} to the top position using moveToTop parameter`);
         } else {
           // For other positions, calculate the previous task ID
           // Create a new array that represents the final order after the move
@@ -688,38 +808,22 @@ const GoogleTasks: React.FC = () => {
             // The previous task is the one before the new position
             const prevTask = tasksCopy[destination.index - 1];
             if (prevTask) {
-              previousTaskId = sanitizeTaskId(prevTask.id);
+              previousTaskId = prevTask.id;
             }
           } else {
             // Fallback to original calculation if task not found
             const taskIdsInOrder = incompleteTasks.filter(t => t.id !== taskId).map(t => t.id);
             const previousIndex = destination.index - 1;
             if (previousIndex >= 0 && previousIndex < taskIdsInOrder.length) {
-              previousTaskId = sanitizeTaskId(taskIdsInOrder[previousIndex]);
+              previousTaskId = taskIdsInOrder[previousIndex];
             }
           }
           
           // Debug log to help diagnose
-          console.log(`Moving task ${sanitizedTaskId} to position ${destination.index}, previous task: ${previousTaskId}`);
+          console.log(`Moving task ${taskId} to position ${destination.index}, previous task: ${previousTaskId}`);
         }
         
-        // Validate task ID and previous task ID
-        const taskExists = destList.tasks.some(t => t.id === taskId);
-        const previousTaskExists = previousTaskId ? destList.tasks.some(t => t.id === previousTaskId) : true;
-        
-        if (!taskExists) {
-          console.error(`Task with ID ${taskId} not found in list ${destinationTaskListId}`);
-          showSnackbar('Error: Task not found', 'error');
-          return;
-        }
-        
-        if (!previousTaskExists) {
-          console.error(`Previous task with ID ${previousTaskId} not found in list ${destinationTaskListId}`);
-          showSnackbar('Error: Previous task reference not found', 'error');
-          return;
-        }
-        
-        // Make the API call to reorder using the Redux-backed function
+        // Make the API call to reorder
         try {
           // For top position moves, use the special moveToTop parameter
           if (isMovingToTop) {
@@ -728,7 +832,7 @@ const GoogleTasks: React.FC = () => {
           
           const result = await reorderTask(
             destinationTaskListId, 
-            sanitizedTaskId, 
+            taskId, 
             previousTaskId, 
             destination.index,
             true // Apply reordering on the server
@@ -741,7 +845,7 @@ const GoogleTasks: React.FC = () => {
             console.log('Initial reordering failed, trying fallback with moveToTop parameter');
             const fallbackResult = await reorderTask(
               destinationTaskListId,
-              sanitizedTaskId,
+              taskId,
               null, // No previous task needed with moveToTop
               0,    // First position
               true  // Apply reordering
@@ -761,7 +865,7 @@ const GoogleTasks: React.FC = () => {
             console.log('Attempting fallback after error with moveToTop parameter');
             const fallbackResult = await reorderTask(
               destinationTaskListId,
-              sanitizedTaskId,
+              taskId,
               null, // No previous task needed with moveToTop
               0,    // First position
               true  // Apply reordering
@@ -777,9 +881,14 @@ const GoogleTasks: React.FC = () => {
             showSnackbar('Error reordering task', 'error');
           }
         }
+        
+        // Clear the updating list indicator once reordering is complete
+        setUpdatingListId(null);
       } catch (err) {
         console.error('Error reordering task:', err);
         showSnackbar('Error reordering task', 'error');
+        setUpdatingListId(null);
+        setIsRefreshing(false);
       }
     }
   };
@@ -799,7 +908,7 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
-  // Check if a date is overdue (in the past)
+  // Check if a date is overdue (in the past, excluding today)
   const isOverdue = (dateString?: string | null): boolean => {
     if (!dateString) return false;
     
@@ -807,12 +916,45 @@ const GoogleTasks: React.FC = () => {
       const dueDate = parseISO(dateString);
       if (!isValid(dueDate)) return false;
       
-      // Set due date to end of day for comparison
-      const dueDateEndOfDay = new Date(dueDate);
-      dueDateEndOfDay.setHours(23, 59, 59, 999);
+      // Get today's date at start of day for comparison
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
-      // Compare with current date
-      return dueDateEndOfDay < new Date();
+      // Get tomorrow's date
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Check if the due date is before today (truly overdue)
+      const dueDateStart = new Date(dueDate);
+      dueDateStart.setHours(0, 0, 0, 0);
+      
+      return dueDateStart < today;
+    } catch (e) {
+      return false;
+    }
+  };
+  
+  // Check if a date is due today
+  const isDueToday = (dateString?: string | null): boolean => {
+    if (!dateString) return false;
+    
+    try {
+      const dueDate = parseISO(dateString);
+      if (!isValid(dueDate)) return false;
+      
+      // Get today's date at start of day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Get tomorrow's date
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Check if due date is today
+      const dueDateStart = new Date(dueDate);
+      dueDateStart.setHours(0, 0, 0, 0);
+      
+      return dueDateStart.getTime() === today.getTime();
     } catch (e) {
       return false;
     }
@@ -861,16 +1003,18 @@ const GoogleTasks: React.FC = () => {
   // Set task due date
   const handleSetDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Set time to midnight instead of noon to avoid showing time when none was set
+      // Format the date to yyyy-MM-dd format
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(0, 0, 0, 0);
+      const year = fixedDate.getFullYear();
+      const month = (fixedDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = fixedDate.getDate().toString().padStart(2, '0');
+      const isoDate = `${year}-${month}-${day}`;
       
-      // Format date to RFC3339 as expected by the API
-      const isoDate = fixedDate.toISOString();
       setNewTaskDueDate(isoDate);
     } else {
       setNewTaskDueDate(null);
     }
+    
     handleDatePickerClose();
   };
   
@@ -895,136 +1039,102 @@ const GoogleTasks: React.FC = () => {
     if (!dateString) return '';
     
     try {
-      const date = parseISO(dateString);
+      const date = new Date(dateString);
       if (!isValid(date)) return '';
       
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Format the date part
+      const formattedDate = format(date, 'MMM d, yyyy');
       
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      const dateToCheck = new Date(date);
-      dateToCheck.setHours(0, 0, 0, 0);
-      
-      let displayDate = '';
-      if (dateToCheck.getTime() === today.getTime()) {
-        displayDate = 'Today';
-      } else if (dateToCheck.getTime() === tomorrow.getTime()) {
-        displayDate = 'Tomorrow';
-      } else {
-        displayDate = format(date, 'MMM d, yyyy');
-      }
-      
-      // Add time if provided
+      // If time string is provided, add it to the display
       if (timeString) {
         const [hours, minutes] = timeString.split(':').map(Number);
-        const timeDate = new Date();
-        timeDate.setHours(hours, minutes, 0, 0);
-        const formattedTime = format(timeDate, 'h:mm a'); // 1:30 PM format
-        
-        return `${displayDate}, ${formattedTime}`;
+        const displayTime = format(new Date().setHours(hours, minutes), 'h:mm a');
+        return `${formattedDate} at ${displayTime}`;
       }
       
-      return displayDate;
-    } catch (e) {
+      return formattedDate;
+    } catch (err) {
+      console.error('Error formatting date:', err);
       return '';
     }
   };
 
   // Open task edit dialog
   const handleTaskClick = (taskListId: string, task: EnhancedGoogleTask) => {
-    // Time is now stored in notes, not in title
-    let timeString = null;
-    let notes = task.notes || '';
-    
-    // Find all time entries in the notes, and use the most recent (last) one
-    const timeMatches = [...notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
-    if (timeMatches.length > 0) {
-      // Use the last time entry (most recently added)
-      const lastMatch = timeMatches[timeMatches.length - 1];
-      timeString = lastMatch[1];
-    }
-    
-    setEditingTask({
-      taskListId,
-      taskId: task.id,
-      title: task.title,
-      notes: notes,
-      due: task.due || null,
-      status: task.status
-    });
-    
-    setEditTaskTitle(task.title);
-    setEditTaskNotes(notes);
-    setEditTaskDueDate(task.due || null);
-    
-    // Load estimated time if available
-    if (task.estimated_minutes) {
-      setEditTaskEstimatedMinutes(task.estimated_minutes);
+    if (task.status !== 'completed') {
+      setEditingTask({
+        taskListId,
+        taskId: task.id,
+        title: task.title,
+        notes: task.notes || '',
+        due: task.due || null,
+        status: task.status
+      });
       
-      // Format the display value appropriately
-      if (task.estimated_minutes >= 60) {
-        // For whole hours (60, 120, etc.)
-        if (task.estimated_minutes % 60 === 0) {
-          setEditTimeInputValue(`${task.estimated_minutes / 60}h`);
+      setEditTaskTitle(task.title);
+      
+      const notes = task.notes || '';
+      setEditTaskNotes(notes);
+      
+      // Set due date
+      setEditTaskDueDate(task.due || null);
+      
+      // Initialize time picker toggle based on has_explicit_time property
+      setShowEditTaskTimePicker(Boolean(task.has_explicit_time));
+      
+      // Parse time information from notes or due date
+      const timeMatches = [...notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
+      
+      if (timeMatches.length > 0) {
+        // Use the last time entry found in notes
+        const lastMatch = timeMatches[timeMatches.length - 1];
+        const timeStr = lastMatch[1];
+        
+        // Convert 12-hour format to 24-hour if needed
+        if (timeStr.includes('AM') || timeStr.includes('PM')) {
+          setEditTaskDueTime(formatTimeFor24Hour(timeStr));
         } else {
-          // For hour + minutes combinations (e.g., 90 = 1h30m)
-          const hours = Math.floor(task.estimated_minutes / 60);
-          const remainingMinutes = task.estimated_minutes % 60;
-          setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
+          setEditTaskDueTime(timeStr);
+        }
+      } else if (task.due) {
+        // If no time in notes but the task has a due date with an explicit time
+        const dueDate = new Date(task.due);
+        if (task.has_explicit_time && (dueDate.getHours() !== 0 || dueDate.getMinutes() !== 0)) {
+          const hours = dueDate.getHours().toString().padStart(2, '0');
+          const minutes = dueDate.getMinutes().toString().padStart(2, '0');
+          setEditTaskDueTime(`${hours}:${minutes}`);
+        } else {
+          setEditTaskDueTime(null);
         }
       } else {
-        setEditTimeInputValue(`${task.estimated_minutes}m`);
+        setEditTaskDueTime(null);
       }
-    } else {
-      setEditTaskEstimatedMinutes(null);
-      setEditTimeInputValue('');
-    }
-    
-    // If we found time in the notes, convert it to 24h format for the time picker
-    if (timeString) {
-      // Parse the time string (e.g., "3:00 AM" or "07:30")
-      const timeParts = timeString.match(/(\d{1,2}):(\d{2})(?:\s?([AP]M))?/i);
       
-      if (timeParts) {
-        let hours = parseInt(timeParts[1], 10);
-        const minutes = timeParts[2];
-        const period = timeParts[3];
-        
-        // Convert to 24-hour format if AM/PM is present
-        if (period) {
-          if (period.toUpperCase() === 'PM' && hours < 12) {
-            hours += 12;
-          } else if (period.toUpperCase() === 'AM' && hours === 12) {
-            hours = 0;
+      // Set estimated minutes if available
+      setEditTaskEstimatedMinutes(task.estimated_minutes || null);
+      
+      // Format the estimated time display value
+      if (task.estimated_minutes) {
+        const minutes = task.estimated_minutes;
+        if (minutes >= 60) {
+          // For whole hours (60, 120, etc.)
+          if (minutes % 60 === 0) {
+            setEditTimeInputValue(`${minutes / 60}h`);
+          } else {
+            // For hour + minutes combinations (e.g., 90 = 1h 30m)
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            setEditTimeInputValue(`${hours}h ${remainingMinutes}m`);
           }
+        } else {
+          setEditTimeInputValue(`${minutes}m`);
         }
-        
-        // Format as HH:MM with leading zeros
-        const time24h = `${hours.toString().padStart(2, '0')}:${minutes}`;
-        setEditTaskDueTime(time24h);
       } else {
-        // If there's an issue parsing, default to null
-        setEditTaskDueTime(null);
+        setEditTimeInputValue('');
       }
-    } else if (task.due) {
-      // If no time in notes but due date exists, check if the API returned non-midnight time
-      const dueDate = new Date(task.due);
-      const hours = dueDate.getHours();
-      const minutes = dueDate.getMinutes();
       
-      // Only set time if hours/minutes are not defaults (midnight or noon)
-      if ((hours !== 0 && hours !== 12) || minutes !== 0) {
-        setEditTaskDueTime(`${hours.toString().padStart(2, '0')}:${minutes === 0 ? '00' : minutes.toString().padStart(2, '0')}`);
-      } else {
-        setEditTaskDueTime(null);
-      }
-    } else {
-      setEditTaskDueTime(null);
+      setEditTaskDialogOpen(true);
     }
-    
-    setEditTaskDialogOpen(true);
   };
 
   // Open task options menu
@@ -1072,8 +1182,15 @@ const GoogleTasks: React.FC = () => {
     // Remove all "Due Time: XX:XX" entries (including any following line breaks)
     let cleanedNotes = notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '');
     
-    // Also remove all "Estimated Time: X minutes" entries (including any following line breaks)
-    cleanedNotes = cleanedNotes.replace(/Estimated Time: \d+ minutes?(\r?\n|\r)?/g, '');
+    // Super aggressive pattern to remove ALL "Estimated Time:" entries, regardless of format
+    // This uses a case-insensitive match to catch any variations in capitalization
+    cleanedNotes = cleanedNotes.replace(/Estimated Time:.*?(\r?\n|\r|$)/gi, '');
+    
+    // Also check for possible variations with spaces/typos
+    cleanedNotes = cleanedNotes.replace(/Estimate(d)?\s+Time:.*?(\r?\n|\r|$)/gi, '');
+    
+    // Clean up any double line breaks that might have been created
+    cleanedNotes = cleanedNotes.replace(/\n\s*\n/g, '\n');
     
     return cleanedNotes.trim();
   };
@@ -1082,40 +1199,83 @@ const GoogleTasks: React.FC = () => {
   const handleUpdateTask = async () => {
     if (editingTask && editTaskTitle.trim()) {
       try {
-        let taskTitle = editTaskTitle.trim();
-        let taskNotes = editTaskNotes.trim();
-        let hasExplicitTimeSet = false;
+        // Remove leading/trailing spaces
+        const title = editTaskTitle.trim();
+        let notes = editTaskNotes.trim();
         
-        // If time is set, we'll send it to the backend which will add it to notes
-        if (editTaskDueTime) {
-          hasExplicitTimeSet = true;
-          // No longer adding time to title - it will be in notes section
-        }
+        // Debug logging
+        console.log('Original notes before cleaning:', notes);
+        
+        // Clean all time entries (both due time and estimated time) from notes
+        // This aggressively removes any existing estimated time entries to prevent duplication
+        const cleanedNotes = cleanNotesOfTimeEntries(notes);
+        
+        // Debug logging
+        console.log('Notes after cleaning all time entries:', cleanedNotes);
         
         const taskData: { 
           title: string; 
           notes?: string; 
           due?: string;
+          status?: string;
           timezone?: string;
           time_in_notes?: boolean;
           has_explicit_time?: boolean;
           estimated_minutes?: number;
         } = { 
-          title: taskTitle,
+          title,
           timezone: getUserTimezone(),
-          time_in_notes: true // Add this parameter for the backend
+          // Always set time_in_notes to false for updates to prevent backend from adding duplicates
+          time_in_notes: false,
+          has_explicit_time: showEditTaskTimePicker && editTaskDueTime !== null
         };
         
-        // Add estimated minutes if set
+        // Check if we have time information
+        const hasTimeInfo = (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) || 
+                           (showEditTaskTimePicker && editTaskDueTime !== null);
+        
+        console.log('Has time info:', hasTimeInfo, {
+          estimatedMinutes: editTaskEstimatedMinutes,
+          dueTime: editTaskDueTime,
+          showTimePicker: showEditTaskTimePicker
+        });
+        
+        // Prepare notes with our own manually added time information
+        let finalNotes = cleanedNotes || '';
+        
+        // Manually add estimated time text if we have estimated minutes
         if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
-          taskData.estimated_minutes = editTaskEstimatedMinutes;
+          // Format the time display based on minutes
+          let timeText;
+          if (editTaskEstimatedMinutes >= 60) {
+            const hours = Math.floor(editTaskEstimatedMinutes / 60);
+            const minutes = editTaskEstimatedMinutes % 60;
+            
+            if (minutes === 0) {
+              timeText = `${hours}h`;
+            } else {
+              timeText = `${hours}h ${minutes}m`;
+            }
+          } else {
+            timeText = `${editTaskEstimatedMinutes}m`;
+          }
+          
+          // Add to notes
+          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
+          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes`);
         }
         
-        // Clean notes of any existing time entries and add if not empty
-        if (taskNotes) {
-          // Remove any existing time entries from notes to prevent duplication
-          const cleanedNotes = cleanNotesOfTimeEntries(taskNotes);
-          taskData.notes = cleanedNotes;
+        // Add the manual notes with our time information
+        taskData.notes = finalNotes;
+        
+        // Add estimated minutes if set - this will update the server-side value
+        if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
+          taskData.estimated_minutes = editTaskEstimatedMinutes;
+          console.log(`Setting estimated_minutes to ${editTaskEstimatedMinutes}`);
+        } else {
+          // If estimated time is cleared or not set, explicitly delete the property
+          delete taskData.estimated_minutes;
+          console.log('Deleting estimated_minutes property');
         }
         
         // Add due date if it exists
@@ -1125,7 +1285,7 @@ const GoogleTasks: React.FC = () => {
           let dueString = dueDate.toISOString();
           
           // If time is also set, replace the time part of the ISO string
-          if (hasExplicitTimeSet && editTaskDueTime) {
+          if (showEditTaskTimePicker && editTaskDueTime) {
             // Parse the time in 24h format
             const [hours, minutes] = editTaskDueTime.split(':');
             
@@ -1135,18 +1295,19 @@ const GoogleTasks: React.FC = () => {
             
             // Replace with the new ISO string
             dueString = dueWithTime.toISOString();
-            
-            // Set has_explicit_time to true when a specific time is chosen
-            taskData.has_explicit_time = true;
-          } else {
-            // Set has_explicit_time to false when only a date is chosen without specific time
-            taskData.has_explicit_time = false;
           }
           
           taskData.due = dueString;
+        } else {
+          // If due date is cleared, we need to handle it in the backend
+          // Don't set due to null here - the backend API will handle this based on absence of field
+          delete taskData.due;
         }
         
+        setIsRefreshing(true);
         const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
+        setIsRefreshing(false);
+        
         if (result) {
           setEditTaskDialogOpen(false);
           showSnackbar('Task updated successfully', 'success');
@@ -1182,16 +1343,18 @@ const GoogleTasks: React.FC = () => {
   // Set task due date in edit mode
   const handleSetEditDueDate = (dueDate: Date | null) => {
     if (dueDate) {
-      // Set time to midnight instead of noon to avoid showing time when none was set
+      // Format the date to yyyy-MM-dd format
       const fixedDate = new Date(dueDate);
-      fixedDate.setHours(0, 0, 0, 0);
+      const year = fixedDate.getFullYear();
+      const month = (fixedDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = fixedDate.getDate().toString().padStart(2, '0');
+      const isoDate = `${year}-${month}-${day}`;
       
-      // Format date to RFC3339 as expected by the API
-      const isoDate = fixedDate.toISOString();
       setEditTaskDueDate(isoDate);
     } else {
       setEditTaskDueDate(null);
     }
+    
     handleEditDatePickerClose();
   };
   
@@ -1233,10 +1396,44 @@ const GoogleTasks: React.FC = () => {
 
   // Format 24-hour time to 12-hour format with AM/PM
   const formatTimeFor12Hour = (time24h: string): string => {
-    const [hours, minutes] = time24h.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12; // Convert 0 to 12 for 12 AM
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+    try {
+      const [hours, minutes] = time24h.split(':').map(part => parseInt(part, 10));
+      const date = new Date();
+      date.setHours(hours, minutes, 0, 0);
+      return format(date, 'h:mm a');
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return time24h;
+    }
+  };
+
+  const formatTimeFor24Hour = (time12h: string): string => {
+    try {
+      // Parse the time string (e.g., "3:00 AM" or "7:30 PM")
+      const timeParts = time12h.match(/(\d{1,2}):(\d{2})(?:\s?([AP]M))?/i);
+      
+      if (timeParts) {
+        let hours = parseInt(timeParts[1], 10);
+        const minutes = timeParts[2];
+        const period = timeParts[3];
+        
+        // Convert to 24-hour format if AM/PM is present
+        if (period) {
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+        }
+        
+        // Format as HH:MM with leading zeros
+        return `${hours.toString().padStart(2, '0')}:${minutes}`;
+      }
+      return time12h; // Return original if parsing fails
+    } catch (error) {
+      console.error('Error formatting time to 24h:', error);
+      return time12h;
+    }
   };
 
   // Get the user's current timezone in IANA format (e.g., "America/New_York")
@@ -1251,26 +1448,53 @@ const GoogleTasks: React.FC = () => {
 
   // Format the due information, showing both date and notes with time
   const formatDueInfoWithNotes = (task: EnhancedGoogleTask) => {
-    let dueInfo = [];
+    let dueInfo = '';
+    let displayDate = '';
     
-    // Add the due date if present
     if (task.due) {
-      dueInfo.push(`Due: ${formatDate(task.due)}`);
-    }
-    
-    // Check if notes contain time information
-    if (task.notes) {
-      // Find all time entries in the notes
-      const timeMatches = [...task.notes.matchAll(/Due Time: (\d{1,2}:\d{2}(?:\s?[AP]M)?)/g)];
+      const dueDate = new Date(task.due);
+      if (isValid(dueDate)) {
+        // STRICTLY check if this is a date-only task by looking at has_explicit_time
+        // This is the most reliable way to determine if time should be shown
+        const hasExplicitTime = Boolean(task.has_explicit_time);
+        
+        // Format the date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        const dateToCheck = new Date(dueDate);
+        dateToCheck.setHours(0, 0, 0, 0);
+        
+        if (dateToCheck.getTime() === today.getTime()) {
+          displayDate = 'Today';
+        } else if (dateToCheck.getTime() === tomorrow.getTime()) {
+          displayDate = 'Tomorrow';
+        } else {
+          displayDate = format(dueDate, 'MMM d, yyyy');
+        }
+        
+              // Only show time if the task has an explicit time set
+      dueInfo = displayDate;
+      if (hasExplicitTime) {
+        const formattedTime = format(dueDate, 'h:mm a');
+        dueInfo = `${displayDate} • ${formattedTime}`; // Add bullet separator and time
+      }
       
-      // If we found any time entries, use the last one (most recently added)
-      if (timeMatches.length > 0) {
-        const lastMatch = timeMatches[timeMatches.length - 1];
-        dueInfo.push(lastMatch[0]);
+      // Add due/overdue marker based on date
+      if (task.status !== 'completed') {
+        if (isOverdue(task.due)) {
+          dueInfo = `${dueInfo} (Overdue)`;
+        } else if (isDueToday(task.due)) {
+          dueInfo = `${dueInfo} (Due)`;
+        }
+      }
       }
     }
     
-    return dueInfo.join(' | ');
+    return dueInfo;
   };
 
   // Add function to toggle completed section for a specific task list
@@ -1540,10 +1764,20 @@ const GoogleTasks: React.FC = () => {
                   null
           })));
         } else {
-          setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Start with one empty subtask if none exist
+          // Start with empty subtasks based on the requested count
+          setBreakdownSubtasks(Array(requestedSubtaskCount).fill(0).map(() => ({ 
+            title: '', 
+            due: null, 
+            time: null 
+          })));
         }
       } else {
-        setBreakdownSubtasks([{ title: '', due: null, time: null }]); // Default to one empty subtask
+        // Default to empty subtasks based on the requested count
+        setBreakdownSubtasks(Array(requestedSubtaskCount).fill(0).map(() => ({ 
+          title: '', 
+          due: null, 
+          time: null 
+        })));
       }
       
       setBreakdownTaskDialogOpen(true);
@@ -1695,9 +1929,9 @@ const GoogleTasks: React.FC = () => {
       extractingSubtasksRef.current = true;
       
       // Send a message to the assistant
-      const prompt = `I need to break down this task into smaller subtasks: "${taskToBreakdown.task.title}". ${
+      const prompt = `I need to break down this task into exactly ${requestedSubtaskCount} smaller subtasks: "${taskToBreakdown.task.title}". ${
         taskToBreakdown.task.notes ? `Additional context: ${taskToBreakdown.task.notes}` : ''
-      } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You should determine the appropriate number of subtasks based on the complexity of the task - use as many or as few as needed to be most effective. Format each subtask as a bullet point.`;
+      } Please analyze this task and break it down into a list of specific, actionable subtasks in the most productive and efficient way possible. You MUST create exactly ${requestedSubtaskCount} subtasks - no more, no less. Format each subtask as a bullet point.`;
       
       // Send the message to the AI assistant without opening the popup
       await sendMessage(prompt);
@@ -1748,46 +1982,45 @@ const GoogleTasks: React.FC = () => {
         
         // Automatically set the subtasks if we found any
         if (extractedSubtasks.length > 0) {
-          // IMPORTANT: Merge with existing subtasks instead of replacing them
-          setBreakdownSubtasks((prevSubtasks) => {
-            // Filter out empty subtasks from the existing list
-            const nonEmptyPrevSubtasks = prevSubtasks.filter(task => task.title.trim() !== '');
-            
-            // If there were no existing non-empty subtasks, just use the extracted ones
-            if (nonEmptyPrevSubtasks.length === 0) {
-              return extractedSubtasks;
-            }
-            
-            // Otherwise, merge the lists
-            // Find subtasks with the same title and keep their due dates if they exist
-            const mergedSubtasks = [...nonEmptyPrevSubtasks];
-            
-            extractedSubtasks.forEach(newSubtask => {
-              // Check if this task already exists
-              const existingIndex = mergedSubtasks.findIndex(
-                task => task.title.toLowerCase() === newSubtask.title.toLowerCase()
-              );
-              
-              if (existingIndex === -1) {
-                // Add as a new subtask if not found
-                mergedSubtasks.push(newSubtask);
-              }
-              // We don't update existing subtasks to preserve their due dates
-            });
-            
-            return mergedSubtasks;
-          });
+          // Adjust to match the requested count
+          let processedSubtasks = [...extractedSubtasks];
           
-          showSnackbar('AI has created breakdown tasks for you', 'success');
+          // If AI generated too many, take the first requestedSubtaskCount
+          if (processedSubtasks.length > requestedSubtaskCount) {
+            processedSubtasks = processedSubtasks.slice(0, requestedSubtaskCount);
+          } 
+          // If AI generated too few, pad with empty subtasks
+          else if (processedSubtasks.length < requestedSubtaskCount) {
+            const additionalNeeded = requestedSubtaskCount - processedSubtasks.length;
+            const emptySubtasks = Array(additionalNeeded).fill(0).map(() => ({
+              title: '',
+              due: null,
+              time: null
+            }));
+            processedSubtasks = [...processedSubtasks, ...emptySubtasks];
+          }
+          
+          // IMPORTANT: Replace with new subtasks rather than merging
+          setBreakdownSubtasks(processedSubtasks);
+          
+          showSnackbar(`AI has created ${Math.min(extractedSubtasks.length, requestedSubtaskCount)} subtasks for you`, 'success');
         } else {
-          showSnackbar('No subtasks could be identified in AI response', 'error');
+          // Fallback: Create empty subtasks if AI failed to generate them
+          const emptySubtasks = Array(requestedSubtaskCount).fill(0).map(() => ({
+            title: '',
+            due: null,
+            time: null
+          }));
+          setBreakdownSubtasks(emptySubtasks);
+          
+          showSnackbar('AI couldn\'t create subtasks. Please try a different description or create subtasks manually.', 'error');
         }
         
         // Exit extraction mode
         extractingSubtasksRef.current = false;
       }
     }
-  }, [messages, isLoading, taskToBreakdown, showSnackbar]);
+  }, [messages, isLoading, taskToBreakdown, showSnackbar, requestedSubtaskCount]);
 
   // Handle duration input changes
   const handleHoursChange = (value: number) => {
@@ -2148,15 +2381,34 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Handle confirmation of subtask count change
+  const handleConfirmSubtaskCountChange = (confirmed: boolean) => {
+    setConfirmDialogOpen(false);
+    
+    if (confirmed && pendingSubtaskCount !== null) {
+      // Update the count
+      setRequestedSubtaskCount(pendingSubtaskCount);
+      // Reset subtasks with the new count
+      setBreakdownSubtasks(Array(pendingSubtaskCount).fill(0).map(() => ({ 
+        title: '', 
+        due: null, 
+        time: null 
+      })));
+    }
+    
+    // Reset the pending count
+    setPendingSubtaskCount(null);
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography 
           variant="h4" 
           component="h1" 
-          sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+          sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}
         >
-          Google Tasks
+          Tasks
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button 
@@ -2189,6 +2441,7 @@ const GoogleTasks: React.FC = () => {
               '&:hover': {
                 backgroundColor: '#0D47D9',
               },
+              minWidth: '120px' // Ensure consistent width during state changes
             }}
           >
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -2220,17 +2473,18 @@ const GoogleTasks: React.FC = () => {
           }}>
             <CardHeader
               title={
-                <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
                   Starred Tasks
                 </Typography>
               }
               sx={{ 
                 bgcolor: 'rgba(16, 86, 245, 0.08)', 
-                pb: 1.5,
+                pb: 1,
+                pt: 1,
                 '& .MuiCardHeader-content': { overflow: 'hidden' }
               }}
             />
-            <CardContent sx={{ px: 2, py: 1 }}>
+            <CardContent sx={{ px: 2, py: 0.5 }}>
               <List sx={{ py: 0 }}>
                 {starredTasks.map((task) => {
                   const taskList = taskLists.find(list => 
@@ -2249,13 +2503,13 @@ const GoogleTasks: React.FC = () => {
                         }
                       }}
                       sx={{
-                        py: 1,
+                        py: 0.5, // Reduced padding
                         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
                         '&:last-child': { borderBottom: 'none' },
                         cursor: 'pointer'
                       }}
                     >
-                      <ListItemIcon sx={{ minWidth: '40px' }}>
+                      <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
                         <Checkbox
                           checked={task.status === 'completed'}
                           onChange={(e) => {
@@ -2264,7 +2518,8 @@ const GoogleTasks: React.FC = () => {
                           }}
                           edge="start"
                           sx={{ 
-                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
+                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                            p: 0.5 // Reduced padding
                           }}
                         />
                       </ListItemIcon>
@@ -2275,6 +2530,7 @@ const GoogleTasks: React.FC = () => {
                               textDecoration: task.status === 'completed' ? 'line-through' : 'none',
                               color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
                               fontFamily: 'Poppins',
+                              fontSize: '0.875rem' // Reduced font size
                             }}
                           >
                             {task.title}
@@ -2282,16 +2538,58 @@ const GoogleTasks: React.FC = () => {
                         }
                         secondary={
                           <>
+                            {/* Show Gmail attachment if present */}
+                            {task.has_gmail_attachment && task.gmail_attachment && (
+                              <Typography 
+                                variant="caption" 
+                                component="div"
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: 'primary.main',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 500,
+                                  mt: 0.5,
+                                  cursor: 'pointer',
+                                  '&:hover': { textDecoration: 'underline' }
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent task item click
+                                  if (task.gmail_attachment?.link) {
+                                    window.open(task.gmail_attachment.link, '_blank');
+                                  }
+                                }}
+                              >
+                                <EmailIcon 
+                                  fontSize="inherit" 
+                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                />
+                                {task.gmail_attachment.title || 'View Email'}
+                              </Typography>
+                            )}
+                            
                             {/* Show due date and time information from notes */}
                             {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                               <Typography 
                                 variant="caption" 
+                                component="div"
                                 sx={{ 
                                   fontFamily: 'Poppins',
-                                  color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                  display: 'block'
+                                  color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem', // Slightly larger for better readability
+                                  fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                  mt: 0.5
                                 }}
                               >
+                                {task.has_explicit_time && (
+                                  <AccessTimeIcon 
+                                    fontSize="inherit" 
+                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
+                                  />
+                                )}
                                 {formatDueInfoWithNotes(task)}
                               </Typography>
                             )}
@@ -2304,7 +2602,8 @@ const GoogleTasks: React.FC = () => {
                                   fontFamily: 'Poppins',
                                   color: 'text.secondary',
                                   display: 'block',
-                                  mt: 0.5,
+                                  mt: 0.25, // Reduced margin
+                                  fontSize: '0.7rem',
                                   // Limit to 2 lines with ellipsis
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -2364,11 +2663,36 @@ const GoogleTasks: React.FC = () => {
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  overflow: 'visible'
+                  overflow: 'visible',
+                  position: 'relative' // Add position relative for overlay positioning
                 }}>
+                  {/* Loading overlay - only show on list being updated */}
+                  {updatingListId === taskList.id && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                        zIndex: 10,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderRadius: 2,
+                      }}
+                    >
+                      <CircularProgress size={40} />
+                      <Typography variant="body2" sx={{ mt: 1, color: 'primary.main' }}>
+                        Updating list...
+                      </Typography>
+                    </Box>
+                  )}
                   <CardHeader
                     title={
-                      <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
                         {taskList.title}
                       </Typography>
                     }
@@ -2391,13 +2715,14 @@ const GoogleTasks: React.FC = () => {
                     sx={{ 
                       bgcolor: 'rgba(16, 86, 245, 0.08)', 
                       pb: 1.5,
-                      '& .MuiCardHeader-content': { overflow: 'hidden' }
+                      '& .MuiCardHeader-content': { overflow: 'hidden' },
+                      py: 1 // Reduce padding
                     }}
                   />
                   <CardContent 
                     sx={{ 
-                      px: 2, 
-                      py: 1, 
+                      px: 1.5,
+                      py: 0.5,
                       flexGrow: 1, 
                       overflowY: 'auto', 
                       overflowX: 'hidden', // Prevent horizontal scrolling
@@ -2426,13 +2751,13 @@ const GoogleTasks: React.FC = () => {
                                     {...provided.dragHandleProps}
                                     onClick={(e) => handleTaskItemClick(taskList.id, task, taskList.title, e)}
                                     sx={{
-                                      py: 1,
+                                      py: 0.5, // Reduced vertical padding
                                       borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
                                       '&:last-child': { borderBottom: 'none' },
                                       cursor: 'pointer'
                                     }}
                                   >
-                                    <ListItemIcon sx={{ minWidth: '40px' }}>
+                                    <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
                                       <Checkbox
                                         checked={task.status === 'completed'}
                                         onChange={(e) => {
@@ -2441,7 +2766,8 @@ const GoogleTasks: React.FC = () => {
                                         }}
                                         edge="start"
                                         sx={{ 
-                                          color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5'
+                                          color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                                          p: 0.5 // Reduced padding
                                         }}
                                       />
                                     </ListItemIcon>
@@ -2467,14 +2793,15 @@ const GoogleTasks: React.FC = () => {
                                               textDecoration: task.status === 'completed' ? 'line-through' : 'none',
                                               color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
                                               fontFamily: 'Poppins',
+                                              fontSize: '0.875rem', // Reduced font size
                                               ...(isSubtask(task) ? { 
-                                                paddingLeft: '24px', // Increased padding
-                                                marginLeft: '16px', // Added margin
-                                                borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
-                                                backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
-                                                borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                                paddingLeft: '16px', // Reduced padding
+                                                marginLeft: '12px', // Reduced margin
+                                                borderLeft: '2px solid rgba(16, 86, 245, 0.6)', // Thinner border
+                                                backgroundColor: 'rgba(16, 86, 245, 0.03)',
+                                                borderRadius: '0 4px 4px 0',
                                                 fontStyle: 'italic',
-                                                py: 0.5 // Add some vertical padding
+                                                py: 0.5
                                               } : {})
                                             }}
                                           >
@@ -2485,16 +2812,62 @@ const GoogleTasks: React.FC = () => {
                                       }
                                       secondary={
                                         <>
+                                          {/* Show Gmail attachment if present */}
+                                          {task.has_gmail_attachment && task.gmail_attachment && (
+                                            <Typography 
+                                              variant="caption" 
+                                              component="div"
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 500,
+                                                mt: 0.5,
+                                                cursor: 'pointer',
+                                                '&:hover': { textDecoration: 'underline' }
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation(); // Prevent task item click
+                                                if (task.gmail_attachment?.link) {
+                                                  window.open(task.gmail_attachment.link, '_blank');
+                                                }
+                                              }}
+                                            >
+                                              <EmailIcon 
+                                                fontSize="inherit" 
+                                                sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                              />
+                                              {task.gmail_attachment.title || 'View Email'}
+                                            </Typography>
+                                          )}
+                                          
                                           {/* Show due date and time information from notes */}
                                           {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
                                             <Typography 
                                               variant="caption" 
+                                              component="div"
                                               sx={{ 
                                                 fontFamily: 'Poppins',
-                                                color: isOverdue(task.due) ? 'error.main' : 'text.secondary',
-                                                display: 'block'
+                                                color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem', // Slightly larger for better readability
+                                                fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                                mt: 0.5
                                               }}
                                             >
+                                              {task.has_explicit_time && (
+                                                <AccessTimeIcon 
+                                                  fontSize="inherit" 
+                                                  sx={{ 
+                                                    mr: 0.5, 
+                                                    fontSize: '0.875rem', 
+                                                    color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' 
+                                                  }} 
+                                                />
+                                              )}
                                               {formatDueInfoWithNotes(task)}
                                             </Typography>
                                           )}
@@ -2507,7 +2880,8 @@ const GoogleTasks: React.FC = () => {
                                                 fontFamily: 'Poppins',
                                                 color: 'text.secondary',
                                                 display: 'block',
-                                                mt: 0.5,
+                                                mt: 0.25, // Reduced margin
+                                                fontSize: '0.7rem', // Further reduced font size for secondary
                                                 // Limit to 2 lines with ellipsis
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
@@ -2527,14 +2901,19 @@ const GoogleTasks: React.FC = () => {
                                         e.stopPropagation();
                                         handleToggleTaskStar(taskList.id, task.id);
                                       }}
-                                      sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                      sx={{ 
+                                        color: task.starred ? '#FFD700' : 'action.disabled', 
+                                        mr: 0.5, 
+                                        p: 0.5
+                                      }}
                                     >
-                                      {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                      {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                                     </IconButton>
                                     <IconButton
                                       edge="end"
                                       onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
                                       size="small"
+                                      sx={{ p: 0.5 }}
                                     >
                                       <MoreVertIcon fontSize="small" />
                                     </IconButton>
@@ -2591,7 +2970,7 @@ const GoogleTasks: React.FC = () => {
                                 button 
                                 onClick={() => toggleCompletedSection(taskList.id)}
                                 sx={{ 
-                                  py: 0.5, 
+                                  py: 0.25, // Reduced padding
                                   px: 1,
                                   borderRadius: 1,
                                   '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
@@ -2617,6 +2996,7 @@ const GoogleTasks: React.FC = () => {
                                         fontFamily: 'Poppins', 
                                         color: 'text.secondary',
                                         fontWeight: 'medium',
+                                        fontSize: '0.75rem', // Smaller font size
                                       }}
                                     >
                                       Completed ({taskList.tasks.filter(task => task.status === 'completed').length})
@@ -2678,11 +3058,44 @@ const GoogleTasks: React.FC = () => {
                                           </Typography>
                                         }
                                         secondary={
-                                          task.completed && (
-                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                                              Completed: {formatDate(task.completed)}
-                                            </Typography>
-                                          )
+                                          <>
+                                            {/* Show Gmail attachment if present */}
+                                            {task.has_gmail_attachment && task.gmail_attachment && (
+                                              <Typography 
+                                                variant="caption" 
+                                                component="div"
+                                                sx={{ 
+                                                  fontFamily: 'Poppins',
+                                                  color: 'primary.main',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  fontSize: '0.75rem',
+                                                  fontWeight: 500,
+                                                  mt: 0.5,
+                                                  cursor: 'pointer',
+                                                  '&:hover': { textDecoration: 'underline' }
+                                                }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation(); // Prevent task item click
+                                                  if (task.gmail_attachment?.link) {
+                                                    window.open(task.gmail_attachment.link, '_blank');
+                                                  }
+                                                }}
+                                              >
+                                                <EmailIcon 
+                                                  fontSize="inherit" 
+                                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                                />
+                                                {task.gmail_attachment.title || 'View Email'}
+                                              </Typography>
+                                            )}
+                                            
+                                            {task.completed && (
+                                              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                                Completed: {formatDate(task.completed)}
+                                              </Typography>
+                                            )}
+                                          </>
                                         }
                                       />
                                       <IconButton
@@ -2691,14 +3104,19 @@ const GoogleTasks: React.FC = () => {
                                           e.stopPropagation();
                                           handleToggleTaskStar(taskList.id, task.id);
                                         }}
-                                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                                        sx={{ 
+                                          color: task.starred ? '#FFD700' : 'action.disabled', 
+                                          mr: 0.5, 
+                                          p: 0.5
+                                        }}
                                       >
-                                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                                        {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                                       </IconButton>
                                       <IconButton
                                         edge="end"
                                         onClick={(e) => handleTaskMenuOpen(e, taskList.id, task)}
                                         size="small"
+                                        sx={{ p: 0.5 }}
                                       >
                                         <MoreVertIcon fontSize="small" />
                                       </IconButton>
@@ -2714,7 +3132,7 @@ const GoogleTasks: React.FC = () => {
                   </CardContent>
                   <Box 
                     sx={{ 
-                      p: 2, 
+                      p: 1.5, // Reduced padding
                       borderTop: '1px solid rgba(0, 0, 0, 0.08)', 
                       backgroundColor: 'rgba(0, 0, 0, 0.02)' 
                     }}
@@ -2728,6 +3146,8 @@ const GoogleTasks: React.FC = () => {
                         justifyContent: 'flex-start',
                         color: 'text.primary',
                         fontFamily: 'Poppins',
+                        fontSize: '0.875rem', // Smaller font size
+                        py: 0.5 // Reduced padding
                       }}
                     >
                       Add a task
@@ -2784,7 +3204,7 @@ const GoogleTasks: React.FC = () => {
               sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                p: 2,
+                p: 1.5, // Reduced padding
                 cursor: 'pointer',
                 bgcolor: 'rgba(16, 86, 245, 0.08)'
               }}
@@ -2796,7 +3216,7 @@ const GoogleTasks: React.FC = () => {
                   <LoopIcon fontSize="small" />
                 )}
               </IconButton>
-              <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '0.95rem' }}>
                 Completed ({taskLists.flatMap(list => list.tasks.filter(task => task.status === 'completed')).length})
               </Typography>
             </Box>
@@ -2865,6 +3285,37 @@ const GoogleTasks: React.FC = () => {
                         }
                         secondary={
                           <Box>
+                            {/* Show Gmail attachment if present */}
+                            {task.has_gmail_attachment && task.gmail_attachment && (
+                              <Typography 
+                                variant="caption" 
+                                component="div"
+                                sx={{ 
+                                  fontFamily: 'Poppins',
+                                  color: 'primary.main',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 500,
+                                  mb: 0.5,
+                                  cursor: 'pointer',
+                                  '&:hover': { textDecoration: 'underline' }
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent task item click
+                                  if (task.gmail_attachment?.link) {
+                                    window.open(task.gmail_attachment.link, '_blank');
+                                  }
+                                }}
+                              >
+                                <EmailIcon 
+                                  fontSize="inherit" 
+                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                />
+                                {task.gmail_attachment.title || 'View Email'}
+                              </Typography>
+                            )}
+                            
                             {task.completed && (
                               <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins', display: 'block' }}>
                                 Completed: {formatDate(task.completed)}
@@ -2882,14 +3333,19 @@ const GoogleTasks: React.FC = () => {
                           e.stopPropagation();
                           handleToggleTaskStar(listId, task.id);
                         }}
-                        sx={{ color: task.starred ? '#FFD700' : 'action.disabled', mr: 1 }}
+                        sx={{ 
+                          color: task.starred ? '#FFD700' : 'action.disabled', 
+                          mr: 0.5, 
+                          p: 0.5
+                        }}
                       >
-                        {task.starred ? <StarIcon /> : <StarBorderIcon />}
+                        {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                       </IconButton>
                       <IconButton
                         edge="end"
                         onClick={(e) => handleTaskMenuOpen(e, listId, task)}
                         size="small"
+                        sx={{ p: 0.5 }}
                       >
                         <MoreVertIcon fontSize="small" />
                       </IconButton>
@@ -3318,18 +3774,39 @@ const GoogleTasks: React.FC = () => {
               <Divider />
               
               <Stack direction="row" spacing={1} alignItems="center">
-                <AccessTimeIcon fontSize="small" color="action" />
-                <Button 
-                  variant="text" 
-                  fullWidth 
-                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
-                  onClick={handleTimePickerOpen}
-                >
-                  {newTaskDueTime ? format(new Date().setHours(
-                    Number(newTaskDueTime.split(':')[0]), 
-                    Number(newTaskDueTime.split(':')[1])
-                  ), 'h:mm a') : 'Set time'}
-                </Button>
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox 
+                        checked={showNewTaskTimePicker}
+                        onChange={(e) => {
+                          setShowNewTaskTimePicker(e.target.checked);
+                          if (!e.target.checked) {
+                            setNewTaskDueTime(null);
+                          }
+                        }}
+                        size="small"
+                      />
+                    }
+                    label="Add due time"
+                  />
+                  {showNewTaskTimePicker && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <AccessTimeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="text" 
+                        fullWidth 
+                        sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                        onClick={handleTimePickerOpen}
+                      >
+                        {newTaskDueTime ? format(new Date().setHours(
+                          Number(newTaskDueTime.split(':')[0]), 
+                          Number(newTaskDueTime.split(':')[1])
+                        ), 'h:mm a') : 'Set time'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               </Stack>
               
               <Stack direction="row" spacing={1} alignItems="center">
@@ -3797,18 +4274,39 @@ const GoogleTasks: React.FC = () => {
               <Divider />
               
               <Stack direction="row" spacing={1} alignItems="center">
-                <AccessTimeIcon fontSize="small" color="action" />
-                <Button 
-                  variant="text" 
-                  fullWidth 
-                  sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
-                  onClick={handleEditTimePickerOpen}
-                >
-                  {editTaskDueTime ? format(new Date().setHours(
-                    Number(editTaskDueTime.split(':')[0]), 
-                    Number(editTaskDueTime.split(':')[1])
-                  ), 'h:mm a') : 'Set time'}
-                </Button>
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox 
+                        checked={showEditTaskTimePicker}
+                        onChange={(e) => {
+                          setShowEditTaskTimePicker(e.target.checked);
+                          if (!e.target.checked) {
+                            setEditTaskDueTime(null);
+                          }
+                        }}
+                        size="small"
+                      />
+                    }
+                    label="Add due time"
+                  />
+                  {showEditTaskTimePicker && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <AccessTimeIcon fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Button 
+                        variant="text" 
+                        fullWidth 
+                        sx={{ justifyContent: 'flex-start', color: 'text.secondary' }}
+                        onClick={handleEditTimePickerOpen}
+                      >
+                        {editTaskDueTime ? format(new Date().setHours(
+                          Number(editTaskDueTime.split(':')[0]), 
+                          Number(editTaskDueTime.split(':')[1])
+                        ), 'h:mm a') : 'Set time'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               </Stack>
               
               <Stack direction="row" spacing={1} alignItems="center">
@@ -3983,7 +4481,50 @@ const GoogleTasks: React.FC = () => {
                 Break this task into smaller, manageable subtasks. Each subtask will be created as a separate task with a link back to this parent task.
               </Typography>
               
-              <Box mb={3}>
+              <Box 
+                mb={3}
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  gap: 2,
+                  alignItems: 'flex-start', // Align items at the top
+                  p: 2,
+                  borderRadius: 1, 
+                  border: '1px solid rgba(25, 118, 210, 0.12)',
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                }}
+              >
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  width: { xs: '100%', sm: '200px' }
+                }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Number of Subtasks
+                  </Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={requestedSubtaskCount}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      if (value > 0 && value <= 10) {
+                        // If count changes and there are existing subtasks with content
+                        if (breakdownSubtasks.length > 0 && breakdownSubtasks[0].title !== '') {
+                          // Show confirmation dialog before changing
+                          setPendingSubtaskCount(value);
+                          setConfirmDialogOpen(true);
+                        } else {
+                          // No existing subtasks with content, safe to update
+                          setRequestedSubtaskCount(value);
+                        }
+                      }
+                    }}
+                    inputProps={{ min: 1, max: 10, step: 1 }}
+                    sx={{ width: '100%' }}
+                    helperText="AI will generate this many subtasks"
+                  />
+                </Box>
                 <Button
                   variant="contained"
                   startIcon={isBreakingDown ? <CircularProgress size={20} color="inherit" /> : <SmartToyIcon />}
@@ -3994,10 +4535,12 @@ const GoogleTasks: React.FC = () => {
                     '&:hover': {
                       backgroundColor: '#0D47D9',
                     },
-                    mb: 2 
+                    flex: 1,
+                    mt: { xs: 0, sm: '30px' }, // Add margin to align with the input field
+                    height: '40px', // Set explicit height
                   }}
                 >
-                  {isBreakingDown ? 'Generating subtasks...' : 'Ask AI to break down this task'}
+                  {isBreakingDown ? `Generating ${requestedSubtaskCount} subtasks...` : `Ask AI to create ${requestedSubtaskCount} subtasks`}
                 </Button>
               </Box>
               
@@ -4454,6 +4997,31 @@ const GoogleTasks: React.FC = () => {
         open={durationWarningOpen} 
         onClose={() => setDurationWarningOpen(false)} 
       />
+
+      {/* Confirmation Dialog for changing subtask count */}
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={() => handleConfirmSubtaskCountChange(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          Confirm Change
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Changing the number will clear any existing subtasks. Continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => handleConfirmSubtaskCountChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => handleConfirmSubtaskCountChange(true)} autoFocus color="primary" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

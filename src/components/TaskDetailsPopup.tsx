@@ -4,123 +4,46 @@ import {
   Typography,
   Box,
   IconButton,
+  Button,
   Divider,
-  Paper,
-  Button
+  Tooltip
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { useNavigate } from 'react-router-dom';
+import { 
+  Close as CloseIcon,
+  Delete as DeleteIcon,
+  TaskAlt as TaskAltIcon,
+  List as ListIcon
+} from '@mui/icons-material';
 import { CalendarEvent } from '../services/calendarService';
+import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 interface TaskDetailsPopupProps {
   event: CalendarEvent | null;
   anchorEl: HTMLElement | null;
   onClose: () => void;
-  onEdit?: (event: CalendarEvent) => void;
-  onDelete?: (event: CalendarEvent) => void;
+  onDelete: (event: CalendarEvent) => void;
 }
 
 const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
   event,
   anchorEl,
   onClose,
-  onEdit,
   onDelete
 }) => {
   const navigate = useNavigate();
   
-  // Extract task ID from event ID (format: task-{taskId})
-  const getTaskId = () => {
-    if (!event?.id) return null;
-    const match = event.id.match(/^task-(.+)$/);
-    return match ? match[1] : null;
+  if (!event) return null;
+
+  // Format date for display
+  const formatDate = (date: string | Date) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return format(dateObj, 'MMM d, yyyy');
   };
 
-  // Extract task list ID from summary (format: "Task from {listName}")
-  const getTaskListId = (): string | null => {
-    if (!event?.summary) return null;
-    
-    // First try to parse from any stored metadata
-    if (event.taskListId) {
-      return event.taskListId;
-    }
-    
-    // My Tasks is the default list
-    const listName = getTaskListName();
-    if (listName === 'My Tasks') {
-      return '@default'; // Google's default ID for "My Tasks"
-    }
-    
-    return null;
-  };
-  
-  // Navigate to Google Tasks and open the specific task
-  const handleOpenTask = () => {
-    const taskListId = getTaskListId();
-    const listName = getTaskListName();
-    
-    // Close the popup
+  const goToTasksPage = () => {
     onClose();
-    
-    // Navigate to Google Tasks page
-    navigate('/google-tasks', { 
-      state: { 
-        selectedListId: taskListId,
-        selectedListName: listName,
-        highlightTaskId: getTaskId()
-      } 
-    });
-  };
-
-  // Format the date
-  const formatEventDate = () => {
-    if (!event) return '';
-    const date = new Date(event.start);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      month: 'long', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  // Get task description and due time from notes
-  const getTaskDetails = (): { description: string, dueTime: string | null } => {
-    if (!event?.description) return { description: '', dueTime: null };
-    
-    let description = event.description;
-    let dueTime = null;
-    
-    // Extract due time if present
-    if (event.description.includes('Due Time:')) {
-      const dueTimeMatch = event.description.match(/Due Time: (\d{1,2}:\d{2})/);
-      if (dueTimeMatch && dueTimeMatch[1]) {
-        dueTime = dueTimeMatch[1];
-      }
-      
-      // Remove the Due Time line from description
-      description = event.description.replace(/Due Time:.*\n?/, '').trim();
-    }
-    
-    return { description, dueTime };
-  };
-
-  // Extract task list name from summary (format: "Task from {listName}")
-  const getTaskListName = (): string => {
-    if (!event?.summary) return 'My Tasks';
-    
-    const match = event.summary.match(/Task from (.+)$/);
-    return match ? match[1] : 'My Tasks';
-  };
-
-  // Format task title (remove any [Task] suffix and time info)
-  const getTaskTitle = (): string => {
-    if (!event?.title) return '';
-    return event.title
-      .replace(/\s*\[\s*Task\s*\]\s*$/, '')  // Remove [Task] suffix
-      .replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '');  // Remove time info in parentheses
+    navigate('/tasks');
   };
 
   return (
@@ -130,84 +53,120 @@ const TaskDetailsPopup: React.FC<TaskDetailsPopupProps> = ({
       onClose={onClose}
       anchorOrigin={{
         vertical: 'bottom',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
       transformOrigin={{
         vertical: 'top',
-        horizontal: 'left',
+        horizontal: 'center',
       }}
-      PaperProps={{
-        sx: { 
-          width: 320,
-          maxWidth: '95vw',
-          borderRadius: 2,
-          overflow: 'hidden'
+      slotProps={{
+        paper: {
+          sx: {
+            width: 320,
+            p: 0,
+            mt: 1,
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            overflow: 'hidden'
+          }
         }
       }}
     >
-      <Paper sx={{ width: '100%' }}>
-        {/* Header */}
-        <Box 
-          sx={{ 
-            p: 2, 
-            display: 'flex', 
-            alignItems: 'center',
-            bgcolor: '#F29702', // Orange color for tasks
-            color: 'white'
-          }}
+      {/* Header */}
+      <Box sx={{ 
+        bgcolor: '#F29702', 
+        p: 2,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <TaskAltIcon sx={{ color: 'white', mr: 1 }} />
+          <Typography variant="h6" sx={{ 
+            fontWeight: 'bold', 
+            color: 'white', 
+            fontSize: '1.1rem'
+          }}>
+            Task Details
+          </Typography>
+        </Box>
+        <IconButton 
+          size="small" 
+          onClick={onClose}
+          sx={{ color: 'white', p: 0.5, bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
         >
-          <TaskAltIcon sx={{ mr: 1 }} />
-          <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 'bold', fontFamily: 'Poppins' }}>
-            Task from {getTaskListName()}
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ p: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 'medium', mb: 1, color: '#333' }}>
+          {event.title}
+        </Typography>
+        
+        {event.description && (
+          <Typography variant="body2" sx={{ mb: 2, color: '#666', whiteSpace: 'pre-line' }}>
+            {event.description}
           </Typography>
-          <IconButton size="small" onClick={onClose} sx={{ ml: 1, color: 'white' }}>
-            <CloseIcon />
-          </IconButton>
+        )}
+        
+        <Divider sx={{ my: 1.5 }} />
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 'medium', mr: 1, color: '#555' }}>
+            Date:
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            {formatDate(event.start)}
+          </Typography>
         </Box>
-
-        {/* Content */}
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1, fontFamily: 'Poppins' }}>{getTaskTitle()}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {formatEventDate()}
-          </Typography>
-
-          <Divider sx={{ my: 2 }} />
-
-          {/* Task details */}
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>Task Details</Typography>
-          {getTaskDetails().dueTime && (
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                Due Time: {getTaskDetails().dueTime}
-              </Typography>
-            </Box>
-          )}
-          {getTaskDetails().description && (
-            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-              {getTaskDetails().description}
+        
+        {event.location && (
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'medium', mr: 1, color: '#555' }}>
+              Location:
             </Typography>
-          )}
-
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button 
-              variant="outlined" 
-              onClick={onClose}
-              sx={{ mr: 1 }}
-            >
-              Close
-            </Button>
-            <Button 
-              variant="contained"
-              onClick={handleOpenTask}
-              startIcon={<OpenInNewIcon />}
-              sx={{ bgcolor: '#F29702', '&:hover': { bgcolor: '#D17F00' } }}
-            >
-              Open Task
-            </Button>
+            <Typography variant="body2" sx={{ color: '#666' }}>
+              {event.location}
+            </Typography>
           </Box>
-        </Box>
-      </Paper>
+        )}
+      </Box>
+
+      {/* Footer with action buttons */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'flex-end', 
+        p: 2, 
+        bgcolor: '#f5f5f5',
+        borderTop: '1px solid #eee'
+      }}>
+        <Tooltip title="Go to Tasks">
+          <Button
+            variant="outlined"
+            startIcon={<ListIcon />}
+            onClick={goToTasksPage}
+            sx={{ mr: 1 }}
+          >
+            Go to Tasks
+          </Button>
+        </Tooltip>
+        
+        <Tooltip title="Delete Task">
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => {
+              onClose();
+              onDelete(event);
+            }}
+          >
+            Delete
+          </Button>
+        </Tooltip>
+      </Box>
     </Popover>
   );
 };

@@ -227,6 +227,7 @@ const Journal: React.FC = () => {
                 value={selectedDate}
                 onChange={(newDate: Date | null) => setSelectedDate(newDate)}
                 disableFuture
+                format="dd/MM/yyyy"
                 slotProps={{ 
                   textField: { 
                     fullWidth: true,
