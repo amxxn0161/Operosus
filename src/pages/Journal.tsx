@@ -17,6 +17,7 @@ import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJournal } from '../contexts/JournalContext';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
 import SuccessDialog from '../components/SuccessDialog';
 
 // Define distraction options
@@ -35,6 +36,7 @@ const distractionOptions = [
 const Journal: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { saveEntry, entries } = useJournal();
+  const { updateScreenContext } = useAIAssistant();
   const navigate = useNavigate();
   
   // Form state
@@ -58,19 +60,43 @@ const Journal: React.FC = () => {
       navigate('/login');
     }
     
-    // Initialize distraction options
+    // Update context for AI Assistant
+    updateScreenContext({
+      currentComponent: 'Journal',
+      currentData: {
+        formType: 'journalEntry',
+        formStatus: 'creating',
+        formFields: [
+          'date', 'productivityScore', 'meetingScore', 'hadNoMeetings',
+          'breaksTaken', 'focusTime', 'distractions', 'supportNeeded', 'improvementPlans'
+        ]
+      }
+    });
+  }, [isAuthenticated, navigate, updateScreenContext]);
+
+  // Separate useEffect that only runs once for initialization
+  useEffect(() => {
+    // Initialize distraction options only once when component mounts
+    console.log('Initializing distraction options');
     const initialDistractions: {[key: string]: boolean} = {};
     distractionOptions.forEach(option => {
       initialDistractions[option] = false;
     });
     setSelectedDistractions(initialDistractions);
-  }, [isAuthenticated, navigate]);
+  }, []); // Empty dependency array means this runs only once on mount
 
   const handleDistractionChange = (distraction: string) => {
-    setSelectedDistractions(prev => ({
-      ...prev,
-      [distraction]: !prev[distraction]
-    }));
+    console.log('Changing distraction:', distraction, 'Current value:', selectedDistractions[distraction]);
+    
+    // Use a more robust state update approach
+    setSelectedDistractions(prev => {
+      const newState = {
+        ...prev,
+        [distraction]: !prev[distraction]
+      };
+      console.log('New state will be:', newState);
+      return newState;
+    });
   };
 
   const handleDialogClose = () => {
@@ -102,7 +128,7 @@ const Journal: React.FC = () => {
       supportNeeded,
       improvementPlans,
       distractions, // Add distractions to the entry
-      timestamp: `${formattedDate} ${new Date().toTimeString().split(' ')[0]}` // Format as expected by API
+      timestamp: new Date().toISOString() // Use full ISO string with timezone information
     };
     
     try {
@@ -123,19 +149,58 @@ const Journal: React.FC = () => {
     }
   };
 
+  // Update AI context when form values change
+  useEffect(() => {
+    // Create a form data snapshot for the AI assistant context
+    const formData = {
+      date: selectedDate,
+      productivityScore,
+      hadNoMeetings,
+      meetingScore: hadNoMeetings ? null : meetingScore,
+      breaksTaken: tookBreak,
+      focusTime: completedFocusTime,
+      distractions: Object.entries(selectedDistractions)
+        .filter(([, selected]) => selected)
+        .map(([distraction]) => distraction),
+      supportNeeded,
+      improvementPlans
+    };
+    
+    updateScreenContext({
+      currentData: {
+        formType: 'journalEntry',
+        formStatus: 'editing',
+        formData
+      }
+    });
+  }, [
+    selectedDate, productivityScore, hadNoMeetings, meetingScore, 
+    tookBreak, completedFocusTime, selectedDistractions, 
+    supportNeeded, improvementPlans, updateScreenContext
+  ]);
+
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
           Daily Journal
         </Typography>
-        <Button 
-          variant="outlined"
-          onClick={() => navigate('/dashboard')}
-          sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
-        >
-          Back to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/journal-insights')}
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Journal Insights
+          </Button>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/dashboard')}
+            sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 4 }}>
@@ -302,7 +367,20 @@ const Journal: React.FC = () => {
                     control={
                       <Checkbox 
                         checked={selectedDistractions[option] || false}
-                        onChange={() => handleDistractionChange(option)}
+                        onClick={(e) => {
+                          // Stop event propagation
+                          e.stopPropagation();
+                        }}
+                        onChange={(e) => {
+                          // Use direct event handling
+                          console.log('Checkbox clicked via onChange:', option, e.target.checked);
+                          const newValue = e.target.checked;
+                          
+                          setSelectedDistractions(prev => ({
+                            ...prev,
+                            [option]: newValue
+                          }));
+                        }}
                       />
                     }
                     label={option}

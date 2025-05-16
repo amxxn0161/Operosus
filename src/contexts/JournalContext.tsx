@@ -69,6 +69,10 @@ export const JournalProvider: React.FC<JournalProviderProps> = ({ children }) =>
         else {
           setEntries(prevEntries => [...prevEntries, savedEntry]);
         }
+
+        // Refresh all entries to ensure we have the latest data
+        console.log('Refreshing entries after save');
+        refreshEntries();
       }
       return savedEntry;
     } catch (err) {

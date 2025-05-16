@@ -1,0 +1,1545 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Container, 
+  Grid, 
+  Paper, 
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  CircularProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  useMediaQuery,
+  useTheme,
+  Chip,
+  GlobalStyles
+} from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useJournal } from '../contexts/JournalContext';
+import { useCalendar } from '../contexts/CalendarContext';
+import { useAIAssistant } from '../contexts/AIAssistantContext';
+import { JournalEntry } from '../services/journalService';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AddIcon from '@mui/icons-material/Add';
+import CoffeeIcon from '@mui/icons-material/Coffee';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ReferenceLine, 
+  ReferenceArea,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
+} from 'recharts';
+import StatCard from '../components/StatCard';
+import CalendarView from '../components/CalendarView';
+import AIWelcomeNotification from '../components/AIWelcomeNotification';
+
+// Dummy data for initial display
+const initialStats = {
+  averageScore: '0%',
+  avgProductivity: 0,
+  avgMeetingScore: 0,
+  breakRate: '0%',
+  focusSuccess: '0%',
+  journalStreak: '0 days'
+};
+
+// Color palette for pie chart
+const COLORS = ['#1056F5', '#071C73', '#016C9E', '#C6E8F2', '#F29702', '#E04330', '#49C1E3'];
+
+interface DistractionData {
+  name: string;
+  value: number;
+  percentage: string;
+}
+
+const Dashboard: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  const { entries, refreshEntries, loading: journalLoading, error: journalError } = useJournal();
+  const { events, isConnected, connectCalendar } = useCalendar();
+  const { updateScreenContext } = useAIAssistant();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(initialStats);
+  const [hasData, setHasData] = useState(false);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [distractionData, setDistractionData] = useState<DistractionData[]>([]);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [activeDataPoint, setActiveDataPoint] = useState<any>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{x: number, y: number} | null>(null);
+
+  // Custom tooltip component for the chart
+  const CustomTooltip = ({ active, payload, label, ...props }: any) => {
+    // For desktop view, use the standard recharts active/payload system
+    // For mobile view with our fixed tooltip, use the activeDataPoint state
+    const isDesktop = !isMobile;
+    
+    // Desktop: use standard recharts behavior
+    // Mobile: only use this for the internal Recharts tooltip (not our fixed one)
+    if ((isDesktop && active && payload) || 
+        (isMobile && active && payload && !activeDataPoint)) {
+      const dataPoint = payload[0].payload;
+      const tooltipLabel = isMobile ? dataPoint.mobileName : label;
+      
+      return (
+        <Paper
+          elevation={3}
+          sx={{
+            backgroundColor: 'white',
+            padding: isMobile ? '10px 14px' : '10px 15px',
+            border: '1px solid #f5f5f5',
+            fontFamily: 'Poppins',
+            minWidth: isMobile ? '180px' : '200px',
+            maxWidth: isMobile ? '240px' : '300px',
+            boxShadow: isMobile ? '0px 4px 20px rgba(0, 0, 0, 0.15)' : '0px 2px 8px rgba(0, 0, 0, 0.1)',
+            // Only use fixed positioning for our separate mobile tooltip, not here
+            position: 'relative'
+          }}
+        >
+          <Typography sx={{ 
+            fontFamily: 'Poppins', 
+            fontSize: isMobile ? '0.85rem' : '0.9rem', 
+            mb: isMobile ? 0.8 : 1,
+            fontWeight: 'medium',
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
+            color: '#333'
+          }}>
+            {tooltipLabel}
+          </Typography>
+          <Box sx={{ 
+            mb: 0.8,
+            p: isMobile ? 1 : 0,
+            borderRadius: 1,
+            bgcolor: isMobile ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+          }}>
+            <Typography sx={{ 
+              fontFamily: 'Poppins', 
+              fontSize: isMobile ? '1rem' : '0.9rem', 
+              color: '#1056F5', 
+              fontWeight: 'bold'
+            }}>
+              Overall Score: {dataPoint.comprehensive}%
+            </Typography>
+          </Box>
+          <Typography sx={{ 
+            fontFamily: 'Poppins', 
+            fontSize: isMobile ? '0.85rem' : '0.9rem', 
+            color: '#666' 
+          }}>
+            Productivity: {dataPoint.productivity}%
+          </Typography>
+        </Paper>
+      );
+    }
+    return null;
+  };
+
+  // Separate component for our fixed mobile tooltip
+  const MobileFixedTooltip = () => {
+    if (!activeDataPoint || !tooltipPosition) return null;
+    
+    return (
+      <Paper
+        elevation={4}
+        sx={{
+          backgroundColor: 'white',
+          padding: '10px 14px',
+          border: '1px solid #f5f5f5',
+          fontFamily: 'Poppins',
+          width: '85%', // Fixed width for mobile
+          maxWidth: '280px',
+          boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.15)',
+          position: 'absolute',
+          // Position directly over the data point (50px above the dot)
+          bottom: `calc(100% - ${tooltipPosition.y}px + 10px)`,
+          left: tooltipPosition.x,
+          transform: 'translateX(-50%)',
+          zIndex: 100,
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            bottom: '-8px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0,
+            height: 0,
+            borderLeft: '8px solid transparent',
+            borderRight: '8px solid transparent',
+            borderTop: '8px solid white',
+          }
+        }}
+      >
+        <Typography sx={{ 
+          fontFamily: 'Poppins', 
+          fontSize: '0.85rem', 
+          mb: 0.8,
+          fontWeight: 'medium',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          color: '#333'
+        }}>
+          {activeDataPoint.mobileName}
+        </Typography>
+        <Box sx={{ 
+          mb: 0.8,
+          p: 1,
+          borderRadius: 1,
+          bgcolor: 'rgba(16, 86, 245, 0.08)'
+        }}>
+          <Typography sx={{ 
+            fontFamily: 'Poppins', 
+            fontSize: '1rem', 
+            color: '#1056F5', 
+            fontWeight: 'bold'
+          }}>
+            Overall Score: {activeDataPoint.comprehensive}%
+          </Typography>
+        </Box>
+        <Typography sx={{ 
+          fontFamily: 'Poppins', 
+          fontSize: '0.85rem', 
+          color: '#666' 
+        }}>
+          Productivity: {activeDataPoint.productivity}%
+        </Typography>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end', 
+          mt: 1.5 
+        }}>
+          <Button 
+            size="small" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveDataPoint(null);
+              setTooltipPosition(null);
+            }}
+            sx={{ 
+              fontSize: '0.75rem', 
+              minWidth: 'auto', 
+              p: '2px 8px',
+              color: '#666',
+              pointerEvents: 'auto'
+            }}
+          >
+            Close
+          </Button>
+        </Box>
+      </Paper>
+    );
+  };
+
+  // Custom tooltip for pie chart
+  const DistractionTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <Paper
+          elevation={3}
+          sx={{
+            backgroundColor: 'white',
+            padding: '10px 15px',
+            border: '1px solid #f5f5f5',
+            fontFamily: 'Poppins',
+            minWidth: '180px'
+          }}
+        >
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', fontWeight: 'medium', mb: 0.5 }}>
+            {payload[0].name}
+          </Typography>
+          <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#666' }}>
+            Frequency: {payload[0].value} {payload[0].value === 1 ? 'occurrence' : 'occurrences'}
+          </Typography>
+          {payload[0].payload && payload[0].payload.percentage && (
+            <Typography sx={{ fontFamily: 'Poppins', fontSize: '0.9rem', color: '#666' }}>
+              {payload[0].payload.percentage} of total
+            </Typography>
+          )}
+        </Paper>
+      );
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    // Redirect to login if not authenticated
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    
+    // For simplicity, we'll check if the user is an admin based on their email
+    // In a real app, this would come from the user's role/permissions in the auth context
+    const userEmail = localStorage.getItem('userEmail');
+    // Only grant admin access to specific email addresses
+    const isAdminUser = Boolean(userEmail && (
+      userEmail === 'dc@operosus.com' || 
+      userEmail === 'as@operosus.com'
+    ));
+    setIsAdmin(isAdminUser);
+  }, [isAuthenticated, navigate]);
+
+  // Process journal entries when they change
+  useEffect(() => {
+    if (entries && entries.length > 0) {
+      setHasData(true);
+      
+      // Calculate stats based on entries
+      const totalProductivity = entries.reduce((sum, entry) => sum + entry.productivityScore, 0);
+      const meetingsEntries = entries.filter(entry => entry.meetingScore !== null);
+      const totalMeetingScore = meetingsEntries.reduce((sum, entry) => sum + (entry.meetingScore || 0), 0);
+      const breakRateCount = entries.filter(entry => entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes').length;
+      const focusSuccessCount = entries.filter(entry => entry.focusTime === 'Yes' || entry.focusTime === 'yes').length;
+      
+      // Calculate journal streak properly
+      const calculateStreak = (): number => {
+        // Extract dates and convert to standard format (YYYY-MM-DD)
+        const entryDates = entries.map(entry => {
+          return entry.date; // Already in YYYY-MM-DD format from API
+        });
+        
+        // Get unique dates (in case of multiple entries per day)
+        const uniqueDatesSet = new Set<string>(entryDates);
+        const uniqueDates = Array.from(uniqueDatesSet).sort();
+        
+        if (uniqueDates.length === 0) return 0;
+        
+        // Check current date to see if today is included
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        
+        // Start counting streak backward from the most recent entry
+        let streak = 1;
+        let currentDate = uniqueDates[uniqueDates.length - 1];
+        
+        // If most recent entry is not from today or yesterday, streak is just 1
+        if (currentDate !== today && currentDate !== yesterday) {
+          return uniqueDates.length === 1 ? 1 : uniqueDates.length;
+        }
+        
+        // Count consecutive days going backwards
+        for (let i = uniqueDates.length - 2; i >= 0; i--) {
+          const expectedPreviousDate = new Date(new Date(currentDate).getTime() - 86400000)
+            .toISOString().split('T')[0];
+          
+          if (uniqueDates[i] === expectedPreviousDate) {
+            streak++;
+            currentDate = expectedPreviousDate;
+          } else {
+            break; // Streak is broken
+          }
+        }
+        
+        return streak;
+      };
+      
+      const streak = calculateStreak();
+      
+      // Calculate a comprehensive score that follows the specified point system
+      const comprehensiveScores = entries.map(entry => {
+        let totalPoints = 0;
+        let maxPossiblePoints = 40; // Default maximum
+        
+        // Productivity score (1-10 points)
+        totalPoints += entry.productivityScore;
+        
+        // Meeting score (0-10 points)
+        if (entry.hadNoMeetings) {
+          maxPossiblePoints = 30; // Reduce maximum if no meetings
+        } else if (entry.meetingScore !== null) {
+          totalPoints += entry.meetingScore;
+        }
+        
+        // Break points (Yes = 10, No = 0)
+        if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+          totalPoints += 10;
+        }
+        
+        // Focus time points (Yes = 10, Partial = 5, No = 0)
+        if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+          totalPoints += 10;
+        } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+          totalPoints += 5;
+        }
+        
+        // Subtract 2 points for each distraction
+        const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+        totalPoints -= distractionPenalty;
+        
+        // Ensure points don't go below zero
+        totalPoints = Math.max(0, totalPoints);
+        
+        // Calculate percentage
+        const scorePercentage = Math.round((totalPoints / maxPossiblePoints) * 100);
+        
+        return {
+          points: totalPoints,
+          maxPoints: maxPossiblePoints,
+          percentage: scorePercentage
+        };
+      });
+      
+      // Calculate average comprehensive score
+      const totalPercentage = comprehensiveScores.reduce((sum, score) => sum + score.percentage, 0);
+      const avgComprehensiveScore = Math.round(totalPercentage / entries.length);
+      
+      // Set calculated stats to state
+      if (entries.length > 0) {
+        setStats({
+          averageScore: `${avgComprehensiveScore}%`,
+          avgProductivity: +(totalProductivity / entries.length).toFixed(1),
+          avgMeetingScore: meetingsEntries.length > 0 ? 
+            +(totalMeetingScore / meetingsEntries.length).toFixed(1) : 0,
+          breakRate: `${Math.round((breakRateCount / entries.length) * 100)}%`,
+          focusSuccess: `${Math.round((focusSuccessCount / entries.length) * 100)}%`,
+          journalStreak: `${streak} day${streak !== 1 ? 's' : ''}`
+        });
+      }
+      
+      // Process data for chart
+      prepareChartData(entries);
+      
+      // Process distraction data
+      processDistractionData(entries);
+      
+      // Update context for AI Assistant with dashboard data
+      const dashboardData = {
+        metricsOverview: {
+          totalEntries: entries.length,
+          avgProductivity: +(totalProductivity / entries.length).toFixed(1),
+          avgMeetingScore: meetingsEntries.length > 0 ? 
+            +(totalMeetingScore / meetingsEntries.length).toFixed(1) : 0,
+          breakRate: Math.round((breakRateCount / entries.length) * 100),
+          focusSuccess: Math.round((focusSuccessCount / entries.length) * 100),
+          journalStreak: streak
+        },
+        recentEntries: entries.slice(0, 3).map(entry => ({
+          date: entry.date,
+          productivityScore: entry.productivityScore
+        }))
+      };
+      
+      updateScreenContext({
+        currentComponent: 'Dashboard',
+        currentData: dashboardData,
+        journalEntries: entries
+      });
+    } else {
+      setHasData(false);
+      
+      // Update context even with no data
+      updateScreenContext({
+        currentComponent: 'Dashboard',
+        currentData: { noData: true, suggestJournalEntry: true }
+      });
+    }
+  }, [entries, updateScreenContext]);
+
+  const processDistractionData = (journalEntries: JournalEntry[]) => {
+    // Create a counter for distractions
+    const distractionCounter: { [key: string]: number } = {};
+    let totalDistractions = 0;
+    
+    // Count occurrences of each distraction type
+    journalEntries.forEach(entry => {
+      if (entry.distractions && entry.distractions.length > 0) {
+        entry.distractions.forEach(distraction => {
+          // Skip empty or whitespace-only distractions
+          if (distraction && distraction.trim()) {
+            const normalizedDistraction = distraction.trim();
+            if (distractionCounter[normalizedDistraction]) {
+              distractionCounter[normalizedDistraction]++;
+            } else {
+              distractionCounter[normalizedDistraction] = 1;
+            }
+            totalDistractions++;
+          }
+        });
+      }
+    });
+    
+    // Transform into array format for pie chart
+    const distractionArray = Object.keys(distractionCounter).map(key => ({
+      name: key,
+      value: distractionCounter[key],
+      percentage: `${Math.round((distractionCounter[key] / totalDistractions) * 100)}%`
+    }));
+    
+    // Sort by frequency (highest first)
+    distractionArray.sort((a, b) => b.value - a.value);
+    
+    // Take top 5 distractions
+    setDistractionData(distractionArray.slice(0, 5));
+  };
+
+  const prepareChartData = (journalEntries: JournalEntry[]) => {
+    // Transform entries for the chart
+    const processedData = journalEntries.map(entry => {
+      // Format date/time for display
+      // Use the timestamp field which contains the actual time the entry was created
+      const date = new Date(entry.timestamp || entry.date);
+      
+      // Format date for desktop view
+      const formattedDate = `${date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric'
+      })}, ${date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      })}`;
+      
+      // Create a more compact format for mobile
+      const mobileDate = `${date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric'
+      })}`;
+      
+      // Calculate comprehensive score for this entry
+      let totalPoints = 0;
+      let maxPossiblePoints = 40; // Default maximum
+      
+      // Productivity score (1-10 points)
+      totalPoints += entry.productivityScore;
+      
+      // Meeting score (0-10 points)
+      if (entry.hadNoMeetings) {
+        maxPossiblePoints = 30; // Reduce maximum if no meetings
+      } else if (entry.meetingScore !== null) {
+        totalPoints += entry.meetingScore;
+      }
+      
+      // Break points (Yes = 10, No = 0)
+      if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+        totalPoints += 10;
+      }
+      
+      // Focus time points (Yes = 10, Partial = 5, No = 0)
+      if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+        totalPoints += 10;
+      } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+        totalPoints += 5;
+      }
+      
+      // Subtract 2 points for each distraction
+      const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+      totalPoints -= distractionPenalty;
+      
+      // Ensure points don't go below zero
+      totalPoints = Math.max(0, totalPoints);
+      
+      // Calculate percentage
+      const scorePercentage = Math.round((totalPoints / maxPossiblePoints) * 100);
+      
+      return {
+        name: formattedDate,
+        mobileName: mobileDate,
+        productivity: Math.round(entry.productivityScore * 10),
+        comprehensive: scorePercentage,
+        date: date // Keep the Date object for sorting
+      };
+    });
+    
+    // Sort by date (newest first for the chart)
+    processedData.sort((a, b) => a.date.getTime() - b.date.getTime());
+    
+    setChartData(processedData);
+  };
+
+  // Helper function to calculate comprehensive score for an entry
+  const calculateEntryScore = (entry: JournalEntry): number => {
+    let totalPoints = 0;
+    let maxPossiblePoints = 40; // Default maximum
+    
+    // Productivity score (1-10 points)
+    totalPoints += entry.productivityScore;
+    
+    // Meeting score (0-10 points)
+    if (entry.hadNoMeetings) {
+      maxPossiblePoints = 30; // Reduce maximum if no meetings
+    } else if (entry.meetingScore !== null) {
+      totalPoints += entry.meetingScore;
+    }
+    
+    // Break points (Yes = 10, No = 0)
+    if (entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes') {
+      totalPoints += 10;
+    }
+    
+    // Focus time points (Yes = 10, Partial = 5, No = 0)
+    if (entry.focusTime === 'Yes' || entry.focusTime === 'yes') {
+      totalPoints += 10;
+    } else if (entry.focusTime === 'Partially' || entry.focusTime === 'partially') {
+      totalPoints += 5;
+    }
+    
+    // Subtract 2 points for each distraction
+    const distractionPenalty = entry.distractions ? Math.min(entry.distractions.length * 2, totalPoints) : 0;
+    totalPoints -= distractionPenalty;
+    
+    // Ensure points don't go below zero
+    totalPoints = Math.max(0, totalPoints);
+    
+    // Calculate percentage
+    return Math.round((totalPoints / maxPossiblePoints) * 100);
+  };
+
+  const handleNewEntry = () => {
+    navigate('/journal');
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refreshEntries()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleViewEntry = (index: number) => {
+    if (entries && entries[index]) {
+      navigate(`/entry/${entries[index].id}`);
+    } else {
+      navigate(`/entry/${index}`);
+    }
+  };
+
+  // Handler for calendar event click
+  const handleCalendarEventClick = (event: any) => {
+    console.log('Calendar event clicked:', event);
+    // No longer need to show an alert since EventDetailsPopup handles this now
+    // The EventDetailsPopup component will be triggered by the CalendarView component directly
+  };
+
+  // Handler for adding new calendar events
+  const handleAddCalendarEvent = () => {
+    if (!isConnected) {
+      // Show connect prompt with explanation
+      const result = window.confirm(
+        "You're currently viewing sample calendar data. Connect to Google Calendar to add real events?"
+      );
+      
+      if (result) {
+        connectCalendar();
+      }
+    } else {
+      console.log('Add new calendar event');
+      // The EventCreationModal component will be opened by the CalendarView component directly
+    }
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+      {/* Add CSS for the pulsing dot animation using MUI's GlobalStyles */}
+      <GlobalStyles 
+        styles={{
+          '@keyframes pulse': {
+            '0%': {
+              r: 8,
+              opacity: 1,
+            },
+            '50%': {
+              r: 10,
+              opacity: 0.8,
+            },
+            '100%': {
+              r: 8,
+              opacity: 1,
+            }
+          },
+          '.pulsing-dot': {
+            animation: 'pulse 1.5s infinite ease-in-out',
+          }
+        }}
+      />
+      
+      {/* Include the AI Welcome Notification */}
+      <AIWelcomeNotification />
+      
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          component="h1" 
+          sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+        >
+          Your Dashboard
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* Worksheet button hidden temporarily
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/worksheet')}
+            sx={{
+              borderColor: '#1056F5',
+              color: '#1056F5',
+              fontFamily: 'Poppins',
+              textTransform: 'none',
+              '&:hover': {
+                borderColor: '#0D47D9',
+                backgroundColor: '#f5f9ff',
+              },
+            }}
+          >
+            Worksheet
+          </Button>
+          */}
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />}
+            onClick={handleNewEntry} 
+            sx={{
+              backgroundColor: '#1056F5',
+              color: 'white',
+              fontFamily: 'Poppins',
+              textTransform: 'none',
+              '&:hover': {
+                backgroundColor: '#0D47D9',
+              },
+            }}
+          >
+            New Entry
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Show loading spinner while entries are loading */}
+      {journalLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 10 }}>
+          <CircularProgress />
+        </Box>
+      ) : journalError ? (
+        <Paper sx={{ p: 4, textAlign: 'center', my: 4 }}>
+          <Typography variant="h6" color="error" sx={{ mb: 2 }}>
+            Error loading journal entries
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+          >
+            Try Again
+          </Button>
+        </Paper>
+      ) : (
+        <>
+          {/* Quick Stats Section */}
+          <Paper 
+            sx={{ 
+              p: isMobile ? 2 : 4, 
+              mb: 5, 
+              borderRadius: 2,
+              overflow: 'hidden'  
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography 
+                variant={isMobile ? "subtitle1" : "h6"}
+                sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+              >
+                Quick Stats
+              </Typography>
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon />}
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
+              >
+                Refresh
+              </Button>
+            </Box>
+            <Grid container spacing={isMobile ? 2 : 4}>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Average Score" 
+                  value={stats.averageScore}
+                  color="#1056F5"
+                  subtitle="Comprehensive rating of all factors"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Avg Productivity" 
+                  value={stats.avgProductivity}
+                  color="#071C73"
+                  subtitle="Based on productivity ratings only"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Avg Meeting Score" 
+                  value={stats.avgMeetingScore}
+                  color="#016C9E"
+                  subtitle="Average meeting effectiveness"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Break Rate" 
+                  value={stats.breakRate}
+                  color="#F29702"
+                  subtitle="How often you took breaks"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Focus Success" 
+                  value={stats.focusSuccess}
+                  color="#49C1E3"
+                  subtitle="Focus time achievement rate"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={2}>
+                <StatCard 
+                  title="Journal Streak" 
+                  value={stats.journalStreak}
+                  color="#E04330"
+                  subtitle="Consecutive days with entries"
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Calendar Section - Replace with new CalendarView */}
+          <Paper sx={{ p: 0, mb: 5, borderRadius: 2, overflow: 'hidden' }}>
+            <CalendarView 
+              onEventClick={handleCalendarEventClick}
+              onAddEvent={handleAddCalendarEvent}
+            />
+          </Paper>
+
+          {/* Progress Graph Section */}
+          <Paper sx={{ p: isMobile ? 2 : 4, mb: 5, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography 
+                variant="h6" 
+                sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+              >
+                Your Progress
+              </Typography>
+              <Button 
+                startIcon={isRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />} 
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{ 
+                  fontFamily: 'Poppins', 
+                  textTransform: 'none',
+                  color: '#1056F5',
+                  fontWeight: 'medium'
+                }}
+              >
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </Box>
+            <Box 
+              sx={{ 
+                position: 'relative', 
+                width: '100%', 
+                height: isMobile ? 300 : 400, // Adjust height based on screen size
+                mb: isMobile ? 1 : 2 
+              }}
+            >
+              {isRefreshing && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    bgcolor: 'rgba(255,255,255,0.8)',
+                    borderRadius: 2,
+                    p: 3,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    boxShadow: 3
+                  }}
+                >
+                  <Typography variant="body1" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', mb: 1 }}>
+                    Refreshing data...
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'Poppins', color: 'text.secondary' }}>
+                    Dashboard is updating with latest reflections.
+                  </Typography>
+                </Box>
+              )}
+              {hasData && chartData.length > 0 ? (
+                <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{
+                        top: 20,
+                        right: isMobile ? 10 : 30,
+                        left: isMobile ? 0 : 10,
+                        bottom: isMobile ? 60 : 80, // Adjusted bottom margin for mobile
+                      }}
+                      onMouseUp={(data) => {
+                        if (data && data.activePayload && data.activePayload.length > 0) {
+                          // Only for mobile devices
+                          if (isMobile) {
+                            setActiveDataPoint(data.activePayload[0].payload);
+                            
+                            // Get exact position within the chart
+                            const chartElement = document.querySelector('.recharts-surface');
+                            if (chartElement && data.chartX !== undefined && data.chartY !== undefined) {
+                              const chartRect = chartElement.getBoundingClientRect();
+                              
+                              // Store the position for rendering the tooltip
+                              setTooltipPosition({
+                                x: data.chartX,
+                                y: data.chartY
+                              });
+                            }
+                          }
+                        }
+                      }}
+                      onClick={() => {
+                        if (!isMobile) {
+                          setActiveDataPoint(null);
+                          setTooltipPosition(null);
+                        }
+                      }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={true} stroke="#e0e0e0" />
+                      <XAxis 
+                        dataKey={isMobile ? "mobileName" : "name"}
+                        angle={isMobile ? -35 : -45}
+                        textAnchor="end"
+                        tick={{ 
+                          fontSize: isMobile ? 10 : 12, 
+                          fontFamily: 'Poppins', 
+                          fontWeight: 'medium' 
+                        }}
+                        height={isMobile ? 60 : 90}
+                        tickMargin={isMobile ? 10 : 20}
+                        axisLine={{ stroke: '#e0e0e0' }}
+                        tickLine={{ stroke: '#e0e0e0' }}
+                        interval={isMobile ? 1 : 0} // Skip some labels on mobile
+                        tickFormatter={(value, index) => {
+                          if (isMobile) {
+                            return index % 2 === 0 ? value : '';
+                          }
+                          return value;
+                        }}
+                      />
+                      <YAxis 
+                        domain={[0, 100]} 
+                        tick={{ 
+                          fontSize: isMobile ? 10 : 12, 
+                          fontFamily: 'Poppins', 
+                          fontWeight: 'medium' 
+                        }}
+                        tickCount={isMobile ? 4 : 6}
+                        axisLine={{ stroke: '#e0e0e0' }}
+                        tickLine={{ stroke: '#e0e0e0' }}
+                        width={isMobile ? 30 : 40}
+                      />
+                      <Tooltip 
+                        content={<CustomTooltip />} 
+                        // Use default positioning behavior for desktop
+                        // On mobile, we'll show our custom fixed tooltip instead
+                        cursor={{ strokeDasharray: '3 3' }}
+                        // Use standard hover behavior - our fixed tooltip handles the mobile case
+                        trigger="hover"
+                      />
+                    
+                      <ReferenceArea y1={0} y2={50} fill="#ffebee" fillOpacity={0.7} />
+                      <ReferenceArea y1={50} y2={70} fill="#fff8e1" fillOpacity={0.7} />
+                      <ReferenceArea y1={70} y2={100} fill="#e8f5e9" fillOpacity={0.7} />
+                    
+                      <ReferenceLine y={70} stroke="#e0e0e0" strokeDasharray="3 3" />
+                      <ReferenceLine y={50} stroke="#e0e0e0" strokeDasharray="3 3" />
+                    
+                      <Line 
+                        type="monotone" 
+                        dataKey="comprehensive" 
+                        stroke="#1056F5" 
+                        strokeWidth={2}
+                        dot={{ 
+                          fill: '#1056F5', 
+                          r: isMobile ? 5 : 5
+                        }} 
+                        activeDot={{ 
+                          r: isMobile ? 8 : 7,
+                          strokeWidth: 1, 
+                          stroke: '#fff',
+                          fill: '#1056F5',
+                          strokeOpacity: isMobile ? 0.8 : 1,
+                          className: isMobile ? 'pulsing-dot' : ''
+                        }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Place the mobile tooltip directly on top of the chart */}
+                  {isMobile && activeDataPoint && tooltipPosition && (
+                    <Paper
+                      elevation={4}
+                      sx={{
+                        backgroundColor: 'white',
+                        padding: '10px 14px',
+                        border: '1px solid #f5f5f5',
+                        fontFamily: 'Poppins',
+                        width: '85%', // Fixed width for mobile
+                        maxWidth: '280px',
+                        boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.15)',
+                        position: 'absolute',
+                        // Position directly over the data point (50px above the dot)
+                        bottom: `calc(100% - ${tooltipPosition.y}px + 10px)`,
+                        left: tooltipPosition.x,
+                        transform: 'translateX(-50%)',
+                        zIndex: 100,
+                        '&::after': {
+                          content: '""',
+                          position: 'absolute',
+                          bottom: '-8px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '8px solid transparent',
+                          borderRight: '8px solid transparent',
+                          borderTop: '8px solid white',
+                        }
+                      }}
+                    >
+                      <Typography sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontSize: '0.85rem', 
+                        mb: 0.8,
+                        fontWeight: 'medium',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                        color: '#333'
+                      }}>
+                        {activeDataPoint.mobileName}
+                      </Typography>
+                      <Box sx={{ 
+                        mb: 0.8,
+                        p: 1,
+                        borderRadius: 1,
+                        bgcolor: 'rgba(16, 86, 245, 0.08)'
+                      }}>
+                        <Typography sx={{ 
+                          fontFamily: 'Poppins', 
+                          fontSize: '1rem', 
+                          color: '#1056F5', 
+                          fontWeight: 'bold'
+                        }}>
+                          Overall Score: {activeDataPoint.comprehensive}%
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontSize: '0.85rem', 
+                        color: '#666' 
+                      }}>
+                        Productivity: {activeDataPoint.productivity}%
+                      </Typography>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'flex-end', 
+                        mt: 1.5 
+                      }}>
+                        <Button 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDataPoint(null);
+                            setTooltipPosition(null);
+                          }}
+                          sx={{ 
+                            fontSize: '0.75rem', 
+                            minWidth: 'auto', 
+                            p: '2px 8px',
+                            color: '#666',
+                            pointerEvents: 'auto'
+                          }}
+                        >
+                          Close
+                        </Button>
+                      </Box>
+                    </Paper>
+                  )}
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  height: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                    No data available yet. Please create a journal entry.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
+
+          {/* Add helper text for mobile users - only appears on mobile */}
+          {isMobile && hasData && chartData.length > 0 && (
+            <Box 
+              sx={{ 
+                width: '100%', 
+                textAlign: 'center', 
+                mt: 1, 
+                mb: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: 'text.secondary',
+                  fontFamily: 'Poppins',
+                  fontSize: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <Box 
+                  component="span" 
+                  sx={{ 
+                    display: 'inline-block', 
+                    width: 8, 
+                    height: 8, 
+                    borderRadius: '50%', 
+                    bgcolor: '#1056F5',
+                    mr: 1
+                  }} 
+                />
+                Tap on data points to view detailed scores
+              </Typography>
+            </Box>
+          )}
+
+          {/* Recent Entries Section */}
+          <Grid container spacing={5}>
+            <Grid item xs={12} md={7}>
+              <Paper sx={{ p: 4, height: '100%', borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography 
+                    variant="h6" 
+                    sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}
+                  >
+                    Recent Entries
+                  </Typography>
+                  <Button 
+                    onClick={() => navigate('/all-entries')}
+                    sx={{ 
+                      fontFamily: 'Poppins', 
+                      textTransform: 'none',
+                      color: '#1056F5',
+                      fontWeight: 'medium'
+                    }}
+                  >
+                    View all
+                  </Button>
+                </Box>
+                
+                {entries && entries.length > 0 ? (
+                  <TableContainer sx={{ 
+                    overflowX: 'auto',
+                    '&::-webkit-scrollbar': {
+                      height: '6px'
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '4px'
+                    }
+                  }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', sm: 'table-cell' } }}>PRODUCTIVITY</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>MEETINGS</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS TIME</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>BREAKS</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>SUPPORT</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', lg: 'table-cell' } }}>PLAN</TableCell>
+                          <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {entries.slice(0, 6).map((entry, index) => (
+                          <TableRow key={entry.id || index} hover>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                              {new Date(entry.date).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric'
+                              })}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                              <Box sx={{ 
+                                backgroundColor: '#1056F5', 
+                                display: 'inline-block', 
+                                px: { xs: 1, sm: 2 },
+                                py: 0.5, 
+                                borderRadius: 16,
+                                fontWeight: 'medium',
+                                color: 'white',
+                                fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                              }}>
+                                {calculateEntryScore(entry)}%
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
+                              <Box sx={{ 
+                                backgroundColor: '#1056F5', 
+                                display: 'inline-block',
+                                px: 2,
+                                py: 0.5, 
+                                borderRadius: 16,
+                                fontWeight: 'medium',
+                                color: 'white'
+                              }}>
+                                {Math.round(entry.productivityScore * 10)}
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
+                              {entry.hadNoMeetings ? (
+                                <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
+                                  -
+                                </Box>
+                              ) : (
+                                <Box sx={{ 
+                                  backgroundColor: '#1056F5', 
+                                  display: 'inline-block', 
+                                  px: 2,
+                                  py: 0.5, 
+                                  borderRadius: 16,
+                                  fontWeight: 'medium',
+                                  color: 'white'
+                                }}>
+                                  {entry.meetingScore}
+                                </Box>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
+                              {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                                  <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
+                                </Box>
+                              ) : entry.focusTime === 'Partially' || entry.focusTime === 'partially' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F29D38' }}>
+                                  <CoffeeIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Partial
+                                </Box>
+                              ) : (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                                  <CloseIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> No
+                                </Box>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
+                              {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                                  <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
+                                </Box>
+                              ) : (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                                  <CloseIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> No
+                                </Box>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
+                              {entry.supportNeeded ? entry.supportNeeded.substring(0, 10) + (entry.supportNeeded.length > 10 ? '...' : '') : '-'}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
+                              {entry.improvementPlans ? entry.improvementPlans.substring(0, 10) + (entry.improvementPlans.length > 10 ? '...' : '') : '-'}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
+                              <Button
+                                onClick={() => handleViewEntry(index)}
+                                size="small"
+                                sx={{ 
+                                  fontFamily: 'Poppins', 
+                                  textTransform: 'none', 
+                                  color: '#1056F5',
+                                  fontWeight: 'medium',
+                                  minWidth: { xs: '40px', sm: '64px' },
+                                  px: { xs: 1, sm: 2 }
+                                }}
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Box sx={{ 
+                    height: 150, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center'
+                  }}>
+                    <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                      No entries yet. Start your reflection journey today!
+                    </Typography>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Grid container direction="column" spacing={3}>
+                <Grid item xs={12}>
+                  <Paper sx={{ 
+                    p: 4, 
+                    borderRadius: 2,
+                    width: '100%',
+                    height: '100%'  // Changed to 100% height to fill the space
+                  }}>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ mb: 3, fontWeight: 'bold', fontFamily: 'Poppins' }}
+                    >
+                      Top Distractions
+                    </Typography>
+                    
+                    {entries && entries.length > 0 ? (
+                      <Box sx={{ height: 500, width: '100%' }}>  {/* Increased height for better visualization */}
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={distractionData}
+                              cx="50%"
+                              cy="45%"
+                              labelLine={false}
+                              outerRadius={120}  // Increased outer radius for better visualization
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {distractionData.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={COLORS[index % COLORS.length]} 
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<DistractionTooltip />} />
+                            <Legend 
+                              formatter={(value, entry) => {
+                                const payload = entry && entry.payload;
+                                if (payload && 'percentage' in payload) {
+                                  return `${value}: ${payload.percentage}`;
+                                }
+                                return value;
+                              }}
+                              wrapperStyle={{
+                                fontSize: '1rem',  // Increased font size
+                                lineHeight: '1.8',   // Increased line height
+                                paddingTop: '30px',   // Increased padding
+                                fontWeight: 'medium'
+                              }}
+                              layout="horizontal"
+                              align="center"
+                              verticalAlign="bottom"
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    ) : (
+                      <Box sx={{ 
+                        height: 500,  // Increased height to match the chart height
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center'
+                      }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                          No distraction data available yet.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+
+          {/* All Reflections Section */}
+          <Box sx={{ mt: 5 }}>
+            <Typography 
+              variant="h6" 
+              sx={{ mb: 3, fontWeight: 'bold', fontFamily: 'Poppins' }}
+            >
+              All Reflections
+            </Typography>
+            
+            {entries && entries.length > 0 ? (
+              <TableContainer component={Paper} sx={{ 
+                borderRadius: 2, 
+                p: 1,
+                overflowX: 'auto',
+                '&::-webkit-scrollbar': {
+                  height: '6px'
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderRadius: '4px'
+                }
+              }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Date</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}>Score</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', sm: 'table-cell' } }}>Meeting</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', md: 'table-cell' } }}>Focus</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', md: 'table-cell' } }}>Breaks</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', lg: 'table-cell' } }}>Support</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', display: { xs: 'none', lg: 'table-cell' } }}>Plan</TableCell>
+                      <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium' }}></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {entries.map((entry, index) => (
+                      <TableRow key={entry.id || index} hover>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {new Date(entry.date).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric'
+                          })}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle' }}>
+                          <Box sx={{ 
+                            backgroundColor: '#1056F5', 
+                            display: 'inline-block', 
+                            px: { xs: 1, sm: 2 },
+                            py: 0.5, 
+                            borderRadius: 16,
+                            fontWeight: 'medium',
+                            color: 'white',
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                          }}>
+                            {calculateEntryScore(entry)}%
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', sm: 'table-cell' } }}>
+                          {entry.hadNoMeetings ? (
+                            <Box sx={{ fontFamily: 'Poppins', color: '#666' }}>
+                              -
+                            </Box>
+                          ) : (
+                            <Box sx={{ 
+                              backgroundColor: '#1056F5', 
+                              display: 'inline-block', 
+                              px: 2,
+                              py: 0.5, 
+                              borderRadius: 16,
+                              fontWeight: 'medium',
+                              color: 'white'
+                            }}>
+                              {entry.meetingScore}
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
+                          {entry.focusTime === 'Yes' || entry.focusTime === 'yes' ? (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                              <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
+                            </Box>
+                          ) : entry.focusTime === 'Partially' || entry.focusTime === 'partially' ? (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F29D38' }}>
+                              <CoffeeIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Partial
+                            </Box>
+                          ) : (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                              <CloseIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> No
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', md: 'table-cell' } }}>
+                          {entry.breaksTaken === 'Yes' || entry.breaksTaken === 'yes' ? (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#4CAF50' }}>
+                              <CheckCircleIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> Yes
+                            </Box>
+                          ) : (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', color: '#F44336' }}>
+                              <CloseIcon sx={{ mr: 0.5, fontSize: '1rem' }} /> No
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
+                          {entry.supportNeeded || '-'}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', display: { xs: 'none', lg: 'table-cell' } }}>
+                          {entry.improvementPlans || '-'}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Poppins', verticalAlign: 'middle', padding: { xs: '8px 4px', sm: '16px' } }}>
+                          <Button
+                            onClick={() => handleViewEntry(index)}
+                            size="small"
+                            sx={{ 
+                              fontFamily: 'Poppins', 
+                              textTransform: 'none', 
+                              color: '#1056F5',
+                              fontWeight: 'medium',
+                              minWidth: { xs: '40px', sm: '64px' },
+                              px: { xs: 1, sm: 2 }
+                            }}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Paper sx={{ p: 4, borderRadius: 2 }}>
+                <Box sx={{ 
+                  height: 100, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Typography variant="body1" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                    No reflections data to display.
+                  </Typography>
+                </Box>
+              </Paper>
+            )}
+          </Box>
+        </>
+      )}
+    </Container>
+  );
+};
+
+export default Dashboard; 

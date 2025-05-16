@@ -113,10 +113,9 @@ const EntryDetail: React.FC = () => {
       console.log('Attempting to fetch admin entry directly');
       try {
         setLocalLoading(true);
-        const token = localStorage.getItem('authToken');
         const response = await fetch(`https://app2.operosus.com/api/productivity/admin/entry/${id}`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             'Content-Type': 'application/json',
           },
         });
@@ -197,11 +196,10 @@ const EntryDetail: React.FC = () => {
       // Different delete logic for admin entries
       if (isAdminEntry) {
         // Delete admin entry through the admin API
-        const token = localStorage.getItem('authToken');
         const response = await fetch(`https://app2.operosus.com/api/productivity/admin/${entry.id}`, {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             'Content-Type': 'application/json',
           },
         });
@@ -322,18 +320,84 @@ const EntryDetail: React.FC = () => {
 
   return (
     <Container maxWidth="md" sx={{ py: 4, bgcolor: '#f5f5f5' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins' }}>
-          Journal Entry Details
-        </Typography>
-        <Button 
-          variant="outlined"
-          onClick={handleBack}
-          startIcon={<ArrowBackIcon />}
-          sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
-        >
-          Back
-        </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Button 
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBack}
+            sx={{ 
+              mr: 2,
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              color: '#1056F5'
+            }}
+          >
+            Back
+          </Button>
+          <Button 
+            onClick={() => navigate('/journal-insights')}
+            sx={{ 
+              mr: 2,
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              color: '#1056F5'
+            }}
+          >
+            Journal Insights
+          </Button>
+          <Box>
+            <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', color: '#333' }}>
+              {isAdminEntry && entry.user ? `${entry.user.name}'s Reflection` : 'Daily Reflection'}
+            </Typography>
+            {isAdminEntry && (
+              <Chip 
+                label="Admin View" 
+                color="primary" 
+                size="small" 
+                sx={{ ml: 1, mt: 0.5 }}
+              />
+            )}
+          </Box>
+        </Box>
+        
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {process.env.NODE_ENV === 'development' && (
+            <Button
+              variant="outlined"
+              size="small"
+              color="success"
+              onClick={() => {
+                console.log('Debug Info:');
+                console.log('Entry:', entry);
+                console.log('Is Admin Entry:', isAdminEntry);
+                console.log('LocalStorage:', localStorage.getItem('currentAdminEntry'));
+                
+                // Try setting admin entry directly again
+                if (entry) {
+                  localStorage.setItem('currentAdminEntry', JSON.stringify(entry));
+                  setIsAdminEntry(true);
+                  alert('Admin entry status updated. Check console for details.');
+                }
+              }}
+              sx={{ mr: 1 }}
+            >
+              Debug
+            </Button>
+          )}
+        
+          <Button 
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteClick}
+            variant="outlined"
+            color="error"
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+            }}
+          >
+            Delete Entry
+          </Button>
+        </Box>
       </Box>
 
       {/* Admin entry alert banner */}

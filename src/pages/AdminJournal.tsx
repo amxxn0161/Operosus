@@ -17,8 +17,7 @@ import {
   useMediaQuery,
   useTheme,
   Tooltip,
-  ToggleButton,
-  ToggleButtonGroup
+  IconButton
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,9 +26,9 @@ import CloseIcon from '@mui/icons-material/Close';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import PersonIcon from '@mui/icons-material/Person';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import SortIcon from '@mui/icons-material/Sort';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import SortIcon from '@mui/icons-material/Sort';
 
 // Type for the admin journal entry based on the API response
 interface AdminJournalEntry {
@@ -62,10 +61,10 @@ const AdminJournal: React.FC = () => {
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isExtraSmall = useMediaQuery('(max-width:400px)');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -78,8 +77,7 @@ const AdminJournal: React.FC = () => {
     const userEmail = localStorage.getItem('userEmail');
     const isAdminUser = Boolean(userEmail && (
       userEmail === 'dc@operosus.com' || 
-      userEmail === 'as@operosus.com' ||
-      userEmail === 'kerry.operosus@gmail.com'
+      userEmail === 'as@operosus.com'
     ));
     
     // Redirect to dashboard if not an admin
@@ -92,10 +90,9 @@ const AdminJournal: React.FC = () => {
     const fetchAdminEntries = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('authToken');
         const response = await fetch('https://app2.operosus.com/api/productivity/admin', {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             'Content-Type': 'application/json',
           },
         });
@@ -105,11 +102,7 @@ const AdminJournal: React.FC = () => {
         }
         
         const data = await response.json();
-        // Sort entries based on current sort order
-        const sortedData = [...data].sort((a, b) => 
-          sortOrder === 'newest' ? b.id - a.id : a.id - b.id
-        );
-        setEntries(sortedData);
+        setEntries(data);
       } catch (err) {
         console.error('Error fetching admin journal entries:', err);
         setError('Failed to load admin journal entries. Please try again.');
@@ -119,7 +112,7 @@ const AdminJournal: React.FC = () => {
     };
     
     fetchAdminEntries();
-  }, [isAuthenticated, navigate, sortOrder]);
+  }, [isAuthenticated, navigate]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -185,15 +178,18 @@ const AdminJournal: React.FC = () => {
     setPage(0);
   }, [entries.length]);
 
-  // Handle sort order change
-  const handleSortOrderChange = (
-    event: React.MouseEvent<HTMLElement>,
-    newSortOrder: 'newest' | 'oldest' | null,
-  ) => {
-    if (newSortOrder !== null) {
-      setSortOrder(newSortOrder);
-      setPage(0); // Reset to first page when changing sort order
-    }
+  // Function to sort entries by date
+  const getSortedEntries = () => {
+    return [...entries].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+  };
+
+  // Toggle sort order
+  const toggleSortOrder = () => {
+    setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest');
   };
 
   return (
@@ -217,57 +213,35 @@ const AdminJournal: React.FC = () => {
         >
           Admin Journal Entries
         </Typography>
-        <Button 
-          variant="outlined"
-          onClick={() => navigate('/dashboard')}
-          startIcon={<ArrowBackIcon />}
-          sx={{ 
-            fontFamily: 'Poppins', 
-            textTransform: 'none',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          Back to Dashboard
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={toggleSortOrder}
+            startIcon={<SortIcon />}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {sortOrder === 'newest' ? 'Oldest First' : 'Newest First'}
+          </Button>
+          <Button 
+            variant="outlined"
+            onClick={() => navigate('/dashboard')}
+            startIcon={<ArrowBackIcon />}
+            sx={{ 
+              fontFamily: 'Poppins', 
+              textTransform: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="body2" sx={{ mr: 1, fontFamily: 'Poppins', color: 'text.secondary' }}>
-              Sort by:
-            </Typography>
-            <ToggleButtonGroup
-              value={sortOrder}
-              exclusive
-              onChange={handleSortOrderChange}
-              aria-label="sort order"
-              size="small"
-            >
-              <ToggleButton value="newest" aria-label="newest first">
-                <Tooltip title="Newest first">
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ArrowDownwardIcon fontSize="small" sx={{ mr: 0.5 }} />
-                    <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, fontFamily: 'Poppins' }}>
-                      Newest
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              </ToggleButton>
-              <ToggleButton value="oldest" aria-label="oldest first">
-                <Tooltip title="Oldest first">
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ArrowUpwardIcon fontSize="small" sx={{ mr: 0.5 }} />
-                    <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, fontFamily: 'Poppins' }}>
-                      Oldest
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        </Box>
-
         {loading ? (
           <Box sx={{ 
             height: 200, 
@@ -306,7 +280,27 @@ const AdminJournal: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>USER</TableCell>
-                    <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>DATE</TableCell>
+                    <TableCell 
+                      onClick={toggleSortOrder}
+                      sx={{ 
+                        fontFamily: 'Poppins', 
+                        fontWeight: 'medium', 
+                        color: '#666',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': {
+                          color: '#1056F5'
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        DATE
+                        {sortOrder === 'newest' ? 
+                          <ArrowDownwardIcon fontSize="small" sx={{ fontSize: '1rem' }} /> : 
+                          <ArrowUpwardIcon fontSize="small" sx={{ fontSize: '1rem' }} />
+                        }
+                      </Box>
+                    </TableCell>
                     <TableCell align="center" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666' }}>SCORE</TableCell>
                     <TableCell align="center" sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>MEETINGS</TableCell>
                     <TableCell sx={{ fontFamily: 'Poppins', fontWeight: 'medium', color: '#666', display: { xs: 'none', md: 'table-cell' } }}>FOCUS</TableCell>
@@ -316,7 +310,7 @@ const AdminJournal: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {entries
+                  {getSortedEntries()
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                     .map((entry, index) => (
                     <TableRow 
