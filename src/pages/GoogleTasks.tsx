@@ -254,6 +254,9 @@ const GoogleTasks: React.FC = () => {
   // Add a new state for tracking which specific list is being updated
   const [updatingListId, setUpdatingListId] = useState<string | null>(null);
 
+  // Add optimisticTaskLists state
+  const [optimisticTaskLists, setOptimisticTaskLists] = useState<EnhancedGoogleTaskList[] | null>(null);
+
   // Initialize default task list ID when data loads
   useEffect(() => {
     if (taskLists.length > 0 && !newTaskListId) {
@@ -676,71 +679,114 @@ const GoogleTasks: React.FC = () => {
     
     // If moving between different lists
     if (sourceTaskListId !== destinationTaskListId) {
-      // Show loading indicator on the destination list
-      setUpdatingListId(destinationTaskListId);
+      // Find the source list and identify the task being moved
+      const sourceList = taskLists.find(list => list.id === sourceTaskListId);
+      if (!sourceList) {
+        console.error("Source task list not found");
+        showSnackbar('Error: Source list not found', 'error');
+        return;
+      }
+      
+      // Filter to only get incomplete tasks that are shown in the UI (consistent with what's being dragged)
+      const incompleteTasks = sourceList.tasks.filter(task => task.status !== 'completed');
+      
+      if (source.index >= incompleteTasks.length) {
+        console.error("Source task index out of bounds");
+        showSnackbar('Error: Task not found', 'error');
+        return;
+      }
+      
+      // Identify the exact task being moved
+      const taskToMove = incompleteTasks[source.index];
+      if (!taskToMove) {
+        console.error("Task not found at index");
+        showSnackbar('Error: Task not found', 'error');
+        return;
+      }
+      
+      // Find the destination list
+      const destinationList = taskLists.find(list => list.id === destinationTaskListId);
+      if (!destinationList) {
+        console.error("Destination task list not found");
+        showSnackbar('Error: Destination list not found', 'error');
+        return;
+      }
+      
+      // Create a copy of the task to be used for optimistic UI update
+      const optimisticTask = { ...taskToMove, id: `temp-${Date.now()}` };
+      
+      // Create deep copies of task lists to support optimistic updates
+      const updatedTaskLists = taskLists.map(list => ({
+        ...list,
+        tasks: [...list.tasks]
+      }));
+      
+      const sourceListIndex = updatedTaskLists.findIndex(list => list.id === sourceTaskListId);
+      const destListIndex = updatedTaskLists.findIndex(list => list.id === destinationTaskListId);
+      
+      // Show a subtle indicator without blocking UI
       showSnackbar('Moving task...', 'success');
       
-      try {
-        // Find the source task list
-        const sourceList = taskLists.find(list => list.id === sourceTaskListId);
-        if (!sourceList) {
-          console.error("Source task list not found", { 
-            sourceTaskListId, 
-            availableLists: taskLists.map(l => ({ id: l.id, title: l.title }))
-          });
-          showSnackbar('Error: Source list not found', 'error');
-          setUpdatingListId(null);
-          return;
-        }
+      // OPTIMISTIC UI UPDATE: Update the UI immediately
+      if (sourceListIndex !== -1 && destListIndex !== -1) {
+        // Create new arrays for tasks (don't modify the existing ones)
+        const newSourceTasks = updatedTaskLists[sourceListIndex].tasks.filter(t => t.id !== taskToMove.id);
         
-        // Filter to only get incomplete tasks that are shown in the UI (consistent with what's being dragged)
-        const incompleteTasks = sourceList.tasks.filter(task => task.status !== 'completed');
+        // Create a copy of destination tasks
+        const newDestTasks = [...updatedTaskLists[destListIndex].tasks];
         
-        if (source.index >= incompleteTasks.length) {
-          console.error("Source task index out of bounds", { 
-            sourceIndex: source.index,
-            availableTasks: incompleteTasks.length
-          });
-          showSnackbar('Error: Task not found', 'error');
-          setUpdatingListId(null);
-          return;
-        }
+        // Insert the task into destination at the correct position
+        const destIncompleteTasks = newDestTasks.filter(task => task.status !== 'completed');
+        const destCompletedTasks = newDestTasks.filter(task => task.status === 'completed');
         
-        // Identify the exact task being moved using the source index from the drag operation
-        const taskToMove = incompleteTasks[source.index];
-        if (!taskToMove) {
-          console.error("Task not found at index", { sourceIndex: source.index });
-          showSnackbar('Error: Task not found', 'error');
-          setUpdatingListId(null);
-          return;
-        }
+        destIncompleteTasks.splice(destination.index, 0, optimisticTask);
         
-        console.log('Task being moved:', {
-          taskId: taskToMove.id,
-          taskTitle: taskToMove.title,
-          fromList: sourceTaskListId,
-          toList: destinationTaskListId
+        // Create a new structure for optimistic updates with proper deep copying
+        const optimisticUpdatedTaskLists = updatedTaskLists.map((list, index) => {
+          if (index === sourceListIndex) {
+            return {
+              ...list,
+              tasks: newSourceTasks
+            };
+          } else if (index === destListIndex) {
+            return {
+              ...list,
+              tasks: [...destIncompleteTasks, ...destCompletedTasks]
+            };
+          }
+          return list;
         });
         
+        // Update state with optimistic changes to trigger UI refresh
+        setOptimisticTaskLists(optimisticUpdatedTaskLists);
+      }
+      
+      // ACTUAL API OPERATION: Perform in background
+      try {
         // First invalidate the cache to ensure we're working with fresh data
         dispatch(invalidateCache());
         
         // Call the moveTask function with the task ID
         const result = await moveTask(sourceTaskListId, destinationTaskListId, taskToMove.id);
         
-        if (result) {
-          // Success case - force refresh task lists to ensure state is consistent
+              if (result) {
+        // Success case - no need for refresh since our optimistic state already shows the change
+        // This avoids extra network requests and UI flicker
+        // Only maintain the optimistic state - the API operation already performed the change
+        showSnackbar('Task moved successfully', 'success');
+      } else {
+          // Move failed, refresh to ensure consistent state
           await refreshTaskLists({ forceRefresh: true });
-          showSnackbar('Task moved successfully', 'success');
-        } else {
-          // Move failed, still refresh to ensure consistent state
-          await refreshTaskLists({ forceRefresh: true });
+          // Clear optimistic state on failure
+          setOptimisticTaskLists(null);
           showSnackbar('Failed to move task', 'error');
         }
       } catch (err) {
         console.error("Error moving task between lists:", err);
-        // Always refresh on error to ensure state is consistent
+        // Refresh on error to ensure state is consistent
         await refreshTaskLists({ forceRefresh: true });
+        // Clear optimistic state on error
+        setOptimisticTaskLists(null);
         showSnackbar('Error moving task', 'error');
       } finally {
         setUpdatingListId(null);
@@ -749,148 +795,135 @@ const GoogleTasks: React.FC = () => {
     } 
     // Reordering within the same list
     else {
-      try {
-        // For reordering within same list, show loading indicator on that list
-        setUpdatingListId(destinationTaskListId);
-        
-        // Get the destination list (same as source list in this case)
-        const destList = taskLists.find(list => list.id === destinationTaskListId);
-        if (!destList) {
-          console.error("Destination task list not found", { destinationTaskListId });
-          setUpdatingListId(null);
-          return;
-        }
-        
-        // Filter to get only incomplete tasks as those are the ones being reordered in UI
-        const incompleteTasks = destList.tasks.filter(task => task.status !== 'completed');
-        
-        // Get the task being moved
-        const taskToMove = incompleteTasks[source.index];
-        if (!taskToMove) {
-          console.error("Task not found at index for reordering", { sourceIndex: source.index });
-          setUpdatingListId(null);
-          return;
-        }
-        
-        const taskId = taskToMove.id;
-        
-        // Log the task being moved
-        console.log("Task being reordered:", {
-          taskId,
-          taskTitle: taskToMove.title
+      // Similar optimistic update approach for reordering within the same list
+      // First find the task list
+      const taskList = taskLists.find(list => list.id === sourceTaskListId);
+      if (!taskList) {
+        console.error("Task list not found for reordering");
+        return;
+      }
+      
+      // Get incomplete tasks as those are the ones being reordered
+      const incompleteTasks = taskList.tasks.filter(task => task.status !== 'completed');
+      const completedTasks = taskList.tasks.filter(task => task.status === 'completed');
+      
+      // Get the task being moved
+      const taskToMove = incompleteTasks[source.index];
+      if (!taskToMove) {
+        console.error("Task not found for reordering");
+        return;
+      }
+      
+      // OPTIMISTIC UI UPDATE: Move the task immediately in the local data
+      // Create a copy of incomplete tasks
+      const updatedIncompleteTasks = [...incompleteTasks];
+      
+      // Remove the task from its original position
+      updatedIncompleteTasks.splice(source.index, 1);
+      
+      // Insert it at the destination position
+      updatedIncompleteTasks.splice(destination.index, 0, taskToMove);
+      
+      // Update the task list with the new order (UI only)
+      const listIndex = taskLists.findIndex(list => list.id === sourceTaskListId);
+      if (listIndex !== -1) {
+        // Create deep copies for optimistic UI update
+        const updatedTaskLists = taskLists.map((list, index) => {
+          if (index === listIndex) {
+            return {
+              ...list,
+              tasks: [...updatedIncompleteTasks, ...completedTasks]
+            };
+          }
+          return {...list, tasks: [...list.tasks]};
         });
         
-        // Determine the previous task ID based on the destination index
-        let previousTaskId: string | null = null;
-        
-        // Special handling for moving to the top position (index 0)
-        const isMovingToTop = destination.index === 0;
-        
-        if (isMovingToTop) {
-          // When moving to the top, we use the special moveToTop parameter
-          // previousTaskId will remain null
-          console.log(`Moving task ${taskId} to the top position using moveToTop parameter`);
-        } else {
-          // For other positions, calculate the previous task ID
-          // Create a new array that represents the final order after the move
-          const tasksCopy = [...incompleteTasks];
-          
-          // Find the task in the current order
-          const taskIndex = tasksCopy.findIndex(t => t.id === taskId);
-          
-          if (taskIndex !== -1) {
-            // Remove the task from its current position
-            const [movedTask] = tasksCopy.splice(taskIndex, 1);
-            
-            // Insert it at the destination position
-            tasksCopy.splice(destination.index, 0, movedTask);
-            
-            // The previous task is the one before the new position
-            const prevTask = tasksCopy[destination.index - 1];
-            if (prevTask) {
-              previousTaskId = prevTask.id;
-            }
-          } else {
-            // Fallback to original calculation if task not found
-            const taskIdsInOrder = incompleteTasks.filter(t => t.id !== taskId).map(t => t.id);
-            const previousIndex = destination.index - 1;
-            if (previousIndex >= 0 && previousIndex < taskIdsInOrder.length) {
-              previousTaskId = taskIdsInOrder[previousIndex];
-            }
-          }
-          
-          // Debug log to help diagnose
-          console.log(`Moving task ${taskId} to position ${destination.index}, previous task: ${previousTaskId}`);
+        setOptimisticTaskLists(updatedTaskLists);
+      }
+      
+      // Show subtle loading indicator
+      setUpdatingListId(destinationTaskListId);
+      
+      // ACTUAL API OPERATION: Determine the previous task ID for the API call
+      let previousTaskId: string | null = null;
+      const isMovingToTop = destination.index === 0;
+      
+      if (!isMovingToTop) {
+        // Find the task that will be before the moved task
+        if (destination.index > 0) {
+          previousTaskId = updatedIncompleteTasks[destination.index - 1].id;
         }
+      }
+      
+      // Make the API call to reorder
+      try {
+        const result = await reorderTask(
+          destinationTaskListId, 
+          taskToMove.id, 
+          previousTaskId, 
+          destination.index,
+          true // Apply reordering on the server
+        );
         
-        // Make the API call to reorder
-        try {
-          // For top position moves, use the special moveToTop parameter
-          if (isMovingToTop) {
-            console.log('Using moveToTop parameter for task moved to first position');
-          }
-          
-          const result = await reorderTask(
-            destinationTaskListId, 
-            taskId, 
-            previousTaskId, 
-            destination.index,
-            true // Apply reordering on the server
+              if (result) {
+        // No need to clear optimistic state - it already shows the correct order
+        // This keeps the UI consistent without causing unnecessary refresh
+        showSnackbar('Task reordered successfully', 'success');
+      } else {
+          // Try fallback if needed
+          console.log('Initial reordering failed, trying fallback with moveToTop parameter');
+          const fallbackResult = await reorderTask(
+            destinationTaskListId,
+            taskToMove.id,
+            null, // No previous task needed with moveToTop
+            0,    // First position
+            true  // Apply reordering
           );
           
-          if (result) {
-            showSnackbar('Task reordered successfully', 'success');
+          if (fallbackResult) {
+            // Clear optimistic state after successful fallback
+            setOptimisticTaskLists(null);
+            showSnackbar('Task reordered', 'success');
           } else {
-            // First fallback: Try with moveToTop if we weren't already using it
-            console.log('Initial reordering failed, trying fallback with moveToTop parameter');
-            const fallbackResult = await reorderTask(
-              destinationTaskListId,
-              taskId,
-              null, // No previous task needed with moveToTop
-              0,    // First position
-              true  // Apply reordering
-            );
-            
-            if (fallbackResult) {
-              showSnackbar('Task reordered (repositioned to top)', 'success');
-            } else {
-              showSnackbar('Failed to reorder task', 'error');
-            }
-          }
-        } catch (err) {
-          console.error('Error reordering task:', err);
-          
-          // Try fallback when error occurs - always use moveToTop as ultimate fallback
-          try {
-            console.log('Attempting fallback after error with moveToTop parameter');
-            const fallbackResult = await reorderTask(
-              destinationTaskListId,
-              taskId,
-              null, // No previous task needed with moveToTop
-              0,    // First position
-              true  // Apply reordering
-            );
-            
-            if (fallbackResult) {
-              showSnackbar('Task reordered (repositioned to top)', 'success');
-            } else {
-              showSnackbar('Error reordering task', 'error');
-            }
-          } catch (fallbackErr) {
-            console.error('Fallback also failed:', fallbackErr);
-            showSnackbar('Error reordering task', 'error');
+            // Clear optimistic state on failure
+            setOptimisticTaskLists(null);
+            showSnackbar('Failed to reorder task', 'error');
+            // Refresh to show correct order
+            await refreshTaskLists({ forceRefresh: true });
           }
         }
-        
-        // Clear the updating list indicator once reordering is complete
-        setUpdatingListId(null);
       } catch (err) {
         console.error('Error reordering task:', err);
+        // Clear optimistic state on error
+        setOptimisticTaskLists(null);
         showSnackbar('Error reordering task', 'error');
+        // Refresh to show correct order
+        await refreshTaskLists({ forceRefresh: true });
+      } finally {
         setUpdatingListId(null);
-        setIsRefreshing(false);
       }
     }
+  };
+
+  // Helper function to refresh only the affected lists
+  const refreshAffectedLists = async (sourceListId: string, destListId: string) => {
+    // If the source and destination are the same, just refresh once
+    if (sourceListId === destListId) {
+      // Clear optimistic state as we're about to get real data
+      setOptimisticTaskLists(null);
+      // Implement targeted refresh logic here if your API supports it
+      // Otherwise fall back to refreshing all lists but without UI indicator
+      await refreshTaskLists({ forceRefresh: true });
+      return;
+    }
+
+    // Clear optimistic state as we're about to get real data
+    // Instead of refreshing, we can keep the optimistic UI state 
+    // since it should already reflect the changes we made
+    // This avoids the extra network requests and UI flicker
+    
+    // Only refresh if explicitly needed (e.g., for data consistency concerns)
+    // await refreshTaskLists({ forceRefresh: true });
   };
 
   // Format date for display
@@ -2400,6 +2433,14 @@ const GoogleTasks: React.FC = () => {
     setPendingSubtaskCount(null);
   };
 
+  // Update the return statement to use optimisticTaskLists when available
+  const displayTaskLists = optimisticTaskLists || taskLists;
+
+  // Helper function to extract starred tasks from task lists
+  const extractStarredTasks = (lists: EnhancedGoogleTaskList[]): EnhancedGoogleTask[] => {
+    return lists.flatMap(list => list.tasks.filter(task => task.starred || task.is_starred));
+  };
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -2464,7 +2505,7 @@ const GoogleTasks: React.FC = () => {
       )}
 
       {/* Starred Tasks Section */}
-      {!loading && starredTasks.length > 0 && (
+      {!loading && (optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).length > 0 && (
         <Box sx={{ mb: 4 }}>
           <Card sx={{ 
             borderRadius: 2,
@@ -2486,8 +2527,8 @@ const GoogleTasks: React.FC = () => {
             />
             <CardContent sx={{ px: 2, py: 0.5 }}>
               <List sx={{ py: 0 }}>
-                {starredTasks.map((task) => {
-                  const taskList = taskLists.find(list => 
+                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).map((task) => {
+                  const taskList = (optimisticTaskLists || taskLists).find(list => 
                     list.tasks.some(t => t.id === task.id)
                   );
                   
@@ -2654,8 +2695,8 @@ const GoogleTasks: React.FC = () => {
               </Alert>
             </Grid>
           )}
-          {!loading && taskLists.length > 0 ? (
-            taskLists.filter(list => list.isVisible !== false).map((taskList) => (
+          {!loading && displayTaskLists.length > 0 ? (
+            displayTaskLists.filter(list => list.isVisible !== false).map((taskList) => (
               <Grid item xs={12} sm={6} md={4} key={taskList.id}>
                 <Card sx={{ 
                   borderRadius: 2,
@@ -3189,7 +3230,7 @@ const GoogleTasks: React.FC = () => {
       </DragDropContext>
 
       {/* Global Completed Tasks Section */}
-      {!loading && taskLists.length > 0 && (
+      {!loading && displayTaskLists.length > 0 && (
         <Box sx={{ mt: 4 }}>
           <Card sx={{ 
             borderRadius: 2,
