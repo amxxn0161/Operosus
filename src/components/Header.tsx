@@ -133,11 +133,6 @@ const Header: React.FC = () => {
     setJournalSubmenuOpen(!journalSubmenuOpen);
   };
   
-  const handleNavigation = (path: string) => {
-    navigate(path);
-    setDrawerOpen(false);
-  };
-  
   // Check if we're on the login page
   const isLoginPage = location.pathname === '/login';
 

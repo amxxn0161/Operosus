@@ -298,7 +298,7 @@ const EntryDetail: React.FC = () => {
     );
   }
 
-  if (!entry && !loading && !localLoading) {
+  if (!entry && !loading) {
     return (
       <Container sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', flexDirection: 'column' }}>
@@ -400,130 +400,67 @@ const EntryDetail: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Admin entry alert banner */}
-      {isAdminEntry && entry?.user && (
-        <Alert 
-          severity="info" 
-          sx={{ 
-            mb: 3, 
-            fontFamily: 'Poppins',
-            alignItems: 'center',
-            '& .MuiAlert-message': {
-              width: '100%'
-            }
-          }}
-        >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
-              You are viewing {entry.user.name}'s journal entry as an admin
-            </Typography>
-          </Box>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
         </Alert>
       )}
-
-      <Paper sx={{ p: 4 }}>
-        {/* Entry Date Section */}
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          mb: 3,
-          pb: 2,
-          borderBottom: '1px solid #e0e0e0'
-        }}>
-          <Box>
-            <Typography variant="h6" sx={{ fontFamily: 'Poppins', fontWeight: 'bold', mb: 1 }}>
-              {entry && formatDate(entry.date)}
-            </Typography>
-
-            {isAdminEntry && entry?.user && (
-              <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-                Submitted by: {entry.user.name}
-              </Typography>
-            )}
-
-            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
-              Created: {entry && new Date(entry.created_at).toLocaleString()}
-            </Typography>
-          </Box>
-
-          {/* Only show edit date option for non-admin entries */}
-          {!isAdminEntry && (
-            <Box>
-              {isEditingDate ? (
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker 
-                      value={selectedDate}
-                      onChange={(newDate) => setSelectedDate(newDate)}
-                      slotProps={{
-                        textField: {
-                          size: 'small',
-                          sx: { mr: 1 }
-                        }
-                      }}
-                    />
-                  </LocalizationProvider>
-                  <IconButton onClick={handleSaveDate} disabled={isSavingDate} color="primary" sx={{ mr: 0.5 }}>
-                    <SaveIcon />
-                  </IconButton>
-                  <IconButton onClick={handleCancelEditDate} disabled={isSavingDate}>
-                    <CloseIcon />
-                  </IconButton>
-                </Box>
-              ) : (
-                <Tooltip title="Edit date">
-                  <IconButton onClick={handleEditDate} color="primary">
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
-              )}
-            </Box>
-          )}
-        </Box>
-
-        {/* Action/Score Section */}
-        <Box sx={{ 
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          mb: 3
-        }}>
-          <Chip 
-            label={`Productivity Score: ${entry?.productivityScore}/10`}
-            sx={{ 
-              fontSize: '1rem',
-              height: '32px',
-              fontWeight: 'bold',
-              bgcolor: '#1056F5',
-              color: 'white',
-              mb: { xs: 1, md: 0 },
-              mr: { xs: 0, md: 1 }
-            }}
-          />
-
-          {!isAdminEntry && (
-            <Button 
-              startIcon={<DeleteIcon />}
-              variant="outlined"
-              color="error"
-              onClick={handleDeleteClick}
-              sx={{ fontFamily: 'Poppins', textTransform: 'none' }}
-            >
-              Delete Entry
-            </Button>
-          )}
-        </Box>
-
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-        
+      
+      <Paper sx={{ p: 4, borderRadius: 2 }}>
         {/* Header with date and scores */}
         <Box sx={{ mb: 4 }}>
+          {isEditingDate ? (
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  label="Select Date"
+                  value={selectedDate}
+                  onChange={(newDate: Date | null) => setSelectedDate(newDate)}
+                  disableFuture
+                  slotProps={{ 
+                    textField: { 
+                      fullWidth: true,
+                      sx: { fontFamily: 'Poppins' }
+                    } 
+                  }}
+                />
+              </LocalizationProvider>
+              <IconButton 
+                color="primary" 
+                onClick={handleSaveDate}
+                disabled={isSavingDate}
+              >
+                <SaveIcon />
+              </IconButton>
+              <IconButton 
+                color="default" 
+                onClick={handleCancelEditDate}
+                disabled={isSavingDate}
+              >
+                <CloseIcon />
+              </IconButton>
+              {isSavingDate && <CircularProgress size={24} />}
+            </Box>
+          ) : (
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+              <Typography 
+                variant="h5" 
+                sx={{ fontWeight: 'medium', fontFamily: 'Poppins', color: '#333' }}
+              >
+                {formatDate(entry.date)}
+              </Typography>
+              <Tooltip title="Edit Date">
+                <IconButton 
+                  color="primary" 
+                  onClick={handleEditDate}
+                  sx={{ ml: 1 }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+          
           <Grid container spacing={3}>
             <Grid item xs={12} sm={4}>
               <Box sx={{ 
@@ -637,19 +574,19 @@ const EntryDetail: React.FC = () => {
             Support Needed
           </Typography>
           
-          <Box
+          <Paper 
+            variant="outlined" 
             sx={{ 
               p: 2, 
               borderRadius: 2, 
               borderColor: '#e0e0e0',
-              bgcolor: '#fafafa',
-              border: '1px solid #e0e0e0'
+              bgcolor: '#fafafa'
             }}
           >
             <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
               {entry.supportNeeded || 'No support needs were recorded for this entry.'}
             </Typography>
-          </Box>
+          </Paper>
         </Box>
         
         {/* Improvement Plans Section */}
@@ -661,19 +598,19 @@ const EntryDetail: React.FC = () => {
             Improvement Plans
           </Typography>
           
-          <Box
+          <Paper 
+            variant="outlined" 
             sx={{ 
               p: 2, 
               borderRadius: 2, 
               borderColor: '#e0e0e0',
-              bgcolor: '#fafafa',
-              border: '1px solid #e0e0e0'
+              bgcolor: '#fafafa'
             }}
           >
             <Typography sx={{ fontFamily: 'Poppins', color: '#555', whiteSpace: 'pre-line' }}>
               {entry.improvementPlans || 'No improvement plans were recorded for this entry.'}
             </Typography>
-          </Box>
+          </Paper>
         </Box>
       </Paper>
 
