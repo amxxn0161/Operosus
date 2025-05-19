@@ -554,7 +554,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       // If task is already completed, just toggle it back to active without showing the dialog
       if (task.status === 'completed') {
         // Toggle the status back to active
-        const updatedTask = await updateTask(task.task_list_id, task.id, { status: 'needsAction' });
+        const updatedTask = await toggleTaskComplete(task.task_list_id, task.id);
         
         // Update the local state to reflect the change
         if (updatedTask) {
@@ -574,17 +574,36 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
       // Cast to ExtendedGoogleTask to access estimated_minutes
       const extendedTask = task as ExtendedGoogleTask;
       
-      // If the task is being marked as completed, show duration dialog
-      setTaskForDuration({
-        task: {
-          id: task.id,
-          title: task.title,
-          estimated_minutes: extendedTask.estimated_minutes
-        },
-        taskListId: task.task_list_id
-      });
-      
-      setDurationDialogOpen(true);
+      // If task has estimated minutes, show the duration dialog
+      if (extendedTask.estimated_minutes) {
+        // If the task is being marked as completed, show duration dialog
+        setTaskForDuration({
+          task: {
+            id: task.id,
+            title: task.title,
+            estimated_minutes: extendedTask.estimated_minutes
+          },
+          taskListId: task.task_list_id
+        });
+        
+        setDurationDialogOpen(true);
+      } else {
+        // If no estimated minutes, just toggle completion directly
+        const updatedTask = await toggleTaskComplete(task.task_list_id, task.id);
+        
+        // Update the local state to reflect the change
+        if (updatedTask) {
+          setLinkedTasks(prevTasks => 
+            prevTasks.map(t => 
+              t.id === task.id ? { ...t, status: 'completed' } : t
+            )
+          );
+          
+          setSnackbarMessage('Task marked as completed');
+          setSnackbarSeverity('success');
+          setSnackbarOpen(true);
+        }
+      }
     } catch (error) {
       console.error('Error toggling task completion:', error);
       setSnackbarMessage('Failed to update task status');
@@ -1011,15 +1030,14 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
     if (!taskForDuration) return;
     
     try {
-      // First change status to completed
-      const updatedTask = await updateTask(
+      // First change status to completed using toggleTaskComplete to ensure proper state updating
+      const updatedTask = await toggleTaskComplete(
         taskForDuration.taskListId, 
-        taskForDuration.task.id, 
-        { status: 'completed' }
+        taskForDuration.task.id
       );
       
       // Then record duration if successful
-      if (updatedTask) {
+      if (updatedTask && updatedTask.status === 'completed') {
         try {
           // Update the local state to reflect the task completion
           setLinkedTasks(prevTasks => 
