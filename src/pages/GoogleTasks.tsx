@@ -208,7 +208,8 @@ const GoogleTasks: React.FC = () => {
 
   // Add state for tracking expanded/collapsed completed sections
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
-    global: false
+    global: false,
+    starred: false
   });
 
   // Task details modal state
@@ -2563,157 +2564,340 @@ const GoogleTasks: React.FC = () => {
             />
             <CardContent sx={{ px: 2, py: 0.5 }}>
               <List sx={{ py: 0 }}>
-                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).map((task) => {
-                  const taskList = (optimisticTaskLists || taskLists).find(list => 
-                    list.tasks.some(t => t.id === task.id)
-                  );
-                  
-                  return (
-                    <ListItem
-                      key={task.id}
-                      onClick={(e) => {
-                        const taskList = taskLists.find(list => 
-                          list.tasks.some(t => t.id === task.id)
-                        );
-                        if (taskList) {
-                          handleTaskItemClick(taskList.id, task, taskList.title, e);
-                        }
-                      }}
-                      sx={{
-                        py: 0.5, // Reduced padding
-                        borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                        '&:last-child': { borderBottom: 'none' },
-                        cursor: 'pointer'
+                {/* Active (non-completed) starred tasks */}
+                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks)
+                  .filter(task => task.status !== 'completed')
+                  .map((task) => {
+                    const taskList = (optimisticTaskLists || taskLists).find(list => 
+                      list.tasks.some(t => t.id === task.id)
+                    );
+                    
+                    return (
+                      <ListItem
+                        key={task.id}
+                        onClick={(e) => {
+                          const taskList = taskLists.find(list => 
+                            list.tasks.some(t => t.id === task.id)
+                          );
+                          if (taskList) {
+                            handleTaskItemClick(taskList.id, task, taskList.title, e);
+                          }
+                        }}
+                        sx={{
+                          py: 0.5, // Reduced padding
+                          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                          '&:last-child': { borderBottom: 'none' },
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
+                          <Checkbox
+                            checked={task.status === 'completed'}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              taskList && handleToggleTaskComplete(taskList.id, task.id);
+                            }}
+                            edge="start"
+                            sx={{ 
+                              color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                              p: 0.5 // Reduced padding
+                            }}
+                          />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Typography
+                              sx={{
+                                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                                color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
+                                fontFamily: 'Poppins',
+                                fontSize: '0.875rem' // Reduced font size
+                              }}
+                            >
+                              {task.title}
+                            </Typography>
+                          }
+                          secondary={
+                            <>
+                              {/* Show Gmail attachment if present */}
+                              {task.has_gmail_attachment && task.gmail_attachment && (
+                                <Typography 
+                                  variant="caption" 
+                                  component="div"
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: 'primary.main',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    mt: 0.5,
+                                    cursor: 'pointer',
+                                    '&:hover': { textDecoration: 'underline' }
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent task item click
+                                    if (task.gmail_attachment?.link) {
+                                      window.open(task.gmail_attachment.link, '_blank');
+                                    }
+                                  }}
+                                >
+                                  <EmailIcon 
+                                    fontSize="inherit" 
+                                    sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                  />
+                                  {task.gmail_attachment.title || 'View Email'}
+                                </Typography>
+                              )}
+                              
+                              {/* Show due date and time information from notes */}
+                              {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
+                                <Typography 
+                                  variant="caption" 
+                                  component="div"
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontSize: '0.75rem', // Slightly larger for better readability
+                                    fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                    mt: 0.5
+                                  }}
+                                >
+                                  {task.has_explicit_time && (
+                                    <AccessTimeIcon 
+                                      fontSize="inherit" 
+                                      sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
+                                    />
+                                  )}
+                                  {formatDueInfoWithNotes(task)}
+                                </Typography>
+                              )}
+                              
+                              {/* Show other notes content if any (excluding the time information) */}
+                              {task.notes && !task.notes.includes("Due Time") && (
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: 'text.secondary',
+                                    display: 'block',
+                                    mt: 0.25, // Reduced margin
+                                    fontSize: '0.7rem',
+                                    // Limit to 2 lines with ellipsis
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical'
+                                  }}
+                                >
+                                  {task.notes}
+                                </Typography>
+                              )}
+                            </>
+                          }
+                        />
+                        <IconButton
+                          edge="end"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            taskList && handleToggleTaskStar(taskList.id, task.id);
+                          }}
+                          sx={{ color: '#FFD700', mr: 1 }}
+                        >
+                          <StarIcon />
+                        </IconButton>
+                        <IconButton
+                          edge="end"
+                          onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
+                          size="small"
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </ListItem>
+                    );
+                  })}
+                
+                {/* Completed starred tasks section with collapsible header */}
+                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).some(task => task.status === 'completed') && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <ListItem 
+                      button 
+                      onClick={() => toggleCompletedSection('starred')}
+                      sx={{ 
+                        py: 0.25, // Reduced padding
+                        px: 1,
+                        borderRadius: 1,
+                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
                       }}
                     >
-                      <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
-                        <Checkbox
-                          checked={task.status === 'completed'}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            taskList && handleToggleTaskComplete(taskList.id, task.id);
-                          }}
-                          edge="start"
-                          sx={{ 
-                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
-                            p: 0.5 // Reduced padding
-                          }}
-                        />
+                      <ListItemIcon sx={{ minWidth: '24px' }}>
+                        <IconButton 
+                          size="small" 
+                          sx={{ p: 0 }}
+                        >
+                          {expandedCompletedSections['starred'] ? (
+                            <LoopIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                          ) : (
+                            <LoopIcon fontSize="small" />
+                          )}
+                        </IconButton>
                       </ListItemIcon>
-                      <ListItemText
+                      <ListItemText 
                         primary={
-                          <Typography
-                            sx={{
-                              textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                              color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
-                              fontFamily: 'Poppins',
-                              fontSize: '0.875rem' // Reduced font size
+                          <Typography 
+                            variant="subtitle2" 
+                            sx={{ 
+                              fontFamily: 'Poppins', 
+                              color: 'text.secondary',
+                              fontWeight: 'medium',
+                              fontSize: '0.75rem', // Smaller font size
                             }}
                           >
-                            {task.title}
+                            Completed ({(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).filter(task => task.status === 'completed').length})
                           </Typography>
                         }
-                        secondary={
-                          <>
-                            {/* Show Gmail attachment if present */}
-                            {task.has_gmail_attachment && task.gmail_attachment && (
-                              <Typography 
-                                variant="caption" 
-                                component="div"
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: 'primary.main',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 500,
-                                  mt: 0.5,
-                                  cursor: 'pointer',
-                                  '&:hover': { textDecoration: 'underline' }
-                                }}
+                      />
+                    </ListItem>
+                    
+                    {expandedCompletedSections['starred'] && (
+                      <Box sx={{ 
+                        maxHeight: '50vh', 
+                        overflowY: 'auto',
+                        overflowX: 'hidden', // Prevent horizontal scrolling
+                        ...scrollbarStyles
+                      }}>
+                        {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks)
+                          .filter(task => task.status === 'completed')
+                          .map((task) => {
+                            const taskList = (optimisticTaskLists || taskLists).find(list => 
+                              list.tasks.some(t => t.id === task.id)
+                            );
+                            
+                            return (
+                              <ListItem
+                                key={task.id}
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent task item click
-                                  if (task.gmail_attachment?.link) {
-                                    window.open(task.gmail_attachment.link, '_blank');
+                                  const taskList = taskLists.find(list => 
+                                    list.tasks.some(t => t.id === task.id)
+                                  );
+                                  if (taskList) {
+                                    handleTaskItemClick(taskList.id, task, taskList.title, e);
                                   }
                                 }}
-                              >
-                                <EmailIcon 
-                                  fontSize="inherit" 
-                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
-                                />
-                                {task.gmail_attachment.title || 'View Email'}
-                              </Typography>
-                            )}
-                            
-                            {/* Show due date and time information from notes */}
-                            {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
-                              <Typography 
-                                variant="caption" 
-                                component="div"
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  fontSize: '0.75rem', // Slightly larger for better readability
-                                  fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
-                                  mt: 0.5
+                                sx={{
+                                  py: 1,
+                                  borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                                  '&:last-child': { borderBottom: 'none' },
+                                  cursor: 'pointer'
                                 }}
                               >
-                                {task.has_explicit_time && (
-                                  <AccessTimeIcon 
-                                    fontSize="inherit" 
-                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
+                                <ListItemIcon sx={{ minWidth: '40px' }}>
+                                  <Checkbox
+                                    checked={true}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      taskList && handleToggleTaskComplete(taskList.id, task.id);
+                                    }}
+                                    edge="start"
+                                    icon={<CheckBoxOutlineBlankIcon />}
+                                    checkedIcon={<CheckBoxIcon />}
+                                    sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
                                   />
-                                )}
-                                {formatDueInfoWithNotes(task)}
-                              </Typography>
-                            )}
-                            
-                            {/* Show other notes content if any (excluding the time information) */}
-                            {task.notes && !task.notes.includes("Due Time") && (
-                              <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: 'text.secondary',
-                                  display: 'block',
-                                  mt: 0.25, // Reduced margin
-                                  fontSize: '0.7rem',
-                                  // Limit to 2 lines with ellipsis
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical'
-                                }}
-                              >
-                                {task.notes}
-                              </Typography>
-                            )}
-                          </>
-                        }
-                      />
-                      <IconButton
-                        edge="end"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          taskList && handleToggleTaskStar(taskList.id, task.id);
-                        }}
-                        sx={{ color: '#FFD700', mr: 1 }}
-                      >
-                        <StarIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
-                        size="small"
-                      >
-                        <MoreVertIcon fontSize="small" />
-                      </IconButton>
-                    </ListItem>
-                  );
-                })}
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    <Typography
+                                      sx={{
+                                        textDecoration: 'line-through',
+                                        color: 'text.secondary',
+                                        fontFamily: 'Poppins',
+                                        ...(isSubtask(task) ? { 
+                                          paddingLeft: '24px', // Increased padding
+                                          marginLeft: '16px', // Added margin
+                                          borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
+                                          backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
+                                          borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                          fontStyle: 'italic',
+                                          py: 0.5 // Add some vertical padding
+                                        } : {})
+                                      }}
+                                    >
+                                      {task.title.startsWith('📎 ') ? task.title.substring(2) : task.title}
+                                    </Typography>
+                                  }
+                                  secondary={
+                                    <>
+                                      {/* Show Gmail attachment if present */}
+                                      {task.has_gmail_attachment && task.gmail_attachment && (
+                                        <Typography 
+                                          variant="caption" 
+                                          component="div"
+                                          sx={{ 
+                                            fontFamily: 'Poppins',
+                                            color: 'primary.main',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 500,
+                                            mt: 0.5,
+                                            cursor: 'pointer',
+                                            '&:hover': { textDecoration: 'underline' }
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation(); // Prevent task item click
+                                            if (task.gmail_attachment?.link) {
+                                              window.open(task.gmail_attachment.link, '_blank');
+                                            }
+                                          }}
+                                        >
+                                          <EmailIcon 
+                                            fontSize="inherit" 
+                                            sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                          />
+                                          {task.gmail_attachment.title || 'View Email'}
+                                        </Typography>
+                                      )}
+                                      
+                                      {task.completed && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                          Completed: {formatDate(task.completed)}
+                                        </Typography>
+                                      )}
+                                    </>
+                                  }
+                                />
+                                <IconButton
+                                  edge="end"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    taskList && handleToggleTaskStar(taskList.id, task.id);
+                                  }}
+                                  sx={{ 
+                                    color: task.starred ? '#FFD700' : 'action.disabled', 
+                                    mr: 0.5, 
+                                    p: 0.5
+                                  }}
+                                >
+                                  {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                                </IconButton>
+                                <IconButton
+                                  edge="end"
+                                  onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
+                                  size="small"
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <MoreVertIcon fontSize="small" />
+                                </IconButton>
+                              </ListItem>
+                            );
+                          })}
+                      </Box>
+                    )}
+                  </>
+                )}
               </List>
             </CardContent>
           </Card>
