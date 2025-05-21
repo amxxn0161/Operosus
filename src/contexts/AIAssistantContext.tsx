@@ -15,7 +15,7 @@ interface AIAssistantContextType {
   threadId?: string;
   openAssistant: () => void;
   closeAssistant: () => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string) => Promise<AssistantResponse | null>;
   clearMessages: () => void;
   loadThreadMessages: (messages: Message[]) => void;
   setThreadId: (threadId: string | undefined) => void;
@@ -139,10 +139,10 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
   const openAssistant = () => setIsOpen(true);
   const closeAssistant = () => setIsOpen(false);
   
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string): Promise<AssistantResponse | null> => {
     if (!content || content.trim() === '') {
       console.warn('Attempted to send empty message - ignoring');
-      return;
+      return null;
     }
 
     try {
@@ -175,7 +175,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           content: 'Failed to send message. Please try again.'
         }]);
         setIsLoading(false);
-        return;
+        return null;
       }
       setThreadId(response.thread_id);
 
@@ -186,24 +186,29 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           content: response.response?.text || ''
         }]);
         setIsLoading(false);
-        return;
+        return response;
       }
 
       // Otherwise, poll for the response if run_id is present
       if (response.run_id) {
         const runId = response.run_id;
         let polling = true;
+        let finalResponse = null;
+        
         while (polling && !requestCancelledRef.current) {
           await new Promise(resolve => setTimeout(resolve, 1500));
           const pollResponse = await pollAssistantRun(response.thread_id, runId);
+          finalResponse = pollResponse;
+          
           if (!pollResponse) {
             setMessages(prev => [...prev, {
               role: 'assistant',
               content: 'An error occurred while waiting for the assistant response.'
             }]);
             setIsLoading(false);
-            return;
+            return null;
           }
+          
           if (pollResponse.status === 'processing') {
             // Keep polling
             continue;
@@ -232,6 +237,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
             polling = false;
           }
         }
+        
+        return finalResponse;
       } else {
         // No run_id and not complete: fallback error
         setMessages(prev => [...prev, {
@@ -239,6 +246,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
           content: 'Failed to send message. Please try again.'
         }]);
         setIsLoading(false);
+        return null;
       }
     } catch (error) {
       setMessages(prev => [...prev, {
@@ -246,6 +254,7 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         content: 'An error occurred. Please try again.'
       }]);
       setIsLoading(false);
+      return null;
     }
   };
 
