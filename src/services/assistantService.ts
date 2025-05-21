@@ -44,98 +44,71 @@ interface UpdateThreadTitleResponse {
 }
 
 /**
- * Send a message to the assistant API
+ * Send a message to the assistant API (new logic)
  * @param message The user's message to send
  * @param threadId Optional thread ID to continue a conversation
  * @param abortSignal Optional AbortSignal to cancel the request
- * @returns The response containing the assistant's reply and thread ID
+ * @returns The response containing the assistant's reply, thread ID, and run ID
  */
 export const sendAssistantMessage = async (
   message: string,
   threadId?: string,
   abortSignal?: AbortSignal
-): Promise<{ 
-  reply: string; 
-  thread_id: string; 
-  status?: string; 
+): Promise<{
+  thread_id: string;
+  run_id?: string | null;
+  status?: string;
   error_message?: string;
-  should_refresh?: boolean;
+  response?: {
+    text?: string;
+    [key: string]: any;
+  };
 } | null> => {
   try {
-    console.log(`Sending message to assistant${threadId ? ` (thread: ${threadId})` : ' (new thread)'}`);
-    
-    // Add a cache-busting parameter to prevent browser caching
     const cacheBuster = new Date().getTime();
-    
-    // Create the request body with all the data we need to ensure a fresh request
     const requestBody = {
       message,
       thread_id: threadId,
-      timestamp: new Date().toISOString(), // Add timestamp to make each request unique
-      cache_buster: cacheBuster // Add cache buster to force a fresh request
+      timestamp: new Date().toISOString(),
+      cache_buster: cacheBuster
     };
-    
-    // Use apiRequest helper for proper authentication
-    const response = await apiRequest<AssistantChatResponse>(`/api/assistant/chat?_=${cacheBuster}`, {
+    // POST to /api/assistant/chat
+    const response = await apiRequest<any>(`/api/assistant/chat?_=${cacheBuster}`, {
       method: 'POST',
       body: requestBody,
-      timeoutMs: 30000, // Use a longer timeout for assistant requests
-      signal: abortSignal // Pass the abort signal to allow cancellation
+      timeoutMs: 30000,
+      signal: abortSignal
     });
-    
-    // CRITICAL: Deep debugging - log the exact response received
-    console.log('RAW Assistant API response object:', JSON.stringify(response, null, 2));
-    console.log('Response properties:', Object.keys(response));
-    console.log('Response reply type:', typeof response.reply);
-    console.log('Response thread_id type:', typeof response.thread_id);
-    
-    // Log the full response for debugging
-    console.log('Assistant API response:', {
-      status: response.status || 'success',
-      thread_id: response.thread_id,
-      has_reply: !!response.reply,
-      reply_length: response.reply ? response.reply.length : 0,
-      should_refresh: !!response.should_refresh
-    });
-    
-    // If the response doesn't have a reply, but has a thread_id and status is success or not provided,
-    // let's force a refresh to get the messages directly
-    if ((!response.reply || response.reply.trim() === '') && response.thread_id && 
-        (!response.status || response.status === 'success' || response.status === 'completed' as any)) {
-      console.log(`Response missing reply content but status is ${response.status || 'success'}, forcing refresh flag`);
-      return {
-        reply: "I'm processing your request. Please wait a moment...",
-        thread_id: response.thread_id,
-        status: 'partial_success', // Force partial_success to trigger refresh
-        error_message: response.error_message,
-        should_refresh: true // Force refresh
-      };
-    }
-    
-    // Always force a refresh when there's a thread_id, regardless of status
+    // Expect response to contain thread_id and run_id
     return {
-      reply: response.reply || "I'm processing your request. Please wait a moment...",
       thread_id: response.thread_id,
-      status: response.status || 'success', 
+      run_id: response.run_id,
+      status: response.status,
       error_message: response.error_message,
-      should_refresh: true // ALWAYS force refresh to be safe
+      response: response.response
     };
   } catch (error) {
     console.error('Error calling assistant API:', error);
-    
-    // If we have error details, log them
-    if (error && typeof error === 'object') {
-      if ('response' in error) {
-        const errorResponse = (error as any).response;
-        console.error('API error response:', {
-          status: errorResponse?.status,
-          data: errorResponse?.data
-        });
-      } else if ('message' in error) {
-        console.error('Error message:', (error as Error).message);
-      }
-    }
-    
+    return null;
+  }
+};
+
+/**
+ * Poll for the assistant's response using the new minimal endpoint
+ * @param threadId The thread ID
+ * @param runId The run ID
+ * @returns The response object from the poll endpoint
+ */
+export const pollAssistantRun = async (
+  threadId: string,
+  runId: string
+): Promise<any> => {
+  try {
+    // GET /api/assistant/run/{threadId}/{runId}
+    const response = await apiRequest<any>(`/api/assistant/run/${threadId}/${runId}`);
+    return response;
+  } catch (error) {
+    console.error('Error polling assistant run:', error);
     return null;
   }
 };

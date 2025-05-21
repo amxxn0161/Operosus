@@ -458,7 +458,9 @@ const AIAssistant: React.FC = () => {
     if (isOpen && buttonRef.current) {
       setAnchorEl(buttonRef.current);
       
-      // Auto-refresh current thread data if we have a thread ID
+      // No need to auto-refresh thread data with the new polling model
+      // Only fetch thread data when first opening a thread, not after sending messages
+      /*
       if (threadId) {
         setTimeout(async () => {
           try {
@@ -471,30 +473,32 @@ const AIAssistant: React.FC = () => {
           }
         }, 500);
       }
+      */
     }
   }, [isOpen, threadId]);
   
   // Auto-refresh data when loading is active for more than a few seconds
   useEffect(() => {
-    // Only activate when we're showing a loading spinner
+    // This auto-refresh logic is no longer needed with the new polling model
+    // The sendMessage function in AIAssistantContext now handles polling
+    // We'll leave this commented out for reference but disable it
+    /*
     if (isLoading && threadId) {
-      // Set up a refresh interval when loading is active
       const refreshInterval = setInterval(async () => {
         try {
           console.log('Auto-refreshing conversation data while loading...');
           const messages = await getThreadMessages(threadId);
           if (messages && messages.length > 0) {
-            // If we get messages, load them and stop the loading state
             loadThreadMessages(messages);
           }
         } catch (error) {
           console.error('Error auto-refreshing thread data:', error);
         }
-      }, 3000); // Check every 3 seconds while loading is active
+      }, 3000);
       
-      // Clean up interval on unmount or when loading stops
       return () => clearInterval(refreshInterval);
     }
+    */
   }, [isLoading, threadId]);
   
   // Add new state to track if user is at the bottom of the chat
