@@ -36,6 +36,8 @@ import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 import OpoSmallImage from '../assets/Oposmall.png';
 
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
+
 const Header: React.FC = () => {
   const { isAuthenticated, logout, user } = useAuth();
   const navigate = useNavigate();
@@ -60,7 +62,7 @@ const Header: React.FC = () => {
         const token = localStorage.getItem('authToken');
         console.log('Checking admin access with token:', token ? 'exists' : 'missing');
         
-        const response = await fetch('https://app2.operosus.com/api/productivity/admin', {
+        const response = await fetch(`${API_BASE_URL}/api/productivity/admin`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,

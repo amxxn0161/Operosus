@@ -113,7 +113,7 @@ export const getCalendarEvents = async (
     console.log(`Date range for ${viewMode} view: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     
     // Base API URL
-    let url = 'https://app2.operosus.com/api/calendar/events';
+    let url = `${process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com'}/api/calendar/events`;
     
     // Add query parameters for date filtering if not in 'all' mode
     if (viewMode !== 'all') {

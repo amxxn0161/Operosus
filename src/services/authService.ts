@@ -4,7 +4,7 @@
  */
 
 // API Base URL for requests
-const API_BASE_URL = 'https://app2.operosus.com';
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
 
 // Helper functions for cookie-based token storage (fallback for mobile)
 const setCookie = (name: string, value: string, days: number) => {
@@ -101,7 +101,7 @@ export const startWebAuth = (): void => {
   
   // Open Google auth in the same window/tab - use full URL
   window.open(
-    `https://app2.operosus.com/auth/google?returnUrl=${encodeURIComponent(currentUrl)}`,
+    `${API_BASE_URL}/auth/google?returnUrl=${encodeURIComponent(currentUrl)}`,
     '_self'
   );
 };
@@ -223,7 +223,7 @@ export const fetchProfileData = async (token: string): Promise<any> => {
   try {
     console.log('Fetching profile data from API with token (first 10 chars):', token.substring(0, 10));
     // Use full URL path
-    const response = await fetch('https://app2.operosus.com/profile', {
+    const response = await fetch(`${API_BASE_URL}/profile`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,

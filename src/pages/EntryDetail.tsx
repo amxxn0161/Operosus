@@ -41,6 +41,8 @@ interface AdminJournalEntry extends JournalEntry {
   };
 }
 
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
+
 const EntryDetail: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { entries, loading, error, deleteEntry, saveEntry } = useJournal();
@@ -113,7 +115,7 @@ const EntryDetail: React.FC = () => {
       console.log('Attempting to fetch admin entry directly');
       try {
         setLocalLoading(true);
-        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/entry/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/productivity/admin/entry/${id}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             'Content-Type': 'application/json',
@@ -196,7 +198,7 @@ const EntryDetail: React.FC = () => {
       // Different delete logic for admin entries
       if (isAdminEntry) {
         // Delete admin entry through the admin API
-        const response = await fetch(`https://app2.operosus.com/api/productivity/admin/${entry.id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/productivity/admin/${entry.id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
