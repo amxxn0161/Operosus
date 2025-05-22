@@ -85,6 +85,7 @@ import BookmarkIcon from '@mui/icons-material/Bookmark';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import StopIcon from '@mui/icons-material/Stop';
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -264,7 +265,8 @@ const AIAssistantPage: React.FC = () => {
     threadId,
     setThreadId,
     loadThreadMessages,
-    clearMessages
+    clearMessages,
+    cancelRequest
   } = useAIAssistant();
   
   const [input, setInput] = useState('');
@@ -391,6 +393,12 @@ const AIAssistantPage: React.FC = () => {
   const handleSnackbarClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
     setSnackbarOpen(false);
+  };
+
+  // Add cancel request handler
+  const handleCancelRequest = () => {
+    console.log('Cancelling current request');
+    cancelRequest();
   };
 
   return (
@@ -915,38 +923,79 @@ const AIAssistantPage: React.FC = () => {
               variant="outlined"
               autoComplete="off"
               disabled={isLoading}
+              multiline
+              maxRows={4}
+              minRows={3}
               sx={{ 
                 mb: 0,
                 width: '100%',
                 '& .MuiOutlinedInput-root': {
                   borderRadius: isVerySmallMobile ? '16px' : (isSmallMobile ? '18px' : '24px'),
                   pr: 0.75,
-                  py: isVerySmallMobile ? 0.15 : (isSmallMobile ? 0.25 : { xs: 0.5, md: 0.75 }),
+                  py: isVerySmallMobile ? 1 : (isSmallMobile ? 1.25 : 1.5),
                   fontSize: isVerySmallMobile ? '0.7rem' : (isSmallMobile ? '0.75rem' : { xs: '0.875rem', md: '0.9375rem' }),
-                  backgroundColor: '#ffffff'
+                  backgroundColor: '#ffffff',
+                  alignItems: 'center',
                 },
                 '& .MuiOutlinedInput-input': {
-                  pl: isVerySmallMobile ? 0.75 : (isSmallMobile ? 1 : { xs: 1.5, md: 1.75 })
+                  pl: isVerySmallMobile ? 1.5 : (isSmallMobile ? 2 : 2.5),
+                  pt: 1,
+                  pb: 1,
+                  boxSizing: 'border-box',
+                },
+                '& .MuiInputAdornment-root': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: '100%',
+                  pr: 0.5,
                 }
               }}
               InputProps={{
                 endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton 
-                      type="submit"
-                      color="primary"
-                      disabled={!input.trim() || isLoading}
-                      size={isVerySmallMobile ? "small" : "medium"}
-                      sx={{
-                        width: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
-                        height: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
-                        mr: isVerySmallMobile ? -0.5 : (isSmallMobile ? -0.25 : 0)
-                      }}
-                    >
-                      <SendIcon fontSize={isVerySmallMobile ? "small" : "medium"} sx={{
-                        fontSize: isVerySmallMobile ? '0.9rem' : (isSmallMobile ? '1rem' : { xs: '1.1rem', md: '1.2rem' })
-                      }} />
-                    </IconButton>
+                  <InputAdornment position="end" sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                    {isLoading ? (
+                      <IconButton
+                        aria-label="stop processing"
+                        onClick={handleCancelRequest}
+                        edge="end"
+                        size={isVerySmallMobile ? "small" : "medium"}
+                        sx={{
+                          bgcolor: theme.palette.primary.main,
+                          color: 'white',
+                          width: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
+                          height: isVerySmallMobile ? 28 : (isSmallMobile ? 32 : 36),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          p: 0,
+                          m: 0,
+                          '&:hover': {
+                            bgcolor: theme.palette.primary.dark,
+                          }
+                        }}
+                      >
+                        <StopIcon fontSize={isVerySmallMobile ? "small" : "medium"} />
+                      </IconButton>
+                    ) : (
+                      <IconButton
+                        type="submit"
+                        color="primary"
+                        disabled={!input.trim() || isLoading}
+                        size={isVerySmallMobile ? "small" : "medium"}
+                        sx={{
+                          width: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
+                          height: isVerySmallMobile ? 24 : (isSmallMobile ? 28 : { xs: 32, md: 36 }),
+                          mr: isVerySmallMobile ? -0.5 : (isSmallMobile ? -0.25 : 0),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <SendIcon fontSize={isVerySmallMobile ? "small" : "medium"} sx={{
+                          fontSize: isVerySmallMobile ? '0.9rem' : (isSmallMobile ? '1rem' : { xs: '1.1rem', md: '1.2rem' })
+                        }} />
+                      </IconButton>
+                    )}
                   </InputAdornment>
                 )
               }}

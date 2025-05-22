@@ -145,6 +145,8 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
       return null;
     }
 
+    let hasFetchedThreadOnError = false; // Track if we've already fetched the thread for this error
+
     try {
       requestCancelledRef.current = false;
       abortControllerRef.current = new AbortController();
@@ -194,21 +196,18 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
         const runId = response.run_id;
         let polling = true;
         let finalResponse = null;
-        
+        let pollError = false;
         while (polling && !requestCancelledRef.current) {
           await new Promise(resolve => setTimeout(resolve, 1500));
           const pollResponse = await pollAssistantRun(response.thread_id, runId);
           finalResponse = pollResponse;
-          
+
           if (!pollResponse) {
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: 'An error occurred while waiting for the assistant response.'
-            }]);
-            setIsLoading(false);
-            return null;
+            pollError = true;
+            polling = false;
+            break;
           }
-          
+
           if (pollResponse.status === 'processing') {
             // Keep polling
             continue;
@@ -221,23 +220,37 @@ export const AIAssistantProvider: React.FC<AIAssistantProviderProps> = ({ childr
             setIsLoading(false);
             polling = false;
           } else if (pollResponse.status === 'error') {
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: pollResponse.error_message || 'An error occurred while processing your request.'
-            }]);
-            setIsLoading(false);
+            pollError = true;
             polling = false;
+            break;
           } else {
             // Unknown status, stop polling
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: 'Unexpected response from assistant.'
-            }]);
-            setIsLoading(false);
+            pollError = true;
             polling = false;
+            break;
           }
         }
-        
+
+        // If polling failed, fetch the thread ONCE as a fallback
+        if (pollError && !hasFetchedThreadOnError) {
+          hasFetchedThreadOnError = true;
+          if (response.thread_id) {
+            const threadMessages = await getThreadMessages(response.thread_id);
+            if (threadMessages && threadMessages.length > 0) {
+              loadThreadMessages(threadMessages);
+              setIsLoading(false);
+              return null;
+            }
+          }
+          // If thread fetch fails, show error as before
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: 'An error occurred while waiting for the assistant response.'
+          }]);
+          setIsLoading(false);
+          return null;
+        }
+
         return finalResponse;
       } else {
         // No run_id and not complete: fallback error
