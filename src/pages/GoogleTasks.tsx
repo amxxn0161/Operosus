@@ -2506,6 +2506,32 @@ const GoogleTasks: React.FC = () => {
           >
             New List
           </Button>
+          {/* New Add Task Button */}
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              // Default to first task list if available
+              if (taskLists.length > 0) {
+                handleAddTaskClick(taskLists[0].id);
+              } else {
+                // If no task list exists, prompt to create one
+                showSnackbar('Please create a task list first', 'error');
+              }
+            }}
+            sx={{
+              borderColor: '#1056F5',
+              color: '#1056F5',
+              fontFamily: 'Poppins',
+              textTransform: 'none',
+              '&:hover': {
+                borderColor: '#0D47D9',
+                backgroundColor: '#f5f9ff',
+              },
+            }}
+          >
+            New Task
+          </Button>
           <Button 
             variant="contained" 
             startIcon={isRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
