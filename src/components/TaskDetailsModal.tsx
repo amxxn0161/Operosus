@@ -36,6 +36,7 @@ interface TaskDetailsModalProps {
   task: TaskWithTime | null;
   taskListId: string;
   taskListTitle?: string;
+  children?: React.ReactNode;
 }
 
 const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
@@ -45,7 +46,8 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   onDelete,
   task,
   taskListId,
-  taskListTitle
+  taskListTitle,
+  children
 }) => {
   if (!task) return null;
   
@@ -200,91 +202,83 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                 }
               }}
               onClick={() => {
-                if (task.gmail_attachment?.link) {
-                  window.open(task.gmail_attachment.link, '_blank');
+                if (task.gmail_attachment.messageLink) {
+                  window.open(task.gmail_attachment.messageLink, '_blank');
                 }
               }}
             >
               <EmailIcon sx={{ 
                 mr: 1, 
                 fontSize: 20, 
-                color: 'primary.main' 
+                color: 'primary.main'
               }} />
               <Typography 
                 variant="body2" 
                 sx={{ 
                   fontWeight: 500, 
-                  color: 'primary.main',
-                  textDecoration: 'none',
-                  '&:hover': {
-                    textDecoration: 'underline'
-                  }
+                  color: 'primary.main'
                 }}
               >
-                {task.gmail_attachment.title || 'View Email'}
+                {task.gmail_attachment.subject || 'Gmail Message'}
               </Typography>
             </Box>
           )}
-        </Box>
-        
-        <Divider sx={{ my: 2 }} />
-        
-        {cleanNotes && (
-          <Box sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
-              <NotesIcon sx={{ mr: 1, mt: 0.5, fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="subtitle1" fontWeight="medium">
-                Notes
-              </Typography>
-            </Box>
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
-              <Typography variant="body2" style={{ whiteSpace: 'pre-wrap' }}>
-                {cleanNotes}
-              </Typography>
-            </Paper>
-          </Box>
-        )}
-        
-        <Box sx={{ mt: 3, display: 'flex', alignItems: 'center' }}>
-          <Typography 
-            variant="caption" 
-            color="text.secondary"
-            sx={{ flex: 1 }}
-          >
-            {task.status === 'completed' && task.completed ? 
-              `Completed: ${format(new Date(task.completed), 'MMM d, yyyy')}` : 
-              'Active task'
-            }
-          </Typography>
           
-          {task.starred && (
-            <Typography 
-              variant="caption" 
-              color="warning.main"
-              sx={{ fontWeight: 'medium' }}
-            >
-              ★ Starred
-            </Typography>
+          {cleanNotes && (
+            <Box sx={{ mt: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <NotesIcon sx={{ mr: 1, fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="subtitle2" color="text.secondary">
+                  Notes
+                </Typography>
+              </Box>
+              <Paper 
+                elevation={0} 
+                sx={{ 
+                  p: 2, 
+                  bgcolor: 'background.paper',
+                  border: '1px solid rgba(0, 0, 0, 0.12)',
+                  borderRadius: 1
+                }}
+              >
+                <Typography 
+                  variant="body2" 
+                  style={{ 
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {cleanNotes}
+                </Typography>
+              </Paper>
+            </Box>
           )}
+          
+          {/* Render children if provided - this is where attachments will go */}
+          {children}
         </Box>
       </DialogContent>
       
-      <DialogActions sx={{ px: 3, py: 2 }}>
+      <DialogActions sx={{ p: 2 }}>
         <Button 
-          onClick={onDelete}
           startIcon={<DeleteIcon />}
+          onClick={onDelete}
           color="error"
-          variant="outlined"
+          sx={{ fontFamily: 'Poppins' }}
         >
           Delete
         </Button>
         <Button 
-          onClick={onEdit}
           startIcon={<EditIcon />}
+          onClick={onEdit}
+          color="primary"
           variant="contained"
           sx={{ 
-            bgcolor: '#1056F5',
-            '&:hover': { bgcolor: '#0D47D9' }
+            fontFamily: 'Poppins',
+            backgroundColor: '#1056F5',
+            '&:hover': {
+              backgroundColor: '#0D47D9',
+            },
           }}
         >
           Edit

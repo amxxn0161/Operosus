@@ -10,7 +10,8 @@ export const ENDPOINTS = {
   AUTH: `/auth`,
   TASKS: `/api/tasks`,
   WORKSHEET: `/api/worksheet`,
-  GOOGLE_TASKS: `/api/google/tasklists`
+  GOOGLE_TASKS: `/api/google/tasklists`,
+  GOOGLE_DRIVE: `/api/google/drive`
 };
 
 // API Request Timeouts

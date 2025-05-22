@@ -71,7 +71,8 @@ import {
   ChevronRight as ChevronRightIcon,
   AddCircleOutline as AddCircleOutlineIcon,
   MenuOpen as MenuOpenIcon,
-  Email as EmailIcon
+  Email as EmailIcon,
+  AttachFile as AttachFileIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -91,6 +92,11 @@ import { invalidateCache, optimisticUpdateLists } from '../store/slices/tasksSli
 // Import the proper AIAssistant component and context
 import { useAIAssistant } from '../contexts/AIAssistantContext';
 import TaskDurationWarning from '../components/TaskDurationWarning';
+
+// Import Google Drive components
+import DrivePickerModal from '../components/DrivePickerModal';
+import TaskAttachments from '../components/TaskAttachments';
+import { attachFileToTask, GoogleDriveFile } from '../services/googleDriveService';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -197,7 +203,13 @@ const GoogleTasks: React.FC = () => {
   const [taskMenuAnchorEl, setTaskMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTask, setSelectedTask] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
 
-  // Task editing state
+  // Add state for Google Drive integration
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [attachingToTaskId, setAttachingToTaskId] = useState<string | null>(null);
+  const [attachingToTaskListId, setAttachingToTaskListId] = useState<string | null>(null);
+  const [attachmentAdding, setAttachmentAdding] = useState(false);
+
+  // Add state for edit task dialog
   const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<{ taskListId: string; taskId: string; title: string; notes?: string; due?: string | null; status: string } | null>(null);
   const [editTaskTitle, setEditTaskTitle] = useState('');
@@ -2478,8 +2490,81 @@ const GoogleTasks: React.FC = () => {
     return lists.flatMap(list => list.tasks.filter(task => task.starred || task.is_starred));
   };
 
+  // Add handlers for Google Drive integration
+  const handleOpenDrivePicker = (taskListId: string, taskId: string) => {
+    setAttachingToTaskId(taskId);
+    setAttachingToTaskListId(taskListId);
+    setDrivePickerOpen(true);
+  };
+
+  const handleCloseDrivePicker = () => {
+    setDrivePickerOpen(false);
+  };
+
+  const handleSelectDriveFile = async (file: GoogleDriveFile) => {
+    if (!attachingToTaskId || !attachingToTaskListId) return;
+    
+    setAttachmentAdding(true);
+    try {
+      await attachFileToTask(attachingToTaskListId, attachingToTaskId, file.id);
+      showSnackbar(`Attached "${file.name}" to task`, 'success');
+             // Refresh task details if needed
+      if (selectedTask && selectedTask.task.id === attachingToTaskId) {
+        // Trigger a re-render of the attachments component
+        onAttachmentChange();
+      }
+    } catch (err) {
+      console.error('Error attaching file:', err);
+      showSnackbar('Failed to attach file', 'error');
+    } finally {
+      setAttachmentAdding(false);
+      setAttachingToTaskId(null);
+      setAttachingToTaskListId(null);
+    }
+  };
+
+  const onAttachmentChange = () => {
+    // Refresh the selected task if attachments have changed
+    if (selectedTask) {
+      // You might want to refresh just the selected task rather than all lists
+      refreshTaskLists({ forceRefresh: false });
+    }
+  };
+
+  // We'll use the existing handleTaskMenuOpen function
+
+  // Add the attachments section to the task details
+  const renderTaskDetails = () => {
+    if (!selectedTask) return null;
+    
+    const { taskListId, task } = selectedTask;
+    
+    return (
+      <Box p={2}>
+        <Box mt={3}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="subtitle2">Attachments</Typography>
+            <Button 
+              startIcon={<AttachFileIcon />}
+              size="small"
+              onClick={() => handleOpenDrivePicker(taskListId, task.id)}
+              disabled={attachmentAdding}
+            >
+              Add
+            </Button>
+          </Box>
+          <TaskAttachments 
+            taskListId={taskListId} 
+            taskId={task.id}
+            onAttachmentChange={onAttachmentChange} 
+          />
+        </Box>
+      </Box>
+    );
+  };
+
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography 
           variant="h4" 
@@ -3786,6 +3871,34 @@ const GoogleTasks: React.FC = () => {
           />
         </MenuItem>
         
+        {/* Add Attach File option */}
+        <MenuItem 
+          onClick={() => {
+            handleTaskMenuClose();
+            if (selectedTask) {
+              handleOpenDrivePicker(selectedTask.taskListId, selectedTask.task.id);
+            }
+          }}
+          sx={{ 
+            py: 1.5,
+            px: 2
+          }}
+        >
+          <ListItemIcon>
+            <AttachFileIcon 
+              fontSize="small" 
+              sx={{ color: '#1056F5' }}
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Attach file" 
+            primaryTypographyProps={{ 
+              fontFamily: 'Poppins', 
+              fontWeight: 'medium' 
+            }} 
+          />
+        </MenuItem>
+        
         <MenuItem 
           onClick={handleDeleteTaskFromMenu}
           sx={{ 
@@ -4781,7 +4894,9 @@ const GoogleTasks: React.FC = () => {
         task={detailsTask?.task || null}
         taskListId={detailsTask?.taskListId || ''}
         taskListTitle={detailsTask?.taskListTitle}
-      />
+      >
+        {renderTaskDetails()}
+      </TaskDetailsModal>
 
       {/* Task Breakdown Dialog */}
       <Dialog
@@ -5345,6 +5460,13 @@ const GoogleTasks: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Add the Drive Picker Modal */}
+      <DrivePickerModal 
+        open={drivePickerOpen}
+        onClose={handleCloseDrivePicker}
+        onSelectFile={handleSelectDriveFile}
+      />
     </Container>
   );
 };
