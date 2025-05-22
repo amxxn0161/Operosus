@@ -31,6 +31,8 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -132,7 +134,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       // Try to make a simple API call to verify token validity
-      const response = await fetch('https://app2.operosus.com/api/ping', {
+      const response = await fetch(`${API_BASE_URL}/api/ping`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

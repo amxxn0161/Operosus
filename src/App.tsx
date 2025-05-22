@@ -27,6 +27,8 @@ import MockDataToggle from './components/MockDataToggle';
 import AIAssistant from './components/AIAssistant';
 import AIAssistantPage from './pages/AIAssistantPage';
 
+console.log(process.env.REACT_APP_API_TARGET);
+
 // Create a custom theme with mobile-first approach
 let theme = createTheme({
   // Breakpoints for mobile-first design

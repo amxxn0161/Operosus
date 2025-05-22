@@ -2,7 +2,7 @@
 import { checkAuthState, handleTokenExpirationError, isTokenNearingExpiration, refreshGoogleToken } from './authService';
 
 // Base URL for API requests
-const API_BASE_URL = 'https://app2.operosus.com';
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
 
 export interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';

@@ -5,7 +5,7 @@
 The Calendar feature in Productivity Pulse now uses a real API endpoint for fetching calendar events. Mock data functionality has been completely removed, and the application now exclusively retrieves data from the following endpoint:
 
 ```
-https://app2.operosus.com/api/calendar/events
+API Endpoint: ${process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com'}/api/calendar/events
 ```
 
 ## Key Features

@@ -13,6 +13,8 @@ import {
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
+
 const DiagnosticPage: React.FC = () => {
   const { isAuthenticated, token, user, refreshUserProfile } = useAuth();
   const [localStorageItems, setLocalStorageItems] = useState<{[key: string]: string}>({});
@@ -38,7 +40,7 @@ const DiagnosticPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('https://app2.operosus.com/profile', {
+      const response = await fetch(`${API_BASE_URL}/profile`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -53,6 +53,8 @@ interface AdminJournalEntry {
   };
 }
 
+const API_BASE_URL = process.env.REACT_APP_API_TARGET || 'https://app2.operosus.com';
+
 const AdminJournal: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [entries, setEntries] = useState<AdminJournalEntry[]>([]);
@@ -90,7 +92,7 @@ const AdminJournal: React.FC = () => {
     const fetchAdminEntries = async () => {
       try {
         setLoading(true);
-        const response = await fetch('https://app2.operosus.com/api/productivity/admin', {
+        const response = await fetch(`${API_BASE_URL}/api/productivity/admin`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             'Content-Type': 'application/json',

@@ -86,7 +86,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 // import AIAssistant from '../components/AIAssistant';
 // import { useAIAssistant } from '../contexts/AIAssistantContext';
 import { useAppDispatch } from '../store/hooks';
-import { invalidateCache } from '../store/slices/tasksSlice';
+import { invalidateCache, optimisticUpdateLists } from '../store/slices/tasksSlice';
 
 // Import the proper AIAssistant component and context
 import { useAIAssistant } from '../contexts/AIAssistantContext';
@@ -208,7 +208,8 @@ const GoogleTasks: React.FC = () => {
 
   // Add state for tracking expanded/collapsed completed sections
   const [expandedCompletedSections, setExpandedCompletedSections] = useState<Record<string, boolean>>({
-    global: false
+    global: false,
+    starred: false
   });
 
   // Task details modal state
@@ -381,27 +382,8 @@ const GoogleTasks: React.FC = () => {
         // Prepare notes with our own manually added time information
         let finalNotes = cleanedNotes || '';
         
-        // Manually add estimated time text if we have estimated minutes
-        if (newTaskEstimatedMinutes !== null && newTaskEstimatedMinutes > 0) {
-          // Format the time display based on minutes
-          let timeText;
-          if (newTaskEstimatedMinutes >= 60) {
-            const hours = Math.floor(newTaskEstimatedMinutes / 60);
-            const minutes = newTaskEstimatedMinutes % 60;
-            
-            if (minutes === 0) {
-              timeText = `${hours}h`;
-            } else {
-              timeText = `${hours}h ${minutes}m`;
-            }
-          } else {
-            timeText = `${newTaskEstimatedMinutes}m`;
-          }
-          
-          // Add to notes
-          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
-          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes for new task`);
-        }
+        // Don't manually add estimated time to notes since it's stored in estimated_minutes field
+        // Instead, we'll just use the estimated_minutes field directly
         
         // Add the manual notes with our time information
         taskData.notes = finalNotes;
@@ -434,11 +416,37 @@ const GoogleTasks: React.FC = () => {
           taskData.due = dueString;
         }
         
+        // We'll apply the same localStorage approach for task creation
+        // We'll store the estimated time so it can be displayed immediately
+        const updateEstimatedTimeForNewTask = () => {
+          // We'll handle the localStorage update in the result handler since we need the newly created task ID
+        };
+        
         setIsRefreshing(true);
         const createdTask = await createTask(newTaskListId, taskData);
         setIsRefreshing(false);
         
         if (createdTask) {
+          // Store estimated time in localStorage for immediate display
+          if (taskData.estimated_minutes) {
+            try {
+              localStorage.setItem(`task_${createdTask.id}_estimated_minutes`, String(taskData.estimated_minutes));
+              
+              // Format for display
+              let displayTime = '';
+              if (taskData.estimated_minutes >= 60) {
+                const hours = Math.floor(taskData.estimated_minutes / 60);
+                const minutes = taskData.estimated_minutes % 60;
+                displayTime = minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+              } else {
+                displayTime = `${taskData.estimated_minutes}m`;
+              }
+              localStorage.setItem(`task_${createdTask.id}_estimated_display`, displayTime);
+            } catch (e) {
+              console.error('Failed to store estimated time in localStorage', e);
+            }
+          }
+          
           // Reset fields
           setNewTaskTitle('');
           setNewTaskNotes('');
@@ -451,8 +459,12 @@ const GoogleTasks: React.FC = () => {
           // Show success message
           showSnackbar('Task created successfully', 'success');
           
-          // Refresh the list
-          await refreshTaskLists();
+          // Refresh in the background to ensure data consistency
+          refreshTaskLists();
+        } else {
+          showSnackbar('Failed to create task', 'error');
+          // Refresh to clean up the optimistic update
+          refreshTaskLists();
         }
       } catch (error) {
         console.error('Error creating task:', error);
@@ -1276,27 +1288,8 @@ const GoogleTasks: React.FC = () => {
         // Prepare notes with our own manually added time information
         let finalNotes = cleanedNotes || '';
         
-        // Manually add estimated time text if we have estimated minutes
-        if (editTaskEstimatedMinutes !== null && editTaskEstimatedMinutes > 0) {
-          // Format the time display based on minutes
-          let timeText;
-          if (editTaskEstimatedMinutes >= 60) {
-            const hours = Math.floor(editTaskEstimatedMinutes / 60);
-            const minutes = editTaskEstimatedMinutes % 60;
-            
-            if (minutes === 0) {
-              timeText = `${hours}h`;
-            } else {
-              timeText = `${hours}h ${minutes}m`;
-            }
-          } else {
-            timeText = `${editTaskEstimatedMinutes}m`;
-          }
-          
-          // Add to notes
-          finalNotes = finalNotes ? `${finalNotes}\nEstimated Time: ${timeText}` : `Estimated Time: ${timeText}`;
-          console.log(`Manually adding 'Estimated Time: ${timeText}' to notes`);
-        }
+        // Don't manually add estimated time to notes since it's stored in estimated_minutes field
+        // Instead, we'll just use the estimated_minutes field directly
         
         // Add the manual notes with our time information
         taskData.notes = finalNotes;
@@ -1337,6 +1330,44 @@ const GoogleTasks: React.FC = () => {
           delete taskData.due;
         }
         
+        // We'll use an inline function to update the UI directly instead of optimistic updates
+        const updateEstimatedTimeUIDirectly = () => {
+          // Access the estimated time directly from the state
+          const estimatedMinutes = editTaskEstimatedMinutes;
+          const taskId = editingTask.taskId;
+          
+          // Store the value we're setting in localStorage for immediate UI rendering
+          if (estimatedMinutes !== null && estimatedMinutes > 0) {
+            try {
+              localStorage.setItem(`task_${taskId}_estimated_minutes`, String(estimatedMinutes));
+              
+              // Format for display
+              let displayTime = '';
+              if (estimatedMinutes >= 60) {
+                const hours = Math.floor(estimatedMinutes / 60);
+                const minutes = estimatedMinutes % 60;
+                displayTime = minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+              } else {
+                displayTime = `${estimatedMinutes}m`;
+              }
+              localStorage.setItem(`task_${taskId}_estimated_display`, displayTime);
+            } catch (e) {
+              console.error('Failed to store estimated time in localStorage', e);
+            }
+          } else {
+            // Clear it
+            try {
+              localStorage.removeItem(`task_${taskId}_estimated_minutes`);
+              localStorage.removeItem(`task_${taskId}_estimated_display`);
+            } catch (e) {
+              console.error('Failed to clear estimated time from localStorage', e);
+            }
+          }
+        };
+        
+        // Call the function to update estimated time UI
+        updateEstimatedTimeUIDirectly();
+        
         setIsRefreshing(true);
         const result = await updateTask(editingTask.taskListId, editingTask.taskId, taskData);
         setIsRefreshing(false);
@@ -1344,8 +1375,14 @@ const GoogleTasks: React.FC = () => {
         if (result) {
           setEditTaskDialogOpen(false);
           showSnackbar('Task updated successfully', 'success');
+          
+          // Still refresh lists in the background to ensure data consistency
+          refreshTaskLists();
         } else {
           showSnackbar('Failed to update task', 'error');
+          
+          // Refresh to revert optimistic update on failure
+          refreshTaskLists();
         }
       } catch (err) {
         showSnackbar('Error updating task', 'error');
@@ -2469,6 +2506,32 @@ const GoogleTasks: React.FC = () => {
           >
             New List
           </Button>
+          {/* New Add Task Button */}
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              // Default to first task list if available
+              if (taskLists.length > 0) {
+                handleAddTaskClick(taskLists[0].id);
+              } else {
+                // If no task list exists, prompt to create one
+                showSnackbar('Please create a task list first', 'error');
+              }
+            }}
+            sx={{
+              borderColor: '#1056F5',
+              color: '#1056F5',
+              fontFamily: 'Poppins',
+              textTransform: 'none',
+              '&:hover': {
+                borderColor: '#0D47D9',
+                backgroundColor: '#f5f9ff',
+              },
+            }}
+          >
+            New Task
+          </Button>
           <Button 
             variant="contained" 
             startIcon={isRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
@@ -2527,157 +2590,340 @@ const GoogleTasks: React.FC = () => {
             />
             <CardContent sx={{ px: 2, py: 0.5 }}>
               <List sx={{ py: 0 }}>
-                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).map((task) => {
-                  const taskList = (optimisticTaskLists || taskLists).find(list => 
-                    list.tasks.some(t => t.id === task.id)
-                  );
-                  
-                  return (
-                    <ListItem
-                      key={task.id}
-                      onClick={(e) => {
-                        const taskList = taskLists.find(list => 
-                          list.tasks.some(t => t.id === task.id)
-                        );
-                        if (taskList) {
-                          handleTaskItemClick(taskList.id, task, taskList.title, e);
-                        }
-                      }}
-                      sx={{
-                        py: 0.5, // Reduced padding
-                        borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
-                        '&:last-child': { borderBottom: 'none' },
-                        cursor: 'pointer'
+                {/* Active (non-completed) starred tasks */}
+                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks)
+                  .filter(task => task.status !== 'completed')
+                  .map((task) => {
+                    const taskList = (optimisticTaskLists || taskLists).find(list => 
+                      list.tasks.some(t => t.id === task.id)
+                    );
+                    
+                    return (
+                      <ListItem
+                        key={task.id}
+                        onClick={(e) => {
+                          const taskList = taskLists.find(list => 
+                            list.tasks.some(t => t.id === task.id)
+                          );
+                          if (taskList) {
+                            handleTaskItemClick(taskList.id, task, taskList.title, e);
+                          }
+                        }}
+                        sx={{
+                          py: 0.5, // Reduced padding
+                          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                          '&:last-child': { borderBottom: 'none' },
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
+                          <Checkbox
+                            checked={task.status === 'completed'}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              taskList && handleToggleTaskComplete(taskList.id, task.id);
+                            }}
+                            edge="start"
+                            sx={{ 
+                              color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
+                              p: 0.5 // Reduced padding
+                            }}
+                          />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Typography
+                              sx={{
+                                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                                color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
+                                fontFamily: 'Poppins',
+                                fontSize: '0.875rem' // Reduced font size
+                              }}
+                            >
+                              {task.title}
+                            </Typography>
+                          }
+                          secondary={
+                            <>
+                              {/* Show Gmail attachment if present */}
+                              {task.has_gmail_attachment && task.gmail_attachment && (
+                                <Typography 
+                                  variant="caption" 
+                                  component="div"
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: 'primary.main',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    mt: 0.5,
+                                    cursor: 'pointer',
+                                    '&:hover': { textDecoration: 'underline' }
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent task item click
+                                    if (task.gmail_attachment?.link) {
+                                      window.open(task.gmail_attachment.link, '_blank');
+                                    }
+                                  }}
+                                >
+                                  <EmailIcon 
+                                    fontSize="inherit" 
+                                    sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                  />
+                                  {task.gmail_attachment.title || 'View Email'}
+                                </Typography>
+                              )}
+                              
+                              {/* Show due date and time information from notes */}
+                              {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
+                                <Typography 
+                                  variant="caption" 
+                                  component="div"
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontSize: '0.75rem', // Slightly larger for better readability
+                                    fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
+                                    mt: 0.5
+                                  }}
+                                >
+                                  {task.has_explicit_time && (
+                                    <AccessTimeIcon 
+                                      fontSize="inherit" 
+                                      sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
+                                    />
+                                  )}
+                                  {formatDueInfoWithNotes(task)}
+                                </Typography>
+                              )}
+                              
+                              {/* Show other notes content if any (excluding the time information) */}
+                              {task.notes && !task.notes.includes("Due Time") && (
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontFamily: 'Poppins',
+                                    color: 'text.secondary',
+                                    display: 'block',
+                                    mt: 0.25, // Reduced margin
+                                    fontSize: '0.7rem',
+                                    // Limit to 2 lines with ellipsis
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical'
+                                  }}
+                                >
+                                  {task.notes}
+                                </Typography>
+                              )}
+                            </>
+                          }
+                        />
+                        <IconButton
+                          edge="end"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            taskList && handleToggleTaskStar(taskList.id, task.id);
+                          }}
+                          sx={{ color: '#FFD700', mr: 1 }}
+                        >
+                          <StarIcon />
+                        </IconButton>
+                        <IconButton
+                          edge="end"
+                          onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
+                          size="small"
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </ListItem>
+                    );
+                  })}
+                
+                {/* Completed starred tasks section with collapsible header */}
+                {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).some(task => task.status === 'completed') && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <ListItem 
+                      button 
+                      onClick={() => toggleCompletedSection('starred')}
+                      sx={{ 
+                        py: 0.25, // Reduced padding
+                        px: 1,
+                        borderRadius: 1,
+                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
                       }}
                     >
-                      <ListItemIcon sx={{ minWidth: '36px' }}> {/* Reduced minWidth */}
-                        <Checkbox
-                          checked={task.status === 'completed'}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            taskList && handleToggleTaskComplete(taskList.id, task.id);
-                          }}
-                          edge="start"
-                          sx={{ 
-                            color: task.status === 'completed' ? 'rgba(0, 0, 0, 0.38)' : '#1056F5',
-                            p: 0.5 // Reduced padding
-                          }}
-                        />
+                      <ListItemIcon sx={{ minWidth: '24px' }}>
+                        <IconButton 
+                          size="small" 
+                          sx={{ p: 0 }}
+                        >
+                          {expandedCompletedSections['starred'] ? (
+                            <LoopIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                          ) : (
+                            <LoopIcon fontSize="small" />
+                          )}
+                        </IconButton>
                       </ListItemIcon>
-                      <ListItemText
+                      <ListItemText 
                         primary={
-                          <Typography
-                            sx={{
-                              textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                              color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
-                              fontFamily: 'Poppins',
-                              fontSize: '0.875rem' // Reduced font size
+                          <Typography 
+                            variant="subtitle2" 
+                            sx={{ 
+                              fontFamily: 'Poppins', 
+                              color: 'text.secondary',
+                              fontWeight: 'medium',
+                              fontSize: '0.75rem', // Smaller font size
                             }}
                           >
-                            {task.title}
+                            Completed ({(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks).filter(task => task.status === 'completed').length})
                           </Typography>
                         }
-                        secondary={
-                          <>
-                            {/* Show Gmail attachment if present */}
-                            {task.has_gmail_attachment && task.gmail_attachment && (
-                              <Typography 
-                                variant="caption" 
-                                component="div"
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: 'primary.main',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 500,
-                                  mt: 0.5,
-                                  cursor: 'pointer',
-                                  '&:hover': { textDecoration: 'underline' }
-                                }}
+                      />
+                    </ListItem>
+                    
+                    {expandedCompletedSections['starred'] && (
+                      <Box sx={{ 
+                        maxHeight: '50vh', 
+                        overflowY: 'auto',
+                        overflowX: 'hidden', // Prevent horizontal scrolling
+                        ...scrollbarStyles
+                      }}>
+                        {(optimisticTaskLists ? extractStarredTasks(optimisticTaskLists) : starredTasks)
+                          .filter(task => task.status === 'completed')
+                          .map((task) => {
+                            const taskList = (optimisticTaskLists || taskLists).find(list => 
+                              list.tasks.some(t => t.id === task.id)
+                            );
+                            
+                            return (
+                              <ListItem
+                                key={task.id}
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent task item click
-                                  if (task.gmail_attachment?.link) {
-                                    window.open(task.gmail_attachment.link, '_blank');
+                                  const taskList = taskLists.find(list => 
+                                    list.tasks.some(t => t.id === task.id)
+                                  );
+                                  if (taskList) {
+                                    handleTaskItemClick(taskList.id, task, taskList.title, e);
                                   }
                                 }}
-                              >
-                                <EmailIcon 
-                                  fontSize="inherit" 
-                                  sx={{ mr: 0.5, fontSize: '0.875rem' }} 
-                                />
-                                {task.gmail_attachment.title || 'View Email'}
-                              </Typography>
-                            )}
-                            
-                            {/* Show due date and time information from notes */}
-                            {(task.due || (task.notes && task.notes.includes("Due Time"))) && (
-                              <Typography 
-                                variant="caption" 
-                                component="div"
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'text.secondary',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  fontSize: '0.75rem', // Slightly larger for better readability
-                                  fontWeight: task.has_explicit_time ? 500 : 400, // Make time bolder when present
-                                  mt: 0.5
+                                sx={{
+                                  py: 1,
+                                  borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                                  '&:last-child': { borderBottom: 'none' },
+                                  cursor: 'pointer'
                                 }}
                               >
-                                {task.has_explicit_time && (
-                                  <AccessTimeIcon 
-                                    fontSize="inherit" 
-                                    sx={{ mr: 0.5, fontSize: '0.875rem', color: isOverdue(task.due) ? 'error.main' : isDueToday(task.due) ? 'warning.main' : 'primary.main' }} 
+                                <ListItemIcon sx={{ minWidth: '40px' }}>
+                                  <Checkbox
+                                    checked={true}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      taskList && handleToggleTaskComplete(taskList.id, task.id);
+                                    }}
+                                    edge="start"
+                                    icon={<CheckBoxOutlineBlankIcon />}
+                                    checkedIcon={<CheckBoxIcon />}
+                                    sx={{ color: 'rgba(0, 0, 0, 0.38)' }}
                                   />
-                                )}
-                                {formatDueInfoWithNotes(task)}
-                              </Typography>
-                            )}
-                            
-                            {/* Show other notes content if any (excluding the time information) */}
-                            {task.notes && !task.notes.includes("Due Time") && (
-                              <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                  fontFamily: 'Poppins',
-                                  color: 'text.secondary',
-                                  display: 'block',
-                                  mt: 0.25, // Reduced margin
-                                  fontSize: '0.7rem',
-                                  // Limit to 2 lines with ellipsis
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical'
-                                }}
-                              >
-                                {task.notes}
-                              </Typography>
-                            )}
-                          </>
-                        }
-                      />
-                      <IconButton
-                        edge="end"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          taskList && handleToggleTaskStar(taskList.id, task.id);
-                        }}
-                        sx={{ color: '#FFD700', mr: 1 }}
-                      >
-                        <StarIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
-                        size="small"
-                      >
-                        <MoreVertIcon fontSize="small" />
-                      </IconButton>
-                    </ListItem>
-                  );
-                })}
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    <Typography
+                                      sx={{
+                                        textDecoration: 'line-through',
+                                        color: 'text.secondary',
+                                        fontFamily: 'Poppins',
+                                        ...(isSubtask(task) ? { 
+                                          paddingLeft: '24px', // Increased padding
+                                          marginLeft: '16px', // Added margin
+                                          borderLeft: '3px solid rgba(16, 86, 245, 0.6)', // More prominent border
+                                          backgroundColor: 'rgba(16, 86, 245, 0.03)', // Subtle background color
+                                          borderRadius: '0 4px 4px 0', // Rounded corners on the right side
+                                          fontStyle: 'italic',
+                                          py: 0.5 // Add some vertical padding
+                                        } : {})
+                                      }}
+                                    >
+                                      {task.title.startsWith('📎 ') ? task.title.substring(2) : task.title}
+                                    </Typography>
+                                  }
+                                  secondary={
+                                    <>
+                                      {/* Show Gmail attachment if present */}
+                                      {task.has_gmail_attachment && task.gmail_attachment && (
+                                        <Typography 
+                                          variant="caption" 
+                                          component="div"
+                                          sx={{ 
+                                            fontFamily: 'Poppins',
+                                            color: 'primary.main',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 500,
+                                            mt: 0.5,
+                                            cursor: 'pointer',
+                                            '&:hover': { textDecoration: 'underline' }
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation(); // Prevent task item click
+                                            if (task.gmail_attachment?.link) {
+                                              window.open(task.gmail_attachment.link, '_blank');
+                                            }
+                                          }}
+                                        >
+                                          <EmailIcon 
+                                            fontSize="inherit" 
+                                            sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                          />
+                                          {task.gmail_attachment.title || 'View Email'}
+                                        </Typography>
+                                      )}
+                                      
+                                      {task.completed && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'Poppins' }}>
+                                          Completed: {formatDate(task.completed)}
+                                        </Typography>
+                                      )}
+                                    </>
+                                  }
+                                />
+                                <IconButton
+                                  edge="end"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    taskList && handleToggleTaskStar(taskList.id, task.id);
+                                  }}
+                                  sx={{ 
+                                    color: task.starred ? '#FFD700' : 'action.disabled', 
+                                    mr: 0.5, 
+                                    p: 0.5
+                                  }}
+                                >
+                                  {task.starred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                                </IconButton>
+                                <IconButton
+                                  edge="end"
+                                  onClick={(e) => handleTaskMenuOpen(e, taskList?.id || '', task)}
+                                  size="small"
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <MoreVertIcon fontSize="small" />
+                                </IconButton>
+                              </ListItem>
+                            );
+                          })}
+                      </Box>
+                    )}
+                  </>
+                )}
               </List>
             </CardContent>
           </Card>
@@ -2931,6 +3177,42 @@ const GoogleTasks: React.FC = () => {
                                               }}
                                             >
                                               {task.notes}
+                                            </Typography>
+                                          )}
+                                          
+                                          {/* Show estimated time if available - with localStorage check for immediate updates */}
+                                          {(task.estimated_minutes || localStorage.getItem(`task_${task.id}_estimated_minutes`)) && (
+                                            <Typography 
+                                              variant="caption" 
+                                              component="div"
+                                              className="estimated-time-container"
+                                              sx={{ 
+                                                fontFamily: 'Poppins',
+                                                color: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 500,
+                                                mt: 0.5
+                                              }}
+                                            >
+                                              <AccessTimeIcon 
+                                                fontSize="inherit" 
+                                                sx={{ mr: 0.5, fontSize: '0.875rem' }} 
+                                              />
+                                              <span className="estimated-time">
+                                                {(() => {
+                                                  const localValue = localStorage.getItem(`task_${task.id}_estimated_display`);
+                                                  if (localValue) {
+                                                    return `Estimated: ${localValue}`;
+                                                  } else if (task.estimated_minutes) {
+                                                    return task.estimated_minutes >= 60
+                                                      ? `Estimated: ${Math.floor(task.estimated_minutes / 60)}h${task.estimated_minutes % 60 ? ` ${task.estimated_minutes % 60}m` : ''}`
+                                                      : `Estimated: ${task.estimated_minutes}m`;
+                                                  }
+                                                  return '';
+                                                })()}
+                                              </span>
                                             </Typography>
                                           )}
                                         </>

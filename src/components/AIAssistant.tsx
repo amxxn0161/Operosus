@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, KeyboardEvent, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -440,6 +440,7 @@ const AIAssistant: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [lastResponseStatus, setLastResponseStatus] = useState<string | null>(null);
   
   // Calculate center position for mobile
   const mobilePosition = useMemo(() => {
@@ -458,7 +459,9 @@ const AIAssistant: React.FC = () => {
     if (isOpen && buttonRef.current) {
       setAnchorEl(buttonRef.current);
       
-      // Auto-refresh current thread data if we have a thread ID
+      // No need to auto-refresh thread data with the new polling model
+      // Only fetch thread data when first opening a thread, not after sending messages
+      /*
       if (threadId) {
         setTimeout(async () => {
           try {
@@ -471,30 +474,32 @@ const AIAssistant: React.FC = () => {
           }
         }, 500);
       }
+      */
     }
   }, [isOpen, threadId]);
   
   // Auto-refresh data when loading is active for more than a few seconds
   useEffect(() => {
-    // Only activate when we're showing a loading spinner
+    // This auto-refresh logic is no longer needed with the new polling model
+    // The sendMessage function in AIAssistantContext now handles polling
+    // We'll leave this commented out for reference but disable it
+    /*
     if (isLoading && threadId) {
-      // Set up a refresh interval when loading is active
       const refreshInterval = setInterval(async () => {
         try {
           console.log('Auto-refreshing conversation data while loading...');
           const messages = await getThreadMessages(threadId);
           if (messages && messages.length > 0) {
-            // If we get messages, load them and stop the loading state
             loadThreadMessages(messages);
           }
         } catch (error) {
           console.error('Error auto-refreshing thread data:', error);
         }
-      }, 3000); // Check every 3 seconds while loading is active
+      }, 3000);
       
-      // Clean up interval on unmount or when loading stops
       return () => clearInterval(refreshInterval);
     }
+    */
   }, [isLoading, threadId]);
   
   // Add new state to track if user is at the bottom of the chat
@@ -536,11 +541,16 @@ const AIAssistant: React.FC = () => {
     
     // Send message through context
     sendMessage(inputValue)
-      .then(() => {
+      .then((response) => {
         console.log('Message sent successfully, waiting for response');
+        // Track the response status
+        if (response) {
+          setLastResponseStatus(response.status || null);
+        }
       })
       .catch(error => {
         console.error('Error sending message:', error);
+        setLastResponseStatus('error');
         // Don't show UI errors - this will be handled by AIAssistantContext
       });
     
@@ -966,29 +976,25 @@ const AIAssistant: React.FC = () => {
   };
   
   // Function to retry sending the last prompt
-  const handleRetry = () => {
-    if (lastPrompt) {
-      console.log('Retrying last prompt:', lastPrompt);
+  const handleRetry = async () => {
+    if (messages.length > 0) {
+      // Find the last user message
+      const lastUserMsg = [...messages].reverse().find(msg => msg.role === 'user');
       
-      // If we have a thread ID, try refreshing first to see if the message is already there
-      if (threadId) {
-        console.log(`Thread ID exists (${threadId}), trying to refresh before resending`);
-        refreshConversation().then(() => {
-          // If we still need to retry after refresh, use sendMessage
-          // We could add logic here to check if the last message matches what we're retrying
-          // For now, always resend to be safe
-          sendMessage(lastPrompt);
-        }).catch(error => {
-          console.error('Error during pre-retry refresh:', error);
-          // Fall back to sendMessage if refresh fails
-          sendMessage(lastPrompt);
-        });
-      } else {
-        // If no thread ID, just send the message normally
-        sendMessage(lastPrompt);
+      if (lastUserMsg) {
+        setLastResponseStatus(null);
+        
+        try {
+          // SendMessage now returns response data
+          const response = await sendMessage(lastUserMsg.content);
+          if (response) {
+            setLastResponseStatus(response.status || null);
+          }
+        } catch (error) {
+          setLastResponseStatus('error');
+          console.error('Error retrying message:', error);
+        }
       }
-    } else {
-      console.warn('No last prompt available to retry');
     }
   };
   
@@ -1013,17 +1019,13 @@ const AIAssistant: React.FC = () => {
       // Add user message immediately to the UI for better responsiveness
       const userMessage = { role: 'user', content: promptText };
       
-      // Force update to immediately show the message
-      if (isMobile) {
-        // Clear input right away for mobile
-        setInputValue('');
-      }
+      // Clear input right away for both mobile and desktop
+      setInputValue('');
       
       // Then send message through context
       sendMessage(promptText)
         .then(() => {
           console.log('Message sent successfully');
-          
           // For mobile view, make sure we scroll to the messages area
           if (isMobile && messagesEndRef.current) {
             setTimeout(() => {
@@ -1506,19 +1508,20 @@ const AIAssistant: React.FC = () => {
                                   
                                   {/* Add Retry button for error messages */}
                                   {msg.role === 'assistant' && 
-                                    (msg.content.toLowerCase().includes('error') || 
-                                     msg.content.toLowerCase().includes('apologize') ||
-                                     msg.content.toLowerCase().includes('sorry') ||
-                                     msg.content.toLowerCase().includes('couldn\'t process') ||
-                                     msg.content.toLowerCase().includes('issue') ||
-                                     msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                    index === messages.length - 1 &&
+                                    (lastResponseStatus === 'error' || lastResponseStatus === 'failed') && 
                                     lastPrompt && (
                                     <Box sx={{ mt: 1, textAlign: 'right' }}>
                                       <Button
                                         size="small"
                                         variant="outlined"
                                         color="primary"
-                                        onClick={handleRetry}
+                                        onClick={async () => {
+                                          // Retry logic: resend the last prompt and poll for run status
+                                          if (!lastPrompt) return;
+                                          // Use the same sendMessage logic as before
+                                          await sendMessage(lastPrompt);
+                                        }}
                                         startIcon={<ReplayIcon fontSize="small" />}
                                         sx={{ 
                                           fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
@@ -2104,19 +2107,20 @@ const AIAssistant: React.FC = () => {
                                   
                                   {/* Add Retry button for error messages */}
                                   {msg.role === 'assistant' && 
-                                    (msg.content.toLowerCase().includes('error') || 
-                                     msg.content.toLowerCase().includes('apologize') ||
-                                     msg.content.toLowerCase().includes('sorry') ||
-                                     msg.content.toLowerCase().includes('couldn\'t process') ||
-                                     msg.content.toLowerCase().includes('issue') ||
-                                     msg.content.toLowerCase().includes('couldn\'t retrieve')) && 
+                                    index === messages.length - 1 &&
+                                    (lastResponseStatus === 'error' || lastResponseStatus === 'failed') && 
                                     lastPrompt && (
                                     <Box sx={{ mt: 1, textAlign: 'right' }}>
                                       <Button
                                         size="small"
                                         variant="outlined"
                                         color="primary"
-                                        onClick={handleRetry}
+                                        onClick={async () => {
+                                          // Retry logic: resend the last prompt and poll for run status
+                                          if (!lastPrompt) return;
+                                          // Use the same sendMessage logic as before
+                                          await sendMessage(lastPrompt);
+                                        }}
                                         startIcon={<ReplayIcon fontSize="small" />}
                                         sx={{ 
                                           fontSize: isVerySmallMobile ? '0.6rem' : (isSmallMobile ? '0.65rem' : '0.75rem'),
