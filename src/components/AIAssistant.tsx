@@ -1019,17 +1019,13 @@ const AIAssistant: React.FC = () => {
       // Add user message immediately to the UI for better responsiveness
       const userMessage = { role: 'user', content: promptText };
       
-      // Force update to immediately show the message
-      if (isMobile) {
-        // Clear input right away for mobile
-        setInputValue('');
-      }
+      // Clear input right away for both mobile and desktop
+      setInputValue('');
       
       // Then send message through context
       sendMessage(promptText)
         .then(() => {
           console.log('Message sent successfully');
-          
           // For mobile view, make sure we scroll to the messages area
           if (isMobile && messagesEndRef.current) {
             setTimeout(() => {

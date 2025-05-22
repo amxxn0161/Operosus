@@ -781,6 +781,7 @@ const AIAssistantPage: React.FC = () => {
                           // Submit after a small delay to allow UI update
                           setTimeout(() => {
                             sendMessage(prompt.text);
+                            setInput(''); // Clear the input field after sending
                           }, 100);
                         }}
                         sx={{
