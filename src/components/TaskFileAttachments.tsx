@@ -173,7 +173,7 @@ const TaskFileAttachments: React.FC<TaskFileAttachmentsProps> = ({
             <Chip
               label={attachments.length}
               size="small"
-              sx={{ ml: 1 }}
+              sx={{ ml: 2 }}
               color="primary"
               variant="outlined"
             />

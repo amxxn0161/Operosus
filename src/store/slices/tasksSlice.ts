@@ -16,7 +16,7 @@ import {
   fetchStarredTasks,
   reorderGoogleTask
 } from '../../services/googleTasksService';
-import { TaskFileAttachment } from '../../types/commonTypes';
+import { TaskFileAttachment, TaskUrlAttachment } from '../../types/commonTypes';
 
 // Define the enhanced types for the Redux store
 export interface EnhancedGoogleTask extends GoogleTask {
@@ -27,6 +27,7 @@ export interface EnhancedGoogleTask extends GoogleTask {
   gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
   has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
   attachments?: TaskFileAttachment[]; // Google Drive file attachments
+  urlAttachments?: TaskUrlAttachment[]; // URL attachments
 }
 
 export interface EnhancedGoogleTaskList extends Omit<GoogleTaskList, 'tasks'> {

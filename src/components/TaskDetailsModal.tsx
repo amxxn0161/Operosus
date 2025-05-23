@@ -20,9 +20,9 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EmailIcon from '@mui/icons-material/Email';
 import { format, isValid, parseISO } from 'date-fns';
 import { EnhancedGoogleTask } from '../contexts/GoogleTasksContext';
-import { TaskFileAttachment } from '../types/commonTypes';
+import { TaskFileAttachment, TaskAllAttachments } from '../types/commonTypes';
 import { getTaskAttachments } from '../services/googleDriveService';
-import TaskFileAttachments from './TaskFileAttachments';
+import TaskAttachments from './TaskAttachments';
 
 // Make sure the task type includes the has_explicit_time property
 interface TaskWithTime extends EnhancedGoogleTask {
@@ -159,15 +159,15 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   };
 
   // Handle file attachments update
-  const handleAttachmentsChange = (updatedAttachments: TaskFileAttachment[]) => {
-    console.log('TaskDetailsModal: attachments changed:', updatedAttachments);
+  const handleAttachmentsChange = (allAttachments: TaskAllAttachments) => {
+    console.log('TaskDetailsModal: attachments changed:', allAttachments);
     
-    // Update local state
-    setAttachments(updatedAttachments);
+    // Update local state with file attachments (for backward compatibility)
+    setAttachments(allAttachments.fileAttachments);
     
     // Also update the parent task if callback is provided
     if (onTaskUpdate) {
-      const updatedTask = { ...task, attachments: updatedAttachments };
+      const updatedTask = { ...task, attachments: allAttachments.fileAttachments };
       onTaskUpdate(updatedTask);
     }
   };
@@ -313,14 +313,13 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </Box>
         )}
         
-        {/* File Attachments Section */}
+        {/* Unified Attachments Section */}
         <Box sx={{ mb: 2 }}>
-          <TaskFileAttachments
+          <TaskAttachments
             taskId={task.id}
             taskListId={taskListId}
-            attachments={attachments}
+            initialFileAttachments={attachments}
             onAttachmentsChange={handleAttachmentsChange}
-            disabled={loadingAttachments}
           />
         </Box>
         

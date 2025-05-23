@@ -45,6 +45,34 @@ export interface TaskFileAttachment {
   taskListId: string;
 }
 
+// URL attachment for tasks
+export interface TaskUrlAttachment {
+  id: string;
+  url: string;
+  title?: string;
+  description?: string;
+  faviconUrl?: string;
+  domain?: string;
+  attachedAt: string;
+  taskId: string;
+  taskListId: string;
+  // Rich preview metadata
+  previewImage?: string;
+  displaySiteName?: string;
+  previewTitle?: string;
+  previewDescription?: string;
+  bestIcon?: string;
+  isMetadataStale?: boolean;
+  lastMetadataRefresh?: string;
+}
+
+// All attachments combined
+export interface TaskAllAttachments {
+  fileAttachments: TaskFileAttachment[];
+  urlAttachments: TaskUrlAttachment[];
+  totalAttachments: number;
+}
+
 // Journal-related types
 export interface JournalEntry {
   id: number;

@@ -1,5 +1,5 @@
 import { apiRequest } from './apiUtils';
-import { TaskFileAttachment } from '../types/commonTypes';
+import { TaskFileAttachment, TaskUrlAttachment } from '../types/commonTypes';
 
 // Define the Task interface based on the API response
 export interface GoogleTask {
@@ -22,6 +22,7 @@ export interface GoogleTask {
   gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
   has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
   attachments?: TaskFileAttachment[]; // Google Drive file attachments
+  urlAttachments?: TaskUrlAttachment[]; // URL attachments
 }
 
 // Define the TaskList interface
