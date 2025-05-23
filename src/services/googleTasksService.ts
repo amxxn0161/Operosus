@@ -1,4 +1,5 @@
 import { apiRequest } from './apiUtils';
+import { TaskFileAttachment } from '../types/commonTypes';
 
 // Define the Task interface based on the API response
 export interface GoogleTask {
@@ -20,6 +21,7 @@ export interface GoogleTask {
   estimated_minutes?: number; // Add this property for time estimation
   gmail_attachment?: any; // Contains link details including URL, message ID, subject, etc.
   has_gmail_attachment?: boolean; // Boolean flag indicating if a Gmail link was detected
+  attachments?: TaskFileAttachment[]; // Google Drive file attachments
 }
 
 // Define the TaskList interface

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -20,6 +20,9 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EmailIcon from '@mui/icons-material/Email';
 import { format, isValid, parseISO } from 'date-fns';
 import { EnhancedGoogleTask } from '../contexts/GoogleTasksContext';
+import { TaskFileAttachment } from '../types/commonTypes';
+import { getTaskAttachments } from '../services/googleDriveService';
+import TaskFileAttachments from './TaskFileAttachments';
 
 // Make sure the task type includes the has_explicit_time property
 interface TaskWithTime extends EnhancedGoogleTask {
@@ -36,6 +39,7 @@ interface TaskDetailsModalProps {
   task: TaskWithTime | null;
   taskListId: string;
   taskListTitle?: string;
+  onTaskUpdate?: (updatedTask: TaskWithTime) => void;
 }
 
 const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
@@ -45,8 +49,58 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   onDelete,
   task,
   taskListId,
-  taskListTitle
+  taskListTitle,
+  onTaskUpdate
 }) => {
+  const [attachments, setAttachments] = useState<TaskFileAttachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+
+  // Fetch attachments when modal opens or task changes
+  useEffect(() => {
+    if (open && task && taskListId) {
+      fetchAttachments();
+    }
+  }, [open, task?.id, taskListId]);
+
+  // Also initialize with task attachments if they exist
+  useEffect(() => {
+    if (task?.attachments) {
+      setAttachments(task.attachments);
+    }
+  }, [task?.attachments]);
+
+  const fetchAttachments = async () => {
+    if (!task || !taskListId) return;
+    
+    try {
+      setLoadingAttachments(true);
+      console.log('Fetching attachments for task:', task.id);
+      
+      try {
+        // Try to fetch from the API first
+        const fetchedAttachments = await getTaskAttachments(taskListId, task.id);
+        console.log('Fetched attachments from API:', fetchedAttachments);
+        setAttachments(fetchedAttachments);
+      } catch (apiError) {
+        console.log('API call failed, falling back to task attachments or notes parsing:', apiError);
+        
+        // Fallback to task attachments if they exist
+        if (task.attachments && task.attachments.length > 0) {
+          console.log('Using task.attachments:', task.attachments);
+          setAttachments(task.attachments);
+        } else {
+          console.log('No attachments found, setting empty array');
+          setAttachments([]);
+        }
+      }
+    } catch (error) {
+      console.error('Error in fetchAttachments:', error);
+      setAttachments(task?.attachments || []);
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
+
   if (!task) return null;
   
   // Format date display
@@ -102,6 +156,20 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     
     // Remove all "Due Time: XX:XX" entries
     return notes.replace(/Due Time: \d{1,2}:\d{2}(?:\s?[AP]M)?(\r?\n|\r)?/g, '').trim();
+  };
+
+  // Handle file attachments update
+  const handleAttachmentsChange = (updatedAttachments: TaskFileAttachment[]) => {
+    console.log('TaskDetailsModal: attachments changed:', updatedAttachments);
+    
+    // Update local state
+    setAttachments(updatedAttachments);
+    
+    // Also update the parent task if callback is provided
+    if (onTaskUpdate) {
+      const updatedTask = { ...task, attachments: updatedAttachments };
+      onTaskUpdate(updatedTask);
+    }
   };
   
   const formattedDate = formatDate(task.due);
@@ -244,6 +312,17 @@ const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             </Paper>
           </Box>
         )}
+        
+        {/* File Attachments Section */}
+        <Box sx={{ mb: 2 }}>
+          <TaskFileAttachments
+            taskId={task.id}
+            taskListId={taskListId}
+            attachments={attachments}
+            onAttachmentsChange={handleAttachmentsChange}
+            disabled={loadingAttachments}
+          />
+        </Box>
         
         <Box sx={{ mt: 3, display: 'flex', alignItems: 'center' }}>
           <Typography 

@@ -71,7 +71,8 @@ import {
   ChevronRight as ChevronRightIcon,
   AddCircleOutline as AddCircleOutlineIcon,
   MenuOpen as MenuOpenIcon,
-  Email as EmailIcon
+  Email as EmailIcon,
+  AttachFile as AttachFileIcon
 } from '@mui/icons-material';
 import { useGoogleTasks, TaskListFilterOption, EnhancedGoogleTask, EnhancedGoogleTaskList } from '../contexts/GoogleTasksContext';
 import { format, isValid, parseISO, addDays } from 'date-fns';
@@ -79,6 +80,11 @@ import { ENDPOINTS } from '../services/apiConfig';
 import { checkAuthState } from '../services/authService';
 import { sanitizeTaskId } from '../services/googleTasksService';
 import TaskDetailsModal from '../components/TaskDetailsModal';
+import TaskDurationDialog from '../components/TaskDurationDialog';
+import TaskDurationWarning from '../components/TaskDurationWarning';
+import { GoogleDriveFile, TaskFileAttachment } from '../types/commonTypes';
+import { attachFileToTask } from '../services/googleDriveService';
+import DriveFileSelector from '../components/DriveFileSelector';
 // Add these imports if they don't already exist at the top
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
@@ -90,7 +96,6 @@ import { invalidateCache, optimisticUpdateLists } from '../store/slices/tasksSli
 
 // Import the proper AIAssistant component and context
 import { useAIAssistant } from '../contexts/AIAssistantContext';
-import TaskDurationWarning from '../components/TaskDurationWarning';
 
 // At the top of the file with other style definitions
 const scrollbarStyles = {
@@ -123,22 +128,22 @@ const GoogleTasks: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const dispatch = useAppDispatch();
   
-  const {
-    taskLists,
+  const { 
+    taskLists, 
     starredTasks,
-    loading,
-    error,
-    refreshTaskLists,
-    createTask,
-    updateTask,
-    deleteTask,
+    loading, 
+    error, 
+    refreshTaskLists, 
+    createTask, 
+    updateTask, 
+    deleteTask, 
     moveTask,
-    createTaskList,
-    updateTaskList,
+    toggleTaskComplete, 
+    toggleTaskStar, 
+    createTaskList, 
+    updateTaskList, 
     deleteTaskList,
     clearCompleted,
-    toggleTaskStar,
-    toggleTaskComplete,
     recordDuration,
     filterTaskList,
     toggleTaskListVisibility,
@@ -215,6 +220,11 @@ const GoogleTasks: React.FC = () => {
   // Task details modal state
   const [taskDetailsModalOpen, setTaskDetailsModalOpen] = useState<boolean>(false);
   const [detailsTask, setDetailsTask] = useState<{taskListId: string; task: EnhancedGoogleTask; taskListTitle?: string} | null>(null);
+  
+  // File attachment state
+  const [fileSelectorOpen, setFileSelectorOpen] = useState<boolean>(false);
+  const [taskForFileAttachment, setTaskForFileAttachment] = useState<{taskListId: string; task: EnhancedGoogleTask} | null>(null);
+  const [attachingFile, setAttachingFile] = useState<boolean>(false);
   
   // Click timer for handling single click vs double click
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1724,6 +1734,20 @@ const GoogleTasks: React.FC = () => {
     }
   };
 
+  // Handle task update from details modal (for file attachments)
+  const handleTaskUpdateFromDetails = (updatedTask: EnhancedGoogleTask) => {
+    if (!detailsTask) return;
+    
+    // Update the task in the local state
+    setDetailsTask({
+      ...detailsTask,
+      task: updatedTask
+    });
+    
+    // Optionally refresh the task lists to ensure consistency
+    // refreshTaskLists();
+  };
+
   // Handle task item click with single/double click detection
   const handleTaskItemClick = (taskListId: string, task: EnhancedGoogleTask, taskListTitle?: string, event?: React.MouseEvent) => {
     // If the click originated from a checkbox or its child elements, do nothing
@@ -2476,6 +2500,53 @@ const GoogleTasks: React.FC = () => {
   // Helper function to extract starred tasks from task lists
   const extractStarredTasks = (lists: EnhancedGoogleTaskList[]): EnhancedGoogleTask[] => {
     return lists.flatMap(list => list.tasks.filter(task => task.starred || task.is_starred));
+  };
+
+  // Handle attaching file from task menu
+  const handleAttachFileFromMenu = () => {
+    if (selectedTask) {
+      setTaskForFileAttachment(selectedTask);
+      setFileSelectorOpen(true);
+      handleTaskMenuClose();
+    }
+  };
+
+  // Handle file selection from the selector
+  const handleFileSelectFromMenu = async (file: GoogleDriveFile) => {
+    if (!taskForFileAttachment) return;
+    
+    try {
+      setAttachingFile(true);
+      console.log('Attaching file from menu:', file, 'to task:', taskForFileAttachment.task.title);
+      
+      const attachment = await attachFileToTask(
+        taskForFileAttachment.taskListId, 
+        taskForFileAttachment.task.id, 
+        file.id
+      );
+      
+      if (attachment) {
+        showSnackbar('File attached successfully', 'success');
+        // Optionally refresh the task lists to get updated data
+        refreshTaskLists();
+      } else {
+        showSnackbar('Failed to attach file', 'error');
+      }
+    } catch (error) {
+      console.error('Error attaching file:', error);
+      showSnackbar('Error attaching file', 'error');
+    } finally {
+      setAttachingFile(false);
+      setFileSelectorOpen(false);
+      setTaskForFileAttachment(null);
+    }
+  };
+
+  // Handle closing file selector
+  const handleFileSelectorClose = () => {
+    setFileSelectorOpen(false);
+    setTaskForFileAttachment(null);
+    setAttachingFile(false);
   };
 
   return (
@@ -3805,6 +3876,26 @@ const GoogleTasks: React.FC = () => {
             }} 
           />
         </MenuItem>
+        <MenuItem 
+          onClick={handleAttachFileFromMenu}
+          sx={{ 
+            py: 1.5,
+            px: 2
+          }}
+        >
+          <ListItemIcon>
+            <AttachFileIcon 
+              fontSize="small" 
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Attach file" 
+            primaryTypographyProps={{ 
+              fontFamily: 'Poppins', 
+              fontWeight: 'medium' 
+            }} 
+          />
+        </MenuItem>
       </Menu>
 
       {/* Filter Menu */}
@@ -4781,6 +4872,7 @@ const GoogleTasks: React.FC = () => {
         task={detailsTask?.task || null}
         taskListId={detailsTask?.taskListId || ''}
         taskListTitle={detailsTask?.taskListTitle}
+        onTaskUpdate={handleTaskUpdateFromDetails}
       />
 
       {/* Task Breakdown Dialog */}
@@ -5345,6 +5437,14 @@ const GoogleTasks: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* File Selector */}
+      <DriveFileSelector 
+        open={fileSelectorOpen}
+        onClose={handleFileSelectorClose}
+        onFileSelect={handleFileSelectFromMenu}
+        loading={attachingFile}
+      />
     </Container>
   );
 };

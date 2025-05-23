@@ -9,6 +9,42 @@ export interface Task {
   deadline?: string;
 }
 
+// Google Drive file types
+export interface GoogleDriveFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  webViewLink: string;
+  webContentLink?: string;
+  iconLink?: string;
+  size?: string;
+  createdTime: string;
+  modifiedTime: string;
+  owners?: Array<{
+    displayName: string;
+    emailAddress: string;
+  }>;
+  permissions?: Array<{
+    id: string;
+    type: string;
+    role: string;
+  }>;
+}
+
+// File attachment for tasks
+export interface TaskFileAttachment {
+  id: string;
+  fileId: string;
+  fileName: string;
+  mimeType?: string;
+  webViewLink: string;
+  iconLink?: string;
+  size?: string;
+  attachedAt: string;
+  taskId: string;
+  taskListId: string;
+}
+
 // Journal-related types
 export interface JournalEntry {
   id: number;
@@ -88,6 +124,7 @@ export interface GoogleTask {
   completed?: string;
   deleted?: boolean;
   hidden?: boolean;
+  attachments?: TaskFileAttachment[];
 }
 
 export interface GoogleTaskList {
