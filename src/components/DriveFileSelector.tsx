@@ -16,26 +16,42 @@ import {
   IconButton,
   TextField,
   InputAdornment,
-  Chip
+  Chip,
+  Divider,
+  Alert
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DescriptionIcon from '@mui/icons-material/Description';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import SlideshowIcon from '@mui/icons-material/Slideshow';
+import FolderIcon from '@mui/icons-material/Folder';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ImageIcon from '@mui/icons-material/Image';
+import VideoFileIcon from '@mui/icons-material/VideoFile';
+import AudioFileIcon from '@mui/icons-material/AudioFile';
+import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import { GoogleDriveFile } from '../types/commonTypes';
-import { fetchGoogleDriveFiles, getFileTypeIcon, formatFileSize } from '../services/googleDriveService';
+import { fetchGoogleDriveFiles, getFileTypeIconName, formatFileSize } from '../services/googleDriveService';
+import DriveFileCreator from './DriveFileCreator';
 
 interface DriveFileSelectorProps {
   open: boolean;
   onClose: () => void;
   onFileSelect: (file: GoogleDriveFile) => void;
   loading?: boolean;
+  taskListId?: string;
+  taskId?: string;
 }
 
 const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
   open,
   onClose,
   onFileSelect,
-  loading: externalLoading = false
+  loading: externalLoading = false,
+  taskListId,
+  taskId
 }) => {
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<GoogleDriveFile[]>([]);
@@ -43,6 +59,8 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMimeTypes, setSelectedMimeTypes] = useState<string[]>([]);
+  const [creationSuccess, setCreationSuccess] = useState<string | null>(null);
+  const [creationError, setCreationError] = useState<string | null>(null);
 
   // Common file type filters
   const fileTypeFilters = [
@@ -57,6 +75,9 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
   useEffect(() => {
     if (open) {
       loadFiles();
+      // Clear any previous messages
+      setCreationSuccess(null);
+      setCreationError(null);
     }
   }, [open]);
 
@@ -106,6 +127,26 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
     onClose();
   };
 
+  const handleFileCreated = (file: GoogleDriveFile) => {
+    setCreationSuccess(`${file.name} created successfully!`);
+    setCreationError(null);
+    
+    // Add the new file to the top of the list
+    setFiles(prevFiles => [file, ...prevFiles]);
+    
+    // If auto-attach is enabled, select the file and close
+    if (taskId) {
+      setTimeout(() => {
+        handleFileSelect(file);
+      }, 1000); // Give user a moment to see the success message
+    }
+  };
+
+  const handleCreationError = (error: string) => {
+    setCreationError(error);
+    setCreationSuccess(null);
+  };
+
   const toggleMimeTypeFilter = (mimeType: string) => {
     setSelectedMimeTypes(prev =>
       prev.includes(mimeType)
@@ -119,6 +160,41 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
     setSelectedMimeTypes([]);
   };
 
+  // Function to render Material-UI icon based on mime type
+  const renderFileTypeIcon = (mimeType?: string) => {
+    const iconName = getFileTypeIconName(mimeType);
+    const iconProps = { 
+      sx: { 
+        color: mimeType?.includes('document') ? '#4285f4' : 
+               mimeType?.includes('spreadsheet') ? '#0f9d58' :
+               mimeType?.includes('presentation') ? '#ff6d01' : 'text.secondary'
+      }
+    };
+
+    switch (iconName) {
+      case 'Description':
+        return <DescriptionIcon {...iconProps} />;
+      case 'TableChart':
+        return <TableChartIcon {...iconProps} />;
+      case 'Slideshow':
+        return <SlideshowIcon {...iconProps} />;
+      case 'Folder':
+        return <FolderIcon {...iconProps} />;
+      case 'PictureAsPdf':
+        return <PictureAsPdfIcon {...iconProps} />;
+      case 'Image':
+        return <ImageIcon {...iconProps} />;
+      case 'VideoFile':
+        return <VideoFileIcon {...iconProps} />;
+      case 'AudioFile':
+        return <AudioFileIcon {...iconProps} />;
+      case 'TextSnippet':
+        return <TextSnippetIcon {...iconProps} />;
+      default:
+        return <AttachFileIcon {...iconProps} />;
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -128,7 +204,7 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
       aria-labelledby="drive-file-selector-title"
     >
       <DialogTitle id="drive-file-selector-title" sx={{ pr: 6 }}>
-        Select Google Drive File
+        Select or Create Google Drive File
         <IconButton
           aria-label="close"
           onClick={onClose}
@@ -144,6 +220,32 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
       </DialogTitle>
 
       <DialogContent dividers>
+        {/* Success/Error Messages */}
+        {creationSuccess && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {creationSuccess}
+          </Alert>
+        )}
+        {creationError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {creationError}
+          </Alert>
+        )}
+
+        {/* File Creator Section */}
+        <DriveFileCreator
+          taskListId={taskListId}
+          taskId={taskId}
+          onFileCreated={handleFileCreated}
+          onError={handleCreationError}
+        />
+
+        <Divider sx={{ my: 3 }}>
+          <Typography variant="body2" color="text.secondary">
+            OR SELECT EXISTING FILE
+          </Typography>
+        </Divider>
+
         {/* Search and Filters */}
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -227,9 +329,7 @@ const DriveFileSelector: React.FC<DriveFileSelectorProps> = ({
                       disabled={externalLoading}
                     >
                       <ListItemIcon>
-                        <Typography fontSize="1.5em">
-                          {getFileTypeIcon(file.mimeType)}
-                        </Typography>
+                        {renderFileTypeIcon(file.mimeType)}
                       </ListItemIcon>
                       <ListItemText
                         primary={file.name || 'Unnamed file'}

@@ -5444,6 +5444,8 @@ const GoogleTasks: React.FC = () => {
         onClose={handleFileSelectorClose}
         onFileSelect={handleFileSelectFromMenu}
         loading={attachingFile}
+        taskListId={taskForFileAttachment?.taskListId}
+        taskId={taskForFileAttachment?.task.id}
       />
     </Container>
   );

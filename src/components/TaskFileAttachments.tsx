@@ -19,8 +19,17 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DescriptionIcon from '@mui/icons-material/Description';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import SlideshowIcon from '@mui/icons-material/Slideshow';
+import FolderIcon from '@mui/icons-material/Folder';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ImageIcon from '@mui/icons-material/Image';
+import VideoFileIcon from '@mui/icons-material/VideoFile';
+import AudioFileIcon from '@mui/icons-material/AudioFile';
+import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import { TaskFileAttachment, GoogleDriveFile } from '../types/commonTypes';
-import { getFileTypeIcon, formatFileSize, attachFileToTask, removeFileFromTask } from '../services/googleDriveService';
+import { getFileTypeIconName, formatFileSize, attachFileToTask, removeFileFromTask } from '../services/googleDriveService';
 import DriveFileSelector from './DriveFileSelector';
 
 interface TaskFileAttachmentsProps {
@@ -116,6 +125,41 @@ const TaskFileAttachments: React.FC<TaskFileAttachmentsProps> = ({
     }
   };
 
+  // Function to render Material-UI icon based on mime type
+  const renderFileTypeIcon = (mimeType?: string) => {
+    const iconName = getFileTypeIconName(mimeType);
+    const iconProps = { 
+      sx: { 
+        color: mimeType?.includes('document') ? '#4285f4' : 
+               mimeType?.includes('spreadsheet') ? '#0f9d58' :
+               mimeType?.includes('presentation') ? '#ff6d01' : 'text.secondary'
+      }
+    };
+
+    switch (iconName) {
+      case 'Description':
+        return <DescriptionIcon {...iconProps} />;
+      case 'TableChart':
+        return <TableChartIcon {...iconProps} />;
+      case 'Slideshow':
+        return <SlideshowIcon {...iconProps} />;
+      case 'Folder':
+        return <FolderIcon {...iconProps} />;
+      case 'PictureAsPdf':
+        return <PictureAsPdfIcon {...iconProps} />;
+      case 'Image':
+        return <ImageIcon {...iconProps} />;
+      case 'VideoFile':
+        return <VideoFileIcon {...iconProps} />;
+      case 'AudioFile':
+        return <AudioFileIcon {...iconProps} />;
+      case 'TextSnippet':
+        return <TextSnippetIcon {...iconProps} />;
+      default:
+        return <AttachFileIcon {...iconProps} />;
+    }
+  };
+
   return (
     <Box>
       {/* Header */}
@@ -182,9 +226,7 @@ const TaskFileAttachments: React.FC<TaskFileAttachmentsProps> = ({
               onClick={() => handleOpenFile(attachment)}
             >
               <ListItemIcon>
-                <Typography fontSize="1.5em">
-                  {getFileTypeIcon(attachment.mimeType)}
-                </Typography>
+                {renderFileTypeIcon(attachment.mimeType)}
               </ListItemIcon>
               
               <ListItemText
@@ -239,6 +281,8 @@ const TaskFileAttachments: React.FC<TaskFileAttachmentsProps> = ({
         onClose={() => setFileSelectorOpen(false)}
         onFileSelect={handleFileSelect}
         loading={loading}
+        taskListId={taskListId}
+        taskId={taskId}
       />
 
       {/* Snackbar for notifications */}

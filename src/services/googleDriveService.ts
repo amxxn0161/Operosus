@@ -197,11 +197,11 @@ export const getFileTypeIcon = (mimeType?: string): string => {
   }
 
   const iconMap: { [key: string]: string } = {
-    'application/vnd.google-apps.document': '📄',
-    'application/vnd.google-apps.spreadsheet': '📊',
-    'application/vnd.google-apps.presentation': '📽️',
+    'application/vnd.google-apps.document': '📘',
+    'application/vnd.google-apps.spreadsheet': '📗',
+    'application/vnd.google-apps.presentation': '📙',
     'application/vnd.google-apps.folder': '📁',
-    'application/pdf': '📕',
+    'application/pdf': '📄',
     'image/': '🖼️',
     'video/': '🎥',
     'audio/': '🎵',
@@ -243,4 +243,116 @@ export const formatFileSize = (bytes?: string): string => {
   }
   
   return `${Math.round(fileSize * 10) / 10} ${units[unitIndex]}`;
+};
+
+// Create a new Google Drive file
+export const createGoogleDriveFile = async (
+  name: string,
+  type: 'document' | 'spreadsheet' | 'presentation',
+  taskListId?: string,
+  taskId?: string,
+  autoAttach: boolean = false
+): Promise<GoogleDriveFile | null> => {
+  try {
+    const response = await apiRequest<{
+      status: string;
+      data?: { file: any; attachment?: any };
+    }>('/api/google/drive/create', {
+      method: 'POST',
+      body: {
+        name,
+        type,
+        task_list_id: taskListId,
+        task_id: taskId,
+        auto_attach: autoAttach
+      }
+    });
+
+    if (response.status === 'success' && response.data?.file) {
+      // Transform the response to match our GoogleDriveFile interface
+      const file = response.data.file;
+      return {
+        id: file.id,
+        name: file.name,
+        mimeType: file.mime_type || file.mimeType,
+        webViewLink: file.web_view_link || file.webViewLink,
+        iconLink: file.icon_link || file.iconLink,
+        size: file.size,
+        createdTime: file.created_time || file.createdTime,
+        modifiedTime: file.modified_time || file.modifiedTime,
+        owners: file.owners,
+        permissions: file.permissions
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error creating Google Drive file:', error);
+    throw error;
+  }
+};
+
+// Create a new Google Doc
+export const createGoogleDoc = async (
+  name: string,
+  taskListId?: string,
+  taskId?: string,
+  autoAttach: boolean = false
+): Promise<GoogleDriveFile | null> => {
+  return createGoogleDriveFile(name, 'document', taskListId, taskId, autoAttach);
+};
+
+// Create a new Google Sheet
+export const createGoogleSheet = async (
+  name: string,
+  taskListId?: string,
+  taskId?: string,
+  autoAttach: boolean = false
+): Promise<GoogleDriveFile | null> => {
+  return createGoogleDriveFile(name, 'spreadsheet', taskListId, taskId, autoAttach);
+};
+
+// Create a new Google Slide
+export const createGoogleSlide = async (
+  name: string,
+  taskListId?: string,
+  taskId?: string,
+  autoAttach: boolean = false
+): Promise<GoogleDriveFile | null> => {
+  return createGoogleDriveFile(name, 'presentation', taskListId, taskId, autoAttach);
+};
+
+// Helper function to get Material-UI icon component name for file types
+export const getFileTypeIconName = (mimeType?: string): string => {
+  // Handle null, undefined, or empty mimeType
+  if (!mimeType) {
+    return 'AttachFile'; // Default icon for unknown/undefined mime types
+  }
+
+  const iconMap: { [key: string]: string } = {
+    'application/vnd.google-apps.document': 'Description',
+    'application/vnd.google-apps.spreadsheet': 'TableChart', 
+    'application/vnd.google-apps.presentation': 'Slideshow',
+    'application/vnd.google-apps.folder': 'Folder',
+    'application/pdf': 'PictureAsPdf',
+    'image/': 'Image',
+    'video/': 'VideoFile',
+    'audio/': 'AudioFile',
+    'text/': 'TextSnippet',
+  };
+  
+  // Check for exact match first
+  if (iconMap[mimeType]) {
+    return iconMap[mimeType];
+  }
+  
+  // Check for partial matches (like image/*, video/*, etc.)
+  for (const [pattern, iconName] of Object.entries(iconMap)) {
+    if (mimeType.startsWith(pattern)) {
+      return iconName;
+    }
+  }
+  
+  // Default icon
+  return 'AttachFile';
 }; 
