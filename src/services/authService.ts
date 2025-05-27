@@ -41,15 +41,12 @@ const safelyStoreToken = (token: string) => {
     // Try localStorage first
     localStorage.setItem('authToken', token);
     localStorage.setItem('isAuthenticated', 'true');
-    // Store the timestamp when we received this token
-    localStorage.setItem('tokenTimestamp', Date.now().toString());
-    console.log('Successfully stored auth token in localStorage with timestamp');
+    console.log('Successfully stored auth token in localStorage');
   } catch (e) {
     // Fall back to cookies if localStorage fails
     console.warn('localStorage failed, falling back to cookies:', e);
     setCookie('authToken', token, 7); // Store for 7 days
     setCookie('isAuthenticated', 'true', 7);
-    setCookie('tokenTimestamp', Date.now().toString(), 7);
   }
 };
 
@@ -207,6 +204,7 @@ export const logout = (): void => {
   try {
     localStorage.removeItem('authToken');
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('tokenTimestamp'); // Also remove the token timestamp
   } catch (e) {
     console.warn('Error removing items from localStorage:', e);
   }
@@ -214,6 +212,7 @@ export const logout = (): void => {
   // Also clear cookies
   deleteCookie('authToken');
   deleteCookie('isAuthenticated');
+  deleteCookie('tokenTimestamp'); // Also clear the timestamp cookie
   
   window.location.href = '/';
 };
@@ -280,111 +279,4 @@ export const fetchProfileData = async (token: string): Promise<any> => {
     console.error('Error fetching profile data:', error);
     return null;
   }
-};
-
-// Function to refresh Google token
-export const refreshGoogleToken = async (): Promise<{ success: boolean; message: string }> => {
-  console.log('Attempting to refresh Google authentication token');
-  try {
-    // Get the current token from storage
-    const { token } = safelyRetrieveToken();
-    
-    if (!token) {
-      console.error('No token available to refresh');
-      return { success: false, message: 'No token available to refresh' };
-    }
-    
-    // Use the dedicated endpoint for token refresh - using relative path with proxy
-    const refreshUrl = `/api/auth/google/refresh`;
-    
-    // Make the refresh request - using POST instead of GET
-    const response = await fetch(refreshUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}), // Add an empty JSON body
-      credentials: 'include',
-      mode: 'cors'
-    });
-    
-    if (!response.ok) {
-      console.error(`Token refresh failed: ${response.status} ${response.statusText}`);
-      
-      // If refresh failed with 401, token is completely expired, start a new authentication flow
-      if (response.status === 401) {
-        console.log('Starting new authentication flow due to token refresh failure');
-        startWebAuth();
-        return { success: false, message: 'Token refresh failed, starting new authentication' };
-      }
-      
-      return { success: false, message: `Token refresh failed with status: ${response.status}` };
-    }
-    
-    const data = await response.json();
-    
-    if (data.token) {
-      console.log('New token received, updating authentication state');
-      safelyStoreToken(data.token);
-      return { success: true, message: 'Token refreshed successfully' };
-    } else {
-      console.error('No token in refresh response:', data);
-      return { success: false, message: 'No token in refresh response' };
-    }
-  } catch (error) {
-    console.error('Error refreshing token:', error);
-    return { success: false, message: 'Error during token refresh' };
-  }
-};
-
-// Calculate if token is nearing expiration (proactive refresh)
-export const isTokenNearingExpiration = (): boolean => {
-  try {
-    // Get token
-    const { token } = safelyRetrieveToken();
-    if (!token) return false;
-    
-    // Check if we have a token creation time in localStorage
-    const tokenTimestamp = localStorage.getItem('tokenTimestamp');
-    if (!tokenTimestamp) {
-      // If we don't have a timestamp, store the current time and assume token is fresh
-      localStorage.setItem('tokenTimestamp', Date.now().toString());
-      return false;
-    }
-    
-    const creationTime = parseInt(tokenTimestamp);
-    const currentTime = Date.now();
-    const tokenAge = currentTime - creationTime;
-    
-    // If token is older than 45 minutes (Google tokens typically expire at 60 min)
-    // Refresh proactively to prevent expiration during user session
-    const isNearingExpiration = tokenAge > 45 * 60 * 1000; // 45 minutes in milliseconds
-    
-    if (isNearingExpiration) {
-      console.log('Token is nearing expiration, should refresh proactively');
-    }
-    
-    return isNearingExpiration;
-  } catch (error) {
-    console.error('Error checking token expiration:', error);
-    return false;
-  }
-};
-
-// Function to handle token expiration errors
-export const handleTokenExpirationError = async (
-  error: any
-): Promise<boolean> => {
-  // Check if error is specifically about token expiration or refresh
-  if (
-    error?.message?.includes('Failed to refresh token') ||
-    error?.data?.message?.includes('refresh token') ||
-    error?.status === 401
-  ) {
-    console.warn('Token appears to be expired, attempting refresh');
-    const { success } = await refreshGoogleToken();
-    return success;
-  }
-  return false;
 }; 

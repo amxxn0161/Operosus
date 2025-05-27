@@ -3,9 +3,7 @@ import {
   initWebAuth, 
   checkAuthState, 
   logout, 
-  fetchProfileData, 
-  refreshGoogleToken, 
-  isTokenNearingExpiration 
+  fetchProfileData
 } from '../services/authService';
 
 interface User {
@@ -22,7 +20,6 @@ interface AuthContextType {
   user: User | null;
   logout: () => void;
   refreshUserProfile: () => Promise<void>;
-  checkTokenValidity: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,7 +34,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
-  const [isRefreshingToken, setIsRefreshingToken] = useState<boolean>(false);
 
   // Function to fetch user profile from API
   const refreshUserProfile = async () => {
@@ -98,120 +94,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Function to check token validity and proactively refresh if needed
-  const checkTokenValidity = async (): Promise<boolean> => {
-    // Skip if we're already refreshing
-    if (isRefreshingToken) return false;
-    
-    try {
-      setIsRefreshingToken(true);
-      console.log('Checking token validity...');
-      
-      // If no token, nothing to refresh
-      if (!token) {
-        console.log('No token available to refresh');
-        setIsRefreshingToken(false);
-        return false;
-      }
-      
-      // Check if token is nearing expiration (proactive approach)
-      if (isTokenNearingExpiration()) {
-        console.log('Token is nearing expiration, refreshing proactively');
-        const { success, message } = await refreshGoogleToken();
-        
-        if (success) {
-          console.log('Token refreshed successfully (proactive refresh)');
-          // Update with new token
-          const { token: newToken, isAuthenticated: isAuth } = checkAuthState();
-          setToken(newToken);
-          setIsAuthenticated(isAuth);
-          setIsRefreshingToken(false);
-          return true;
-        } else {
-          console.error('Failed to refresh token proactively:', message);
-          // Continue with validity check even if proactive refresh failed
-        }
-      }
-      
-      // Try to make a simple API call to verify token validity
-      const response = await fetch(`${API_BASE_URL}/api/ping`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      // If success, token is still valid
-      if (response.ok) {
-        console.log('Token is still valid');
-        setIsRefreshingToken(false);
-        return true;
-      }
-      
-      // If 401, token is invalid - try to refresh
-      if (response.status === 401) {
-        console.log('Token has expired, attempting to refresh...');
-        const { success, message } = await refreshGoogleToken();
-        
-        if (success) {
-          console.log('Token refreshed successfully');
-          // Update with new token
-          const { token: newToken, isAuthenticated: isAuth } = checkAuthState();
-          setToken(newToken);
-          setIsAuthenticated(isAuth);
-          setIsRefreshingToken(false);
-          return true;
-        } else {
-          console.error('Failed to refresh token:', message);
-          setIsRefreshingToken(false);
-          return false;
-        }
-      }
-      
-      setIsRefreshingToken(false);
-      return false;
-    } catch (error) {
-      console.error('Error checking token validity:', error);
-      setIsRefreshingToken(false);
-      return false;
-    }
-  };
-
-  // Set up an interval for proactive token refreshing
-  useEffect(() => {
-    // Only set up the refresh interval if we have a valid token
-    if (!token || !isAuthenticated) return;
-    
-    console.log('Setting up proactive token refresh check interval');
-    // Check every 5 minutes if token needs refreshing
-    const refreshInterval = setInterval(() => {
-      // If token is nearing expiration, refresh it silently
-      if (isTokenNearingExpiration()) {
-        console.log('Proactive token refresh triggered by interval check');
-        refreshGoogleToken()
-          .then(({ success }) => {
-            if (success) {
-              console.log('Token refreshed successfully by interval check');
-              // Update token state with the new token
-              const { token: newToken } = checkAuthState();
-              setToken(newToken);
-            } else {
-              console.warn('Proactive token refresh failed during interval check');
-            }
-          })
-          .catch(error => {
-            console.error('Error during proactive token refresh:', error);
-          });
-      }
-    }, 5 * 60 * 1000); // Check every 5 minutes
-    
-    // Clean up the interval when component unmounts or token changes
-    return () => {
-      clearInterval(refreshInterval);
-    };
-  }, [token, isAuthenticated]);
-
   // Main initialization effect
   useEffect(() => {
     const initAuth = async () => {
@@ -256,7 +138,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             
           if (pageJustLoaded) {
             console.log('Page was just loaded/reloaded, checking token validity...');
-            await checkTokenValidity();
+            await refreshUserProfile();
           }
           
           // Get user info regardless
@@ -288,18 +170,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const handleVisibilityChange = async () => {
       // When page becomes visible again (user returns to tab)
       if (document.visibilityState === 'visible' && isAuthenticated && token) {
-        console.log('Page became visible, checking token validity...');
-        
-        // First check if token is nearing expiration
-        if (isTokenNearingExpiration()) {
-          console.log('Token is nearing expiration on tab focus, refreshing proactively');
-          await refreshGoogleToken();
-          // Update token state
-          const { token: newToken } = checkAuthState();
-          setToken(newToken);
-        } else {
-          await checkTokenValidity();
-        }
+        console.log('Page became visible, refreshing user profile...');
+        await refreshUserProfile();
       }
     };
     
@@ -327,8 +199,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isAuthenticated,
     user,
     logout: handleLogout,
-    refreshUserProfile,
-    checkTokenValidity
+    refreshUserProfile
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

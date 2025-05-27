@@ -2649,7 +2649,7 @@ const GoogleTasks: React.FC = () => {
             <CardHeader
               title={
                 <Typography variant="h6" sx={{ fontWeight: 'bold', fontFamily: 'Poppins', fontSize: '1rem' }}>
-                  Starred Tasks
+                  Priority Tasks
                 </Typography>
               }
               sx={{ 
