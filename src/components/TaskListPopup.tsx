@@ -143,7 +143,10 @@ const TaskListPopup: React.FC<TaskListPopupProps> = ({
                       sx={{ 
                         fontWeight: 'medium',
                         color: '#333',
-                        lineHeight: 1.4
+                        lineHeight: 1.4,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       {task.title}
@@ -174,6 +177,7 @@ const TaskListPopup: React.FC<TaskListPopupProps> = ({
                       )}
                     </Box>
                   }
+                  sx={{ pr: 4 }}
                 />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" size="small" onClick={(e) => onTaskClick(task, e)}>

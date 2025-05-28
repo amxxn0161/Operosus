@@ -1573,7 +1573,7 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                           size="small"
                           onClick={(e) => handleTaskMenuOpen(e, task)}
                           sx={{ 
-                            mr: -1,
+                            mr: 0.5, // Increased margin from edge for better spacing
                             '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' }
                           }}
                         >
@@ -1632,10 +1632,14 @@ const EventDetailsPopup: React.FC<EventDetailsPopupProps> = ({
                           : null
                         }
                         sx={{
+                          pr: 5, // Add right padding to prevent overlap with three dots menu
                           '& .MuiListItemText-primary': {
                             fontSize: '0.85rem',
                             textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                            color: task.status === 'completed' ? 'text.secondary' : 'text.primary'
+                            color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
                           },
                           '& .MuiListItemText-secondary': {
                             fontSize: '0.8rem'

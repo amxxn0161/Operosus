@@ -74,8 +74,14 @@ const CalendarTaskItem: React.FC<CalendarTaskItemProps> = ({
               : `${task.estimated_minutes}m`
           }` : undefined}
           sx={{
+            pr: 4,
             textDecoration: task.status === 'completed' ? 'line-through' : 'none',
             color: task.status === 'completed' ? 'text.secondary' : 'text.primary',
+            '& .MuiListItemText-primary': {
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }
           }}
         />
       </ListItem>

@@ -115,6 +115,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const userAvatar = localStorage.getItem('userAvatar') || '';
           const userRole = localStorage.getItem('userRole') || '';
           
+          console.log('Google UID (userId) after successful authentication:', userId);
+          console.log('Full user data:', {
+            id: userId,
+            name: userName,
+            email: userEmail,
+            avatar: userAvatar,
+            role: userRole
+          });
+          
           setUser({
             id: userId,
             name: userName,
@@ -147,6 +156,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const userId = localStorage.getItem('userId') ? parseInt(localStorage.getItem('userId') || '0') : 0;
           const userAvatar = localStorage.getItem('userAvatar') || '';
           const userRole = localStorage.getItem('userRole') || '';
+          
+          console.log('Google UID (userId) after successful authentication:', userId);
+          console.log('Full user data:', {
+            id: userId,
+            name: userName,
+            email: userEmail,
+            avatar: userAvatar,
+            role: userRole
+          });
           
           setUser({
             id: userId,

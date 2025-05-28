@@ -248,6 +248,7 @@ const TaskFileAttachments: React.FC<TaskFileAttachmentsProps> = ({
                     </Typography>
                   </Box>
                 }
+                sx={{ pr: 5 }}
               />
               
               <ListItemSecondaryAction>
