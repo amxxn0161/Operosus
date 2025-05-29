@@ -19,6 +19,7 @@ const Layout: React.FC = () => {
       '/worksheet': 'Worksheet',
       '/diagnostic': 'Diagnostic',
       '/admin-journal': 'Admin Journal',
+      '/meeting-insights': 'Meeting Insights',
     };
     
     // Get the base path (e.g., '/entry/123' becomes '/entry')

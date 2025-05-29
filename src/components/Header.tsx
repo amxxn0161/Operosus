@@ -18,7 +18,8 @@ import {
   useMediaQuery,
   useTheme,
   ListItemButton,
-  Collapse
+  Collapse,
+  ListItemIcon
 } from '@mui/material';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -32,6 +33,11 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import InsightsIcon from '@mui/icons-material/Insights';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import AlarmIcon from '@mui/icons-material/Alarm';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import GroupIcon from '@mui/icons-material/Group';
 import { useAuth } from '../contexts/AuthContext';
 import operosusLogo from '../assets/operosus-logo.png';
 import OpoSmallImage from '../assets/Oposmall.png';
@@ -49,6 +55,9 @@ const Header: React.FC = () => {
   
   // State for the journal submenu
   const [journalSubmenuOpen, setJournalSubmenuOpen] = useState(false);
+  
+  // State for the dashboards submenu
+  const [dashboardsSubmenuOpen, setDashboardsSubmenuOpen] = useState(false);
   
   // Check admin access by calling the API endpoint
   useEffect(() => {
@@ -133,6 +142,11 @@ const Header: React.FC = () => {
   // Toggle the journal submenu
   const handleJournalSubmenuToggle = () => {
     setJournalSubmenuOpen(!journalSubmenuOpen);
+  };
+  
+  // Toggle the dashboards submenu
+  const handleDashboardsSubmenuToggle = () => {
+    setDashboardsSubmenuOpen(!dashboardsSubmenuOpen);
   };
   
   // Check if we're on the login page
@@ -378,6 +392,149 @@ const Header: React.FC = () => {
           />
         </ListItemButton>
         
+        {/* Dashboards menu item with submenu */}
+        <ListItemButton 
+          onClick={handleDashboardsSubmenuToggle}
+          sx={{ 
+            py: 1.8,
+            mx: 1,
+            borderRadius: '12px',
+            bgcolor: (location.pathname.includes('/meeting-insights') || location.pathname.includes('/focus-planning') || location.pathname.includes('/leaderboard') || location.pathname.includes('/team-comparison')) ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+          }}
+        >
+          <DashboardIcon sx={{ 
+            mr: 2, 
+            color: (location.pathname.includes('/meeting-insights') || location.pathname.includes('/focus-planning') || location.pathname.includes('/leaderboard') || location.pathname.includes('/team-comparison')) ? 'primary.main' : 'text.secondary',
+            fontSize: { xs: 20, sm: 22 } 
+          }} />
+          <ListItemText 
+            primary="Dashboards" 
+            primaryTypographyProps={{
+              fontWeight: (location.pathname.includes('/meeting-insights') || location.pathname.includes('/focus-planning') || location.pathname.includes('/leaderboard') || location.pathname.includes('/team-comparison')) ? 'bold' : 'normal',
+              color: (location.pathname.includes('/meeting-insights') || location.pathname.includes('/focus-planning') || location.pathname.includes('/leaderboard') || location.pathname.includes('/team-comparison')) ? 'primary.main' : 'text.primary',
+              fontSize: { xs: '0.95rem', sm: '1rem' }
+            }}
+          />
+          {dashboardsSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
+        </ListItemButton>
+        
+        {/* Dashboards submenu */}
+        <Collapse in={dashboardsSubmenuOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItemButton 
+              onClick={() => handleNavigation('/meeting-insights')}
+              selected={isActive('/meeting-insights')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/meeting-insights') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <ShowChartIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: isActive('/meeting-insights') ? 'primary.main' : 'text.secondary',
+                  fontSize: { xs: 16, sm: 18 } 
+                }} 
+              />
+              <ListItemText 
+                primary="Meeting Insights" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/meeting-insights') ? 'bold' : 'normal',
+                  color: isActive('/meeting-insights') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+            
+            <ListItemButton 
+              onClick={() => handleNavigation('/focus-planning')}
+              selected={isActive('/focus-planning')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/focus-planning') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <AlarmIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: isActive('/focus-planning') ? 'primary.main' : 'text.secondary',
+                  fontSize: { xs: 16, sm: 18 } 
+                }} 
+              />
+              <ListItemText 
+                primary="Focus & Planning" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/focus-planning') ? 'bold' : 'normal',
+                  color: isActive('/focus-planning') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+            
+            <ListItemButton 
+              onClick={() => handleNavigation('/leaderboard')}
+              selected={isActive('/leaderboard')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/leaderboard') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <BarChartIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: isActive('/leaderboard') ? 'primary.main' : 'text.secondary',
+                  fontSize: { xs: 16, sm: 18 } 
+                }} 
+              />
+              <ListItemText 
+                primary="Leaderboard" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/leaderboard') ? 'bold' : 'normal',
+                  color: isActive('/leaderboard') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+            
+            <ListItemButton 
+              onClick={() => handleNavigation('/team-comparison')}
+              selected={isActive('/team-comparison')}
+              sx={{ 
+                py: 1.5, 
+                pl: 7,
+                mx: 1,
+                borderRadius: '12px',
+                bgcolor: isActive('/team-comparison') ? 'rgba(16, 86, 245, 0.08)' : 'transparent'
+              }}
+            >
+              <GroupIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: isActive('/team-comparison') ? 'primary.main' : 'text.secondary',
+                  fontSize: { xs: 16, sm: 18 } 
+                }} 
+              />
+              <ListItemText 
+                primary="Team Comparison" 
+                primaryTypographyProps={{
+                  fontWeight: isActive('/team-comparison') ? 'bold' : 'normal',
+                  color: isActive('/team-comparison') ? 'primary.main' : 'text.primary',
+                  fontSize: { xs: '0.9rem', sm: '0.95rem' }
+                }}
+              />
+            </ListItemButton>
+          </List>
+        </Collapse>
+        
         <ListItemButton 
           onClick={() => handleNavigation('/dashboard')}
           selected={false}
@@ -482,6 +639,13 @@ const Header: React.FC = () => {
     }
   }, [location.pathname, journalSubmenuOpen, isActive]);
 
+  // Auto-open the dashboards submenu if we're on dashboard-related pages
+  useEffect(() => {
+    if ((isActive('/meeting-insights') || isActive('/focus-planning') || isActive('/leaderboard') || isActive('/team-comparison')) && !dashboardsSubmenuOpen) {
+      setDashboardsSubmenuOpen(true);
+    }
+  }, [location.pathname, dashboardsSubmenuOpen, isActive]);
+
   return (
     <AppBar 
       position="static" 
@@ -492,12 +656,13 @@ const Header: React.FC = () => {
         backgroundColor: 'white'
       }}
     >
-      <Container maxWidth="xl">
+      <Box sx={{ width: '100%', px: { xs: 1, sm: 2 } }}>
         <Toolbar 
           disableGutters 
           sx={{ 
             justifyContent: 'space-between',
-            py: { xs: 0.5, sm: 1 }
+            py: { xs: 0.5, sm: 1 },
+            minHeight: '56px'
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -528,8 +693,7 @@ const Header: React.FC = () => {
               sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                textDecoration: 'none',
-                mr: { xs: 1, sm: 2, md: 4 }
+                textDecoration: 'none'
               }}
             >
               <img 
@@ -544,7 +708,7 @@ const Header: React.FC = () => {
           </Box>
 
           {/* Profile Button - shown in both mobile and desktop */}
-          <Box>
+          <Box sx={{ mr: { xs: 1, sm: 2 } }}>
             {isAuthenticated ? (
               <Avatar 
                 onClick={handleClick}
@@ -616,7 +780,7 @@ const Header: React.FC = () => {
             </Menu>
           </Box>
         </Toolbar>
-      </Container>
+      </Box>
 
       {/* Sidebar drawer - for both mobile and desktop */}
       <Drawer

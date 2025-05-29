@@ -22,6 +22,10 @@ import AllEntries from './pages/AllEntries';
 import DiagnosticPage from './pages/DiagnosticPage';
 import AdminJournal from './pages/AdminJournal';
 import GoogleTasks from './pages/GoogleTasks';
+import Analytics from './pages/MeetingInsights';
+import FocusPlanning from './pages/FocusPlanning';
+import Leaderboard from './pages/Leaderboard';
+import TeamComparison from './pages/TeamComparison';
 import Layout from './components/Layout';
 import MockDataToggle from './components/MockDataToggle';
 import AIAssistant from './components/AIAssistant';
@@ -238,6 +242,10 @@ const AppContent: React.FC = () => {
     location.pathname.includes('/calendar') ||
     location.pathname === '/dashboard' ||
     location.pathname === '/tasks' ||
+    location.pathname === '/meeting-insights' ||
+    location.pathname === '/focus-planning' ||
+    location.pathname === '/leaderboard' ||
+    location.pathname === '/team-comparison' ||
     location.pathname.includes('/tasks');
   
   return (
@@ -264,6 +272,10 @@ const AppContent: React.FC = () => {
                   <Route path="insights" element={<JournalInsights />} />
                   <Route path="diagnostic" element={<DiagnosticPage />} />
                   <Route path="tasks" element={<GoogleTasks />} />
+                  <Route path="meeting-insights" element={<Analytics />} />
+                  <Route path="focus-planning" element={<FocusPlanning />} />
+                  <Route path="leaderboard" element={<Leaderboard />} />
+                  <Route path="team-comparison" element={<TeamComparison />} />
                   <Route path="ai-assistant" element={<AIAssistantPage />} />
                   
                   {/* Admin routes */}
