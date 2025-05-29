@@ -275,11 +275,15 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       return;
     }
     
+    // Determine default task list ID - use first available task list
+    const defaultTaskListId = taskLists.length > 0 ? taskLists[0].id : '@default';
+    
     // Add new task with optional due date and time
     const newTask: Task = {
       id: Date.now().toString(), // Simple unique ID
       title: newTaskTitle.trim(),
-      completed: false
+      completed: false,
+      task_list_id: defaultTaskListId // Assign to default task list
     };
     
     // Add due date and time if provided
@@ -435,14 +439,19 @@ const EventCreationModal: React.FC<EventCreationModalProps> = ({
       const hasTasks = tasks.length > 0;
       
       // Format tasks for API
-      const formattedTasks = hasTasks ? tasks.map(task => ({
-        title: task.title,
-        notes: task.notes || "", // Include notes if available
-        task_list_id: task.task_list_id || null, // Use task list ID if available
-        due: task.due || null, // Include due date if available
-        has_explicit_time: task.has_explicit_time || false, // Include explicit time flag
-        status: task.status || "needsAction" // Include status
-      })) : [];
+      const formattedTasks = hasTasks ? tasks.map(task => {
+        // Ensure task_list_id is always a string, never null
+        const taskListId = task.task_list_id || (taskLists.length > 0 ? taskLists[0].id : '@default');
+        
+        return {
+          title: task.title,
+          notes: task.notes || "", // Include notes if available
+          task_list_id: taskListId, // Always provide a string value
+          due: task.due || null, // Include due date if available
+          has_explicit_time: task.has_explicit_time || false, // Include explicit time flag
+          status: task.status || "needsAction" // Include status
+        };
+      }) : [];
       
       // Handle special event types
       if (eventType === 'outOfOffice') {
